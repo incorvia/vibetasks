@@ -4,6 +4,7 @@ import { ensureFolder, slugify } from "./taskService";
 import { fieldKey } from "./fieldNames";
 import { ScanCache } from "./scanCache";
 import { FilterCriteria, ViewOptions } from "./filterEngine";
+import { CalMode } from "./calendarModel";
 import { readViewOptions, writeViewOptions, readCriteria, writeCriteria } from "./pageOptions";
 import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
@@ -15,18 +16,18 @@ export interface FilterItem {
   criteria: FilterCriteria; options: ViewOptions;
 }
 
-function readOptions(fm: Record<string, unknown>): ViewOptions {
-  return readViewOptions(fm);
+function readOptions(fm: Record<string, unknown>, defaultCalMode?: CalMode): ViewOptions {
+  return readViewOptions(fm, defaultCalMode);
 }
 
-function toItem(f: TFile, fm: Record<string, unknown>): FilterItem {
+function toItem(f: TFile, fm: Record<string, unknown>, defaultCalMode?: CalMode): FilterItem {
   return {
     name: typeof fm.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path,
     icon: "tag",   // fest (noch kein Icon-Picker) – gilt auch für Alt-Filter mit gespeichertem icon
     color: typeof fm.color === "string" ? fm.color : null,
     description: typeof fm.description === "string" ? fm.description : "",
     hidden: !!fm.nav_hidden,
-    criteria: readCriteria(fm), options: readOptions(fm),
+    criteria: readCriteria(fm), options: readOptions(fm, defaultCalMode),
   };
 }
 
@@ -49,20 +50,21 @@ export function listFilters(app: App): FilterItem[] {
 }
 
 /** Einen Filter per Pfad lesen (null, wenn keine Filter-Notiz mehr). */
-export function readFilter(app: App, path: string): FilterItem | null {
+export function readFilter(app: App, path: string, defaultCalMode?: CalMode): FilterItem | null {
   if (!isCollectionPath(path)) return null;
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return null;
   const fm = app.metadataCache.getFileCache(f)?.frontmatter;
-  return fm?.[fieldKey("type")] === "filter" ? toItem(f, fm) : null;
+  return fm?.[fieldKey("type")] === "filter" ? toItem(f, fm, defaultCalMode) : null;
 }
 
 /** Kriterien + Optionen (+ Farbe) als Frontmatter-Felder schreiben (nur nicht-leere).
  *  Die Kriterien stehen hier FLACH: In einer Filternotiz sind sie die Notiz, kein Beiwerk
  *  (eine gewöhnliche Seite trägt ihren Ansichtsfilter dagegen unter einem Schlüssel). */
-function applyToFrontmatter(fm: Record<string, unknown>, c: FilterCriteria, o: ViewOptions, color: string | null): void {
+function applyToFrontmatter(fm: Record<string, unknown>, c: FilterCriteria, o: ViewOptions, color: string | null,
+  defaultCalMode: CalMode): void {
   writeCriteria(fm, c);
-  writeViewOptions(fm, o);   // layout/sort/group/showDone (Defaults werden entfernt)
+  writeViewOptions(fm, o, defaultCalMode);   // layout/sort/group/showDone (Defaults werden entfernt)
   if (color == null) delete fm.color; else fm.color = color;
 }
 
@@ -80,17 +82,18 @@ export async function createFilterNote(
   const fm: Record<string, unknown> = { type: "filter", id: newUlid(), title: base, created: now, modified: now };
   if (hidden) fm.nav_hidden = true;
   if (description.trim()) fm.description = description.trim();
-  applyToFrontmatter(fm, criteria, options, color);
+  applyToFrontmatter(fm, criteria, options, color, settings.defaultCalendarView);
   // Kein „# Name" im Body: Der Name kommt aus dem Dateinamen; der Body gehört dem Nutzer.
   await repositoryFor(app).create({ type: "filter", path: dest, frontmatter: fm, body: "\n" });
   return base;
 }
 
 /** Kriterien/Optionen/Farbe einer bestehenden Filter-Notiz aktualisieren. */
-export async function updateFilterNote(app: App, path: string, criteria: FilterCriteria, options: ViewOptions, color: string | null): Promise<void> {
+export async function updateFilterNote(app: App, path: string, criteria: FilterCriteria, options: ViewOptions, color: string | null,
+  defaultCalMode: CalMode = "3day"): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await updateRecord(app, f, (fm) => applyToFrontmatter(fm, criteria, options, color));
+  await updateRecord(app, f, (fm) => applyToFrontmatter(fm, criteria, options, color, defaultCalMode));
 }
 
 /** Filter-Notiz umbenennen (Datei + „# Überschrift"). Gibt neuen Basenamen zurück oder null. */

@@ -5,7 +5,7 @@ import { dragTask, dragFromCol, startTaskDrag, endTaskDrag, applyDropPage } from
 import { sectionSig, SigLookup } from "./rowSignature";
 import { rowPlan, NO_PROJECT } from "./rowPlan";
 import { takeFromBudget, repaintCount, rowsForScroll, columnFirstPaint, placeholderPx } from "./chunkPlan";
-import { Task, NavSection, Priority } from "./types";
+import { Task, TaskStatus, NavSection, Priority } from "./types";
 import { todayStr, combineDT, dateOf, groupLabel } from "./format";
 import { openDatePicker } from "./datePicker";
 import { listProjectsAndAreas, listManaged, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists } from "./taskService";
@@ -13,7 +13,7 @@ import { listFilters, readFilter, FilterItem } from "./filterService";
 import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
 import { FilterModal } from "./filterModal";
 import { NewItemModal } from "./newItemModal";
-import { buildItemMenu, showHiddenSubmenu, addGcalSyncItem, addOpenItems, openEdit, buildCreateSubmenu, buildTemplateMenu, NavMenuItem } from "./navMenu";
+import { buildItemMenu, showHiddenSubmenu, addGcalSyncItem, addOpenItems, openEdit, buildCreateSubmenu, addCreateItems, buildTemplateMenu, NavMenuItem } from "./navMenu";
 import { anzeigeButton } from "./viewPanel";
 import { renderManageInto, iconBtn, confirmInline, attachRowDrag } from "./manageView";
 import { listTemplates, TemplateInfo } from "./templateService";
@@ -25,7 +25,7 @@ import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen,
 import { DayEvent, bucketEvents, addDays, addMonths } from "./calendarModel";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
-import { PRIOS } from "./taskModal";
+import { PRIOS, TaskModal } from "./taskModal";
 import { isOpen, isDone, isTrashed, boardStatuses, statusLabel, statusTint, firstOpenStatus, StatusKind } from "./statuses";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
@@ -38,6 +38,86 @@ import { tip, tipWhenClipped } from "./tooltip";
  * aufgeklapptes Unteraufgaben-Badge klappte hier mit auf.
  */
 const viewKey = (ctx: PageCtx, rest: string): string => ctx.id + "|" + rest;
+
+/** Pro Dashboard-Tab genau ein Things-artig aufgeklappter Aufgaben-Editor. Er bleibt während
+ *  Index-Meldungen stehen; beim Schließen wird die inzwischen geänderte Liste nachgezogen. */
+interface InlineTaskEditor {
+  modal: TaskModal;
+  path: string;
+  row: HTMLElement;
+  slot: HTMLElement;
+  suppressRedraw: boolean;
+}
+const inlineTaskEditors = new Map<string, InlineTaskEditor>();
+
+export function inlineTaskEditorOpen(id: string): boolean {
+  const active = inlineTaskEditors.get(id);
+  return !!active?.slot.isConnected;
+}
+
+export function closeInlineTaskEditor(id: string, redraw = true): void {
+  const active = inlineTaskEditors.get(id);
+  if (!active) return;
+  active.suppressRedraw = !redraw;
+  active.modal.close();
+}
+
+function openInlineTaskEditor(ctx: PageCtx, task: Task, row: HTMLElement): void {
+  const current = inlineTaskEditors.get(ctx.id);
+  if (current?.path === task.path && current.slot.isConnected) { current.modal.focusTitle(); return; }
+  // Beim Wechsel nicht zwischen altem Schließen und neuem Einhängen neu zeichnen: `row` gehört
+  // noch zur aktuellen Zeichnung und bliebe nach einem Redraw ein toter Anker.
+  if (current) closeInlineTaskEditor(ctx.id, false);
+
+  const slot = row.parentElement!.createDiv({ cls: "bt-inline-editor-slot" });
+  // In einer 300px-Kanban-Spalte wäre der volle Editor unbrauchbar schmal. Dort klappt er als
+  // pane-breite Fläche über dem Board auf; in der Liste bleibt er direkt an seiner Aufgabe.
+  const board = row.closest<HTMLElement>(".bt-kanban");
+  if (board) {
+    slot.addClasses(["bt-sizer", "bt-inline-board"]);
+    board.insertAdjacentElement("beforebegin", slot);
+  } else {
+    row.insertAdjacentElement("afterend", slot);
+  }
+  row.addClass("is-editing");
+  row.setAttr("draggable", "false");
+  const modal = new TaskModal(ctx.plugin, task);
+  const active: InlineTaskEditor = { modal, path: task.path, row, slot, suppressRedraw: false };
+  inlineTaskEditors.set(ctx.id, active);
+  modal.openInline(slot, () => {
+    if (inlineTaskEditors.get(ctx.id) === active) inlineTaskEditors.delete(ctx.id);
+    row.removeClass("is-editing");
+    row.setAttr("draggable", "true");
+    slot.remove();
+    if (!active.suppressRedraw) ctx.redraw();
+  }, row);
+}
+
+/** Die normale „+ Aufgabe"-Zeile ist ebenfalls ein Inline-Composer. Das globale Quick Add bleibt
+ *  ein Modal, weil es absichtlich ohne sichtbaren Seitenkontext von überall erreichbar ist. */
+function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, label?: string,
+  today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null): void {
+  const current = inlineTaskEditors.get(ctx.id);
+  if (current?.path === "\0new" && current.slot.isConnected) { current.modal.focusTitle(); return; }
+  if (current) closeInlineTaskEditor(ctx.id, false);
+
+  const slot = anchor.parentElement!.createDiv({ cls: "bt-sizer bt-inline-editor-slot bt-inline-new" });
+  const top = anchor.closest<HTMLElement>(".bt-page-top") ?? anchor;
+  top.insertAdjacentElement("afterend", slot);
+  anchor.addClass("is-editing");
+  const modal = new TaskModal(ctx.plugin, undefined, project, {
+    defaultLabel: label, defaultToday: today, defaultStatus: status,
+    seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
+  });
+  const active: InlineTaskEditor = { modal, path: "\0new", row: anchor, slot, suppressRedraw: false };
+  inlineTaskEditors.set(ctx.id, active);
+  modal.openInline(slot, () => {
+    if (inlineTaskEditors.get(ctx.id) === active) inlineTaskEditors.delete(ctx.id);
+    anchor.removeClass("is-editing");
+    slot.remove();
+    if (!active.suppressRedraw) ctx.redraw();
+  });
+}
 /** Alle Einträge eines Tabs verwerfen (beim Schließen bzw. beim Seitenwechsel des Tabs). */
 function dropViewKeys(id: string): void {
   const prefix = id + "|";
@@ -164,7 +244,7 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
     const add = top.createDiv({ cls: "bt-add" });
     add.createSpan({ cls: "bt-add-icon" });
     add.createSpan({ text: t("btn_add_task") });
-    add.onclick = () => plugin.openNewTask(undefined, undefined, view === "heute", undefined, addDue(ctx));
+    add.onclick = () => openInlineNewTask(ctx, add, undefined, undefined, view === "heute", undefined, addDue(ctx));
   } else if (view !== "erledigt") {
     root.createEl("h1", { text: viewTitle(view) });   // „Erledigt" bekommt einen Kopf mit Tabs (unten)
   }
@@ -439,12 +519,12 @@ function filterEmptyState(root: HTMLElement, ctx: PageCtx): void {
  *  Link zurück ins ListManager (Projekte- bzw. Labels-Tab) – wie im alten VibeTask.
  *  Der Link ist optional: der Eingang ist ein Systemordner (kein normales Projekt) und
  *  bekommt daher KEINEN „Projekte"-Link. */
-function addBar(root: HTMLElement, plugin: VibeTaskPlugin, onAdd: () => void): void {
+function addBar(root: HTMLElement, onAdd: (anchor: HTMLElement) => void): void {
   const bar = root.createDiv({ cls: "bt-board-bar" });
   const add = bar.createDiv({ cls: "bt-add" });
   add.createSpan({ cls: "bt-add-icon" });
   add.createSpan({ text: t("btn_add_task") });
-  add.onclick = onAdd;
+  add.onclick = () => onAdd(add);
 }
 
 /** Projekt-Board: alle Aufgaben eines Projekts, nach Status/Datum gruppiert. */
@@ -474,7 +554,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
   // Im Eingang neue Aufgaben OHNE Projekt anlegen (Eingang = kein Projekt), sonst im Projekt.
-  addBar(top, plugin, () => plugin.openNewTask(isInbox ? undefined : name, undefined, false, undefined, addDue(ctx)));
+  addBar(top, (add) => openInlineNewTask(ctx, add, isInbox ? undefined : name, undefined, false, undefined, addDue(ctx)));
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
@@ -506,7 +586,7 @@ export function renderLabelBoardInto(c: HTMLElement, ctx: PageCtx, label: string
   const top = pageTop(c, ctx.opts.layout);
   pageHeader(top, ctx, top.createEl("h1", { cls: "bt-label-title", text: "#" + label }),
     { menu: { sec: "labels", key: label, name: label, hidden: !plugin.isLabelVisible(label), color: plugin.getLabelColor(label) } });
-  addBar(top, plugin, () => plugin.openNewTask(undefined, label, false, undefined, addDue(ctx)));
+  addBar(top, (add) => openInlineNewTask(ctx, add, undefined, label, false, undefined, addDue(ctx)));
 
   const source = (): Task[] => ctx.filter(
     plugin.index.all().filter((tk) => tk.labels.includes(label) && !plugin.index.isProjectArchived(tk.project)));
@@ -640,7 +720,7 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
   const filterItem: NavMenuItem = { sec: "filters", key: filterPath, name: filter.name, hidden: filter.hidden, color: filter.color };
   pageHeader(top, ctx, top.createEl("h1", { text: filter.name }), { menu: filterItem });
   pageDesc(top, plugin, filter.description, filterItem);
-  addBar(top, plugin, () => plugin.openNewTask(undefined, undefined, false, undefined, addDue(ctx)));
+  addBar(top, (add) => openInlineNewTask(ctx, add, undefined, undefined, false, undefined, addDue(ctx)));
 
   // Kriterien filtern die Menge; renderPageBody übernimmt Layout/Sortieren/Gruppieren/Erledigte.
   const tasks = applyFilter(plugin.index, filter.criteria, opts, today);
@@ -1826,7 +1906,12 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
         attr: { role: "button", tabindex: "0" } });
       tip(link, t("menu_goto_parent") + ": " + parent.title);
       setIcon(link.createSpan({ cls: "bt-parent-link-ic" }), "corner-left-up");
-      const openParent = (e: Event): void => { e.stopPropagation(); plugin.openEditTask(parent); };
+      const openParent = (e: Event): void => {
+        e.stopPropagation();
+        const parentRow = row.closest<HTMLElement>(".bt-view")
+          ?.querySelector<HTMLElement>(`.bt-task[data-path="${CSS.escape(parent.path)}"]`);
+        if (parentRow) openInlineTaskEditor(ctx, parent, parentRow); else plugin.openEditTask(parent);
+      };
       link.onclick = openParent;
       link.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openParent(e); } };
     }
@@ -1951,7 +2036,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
   // weiterhin das Linkziel, nicht die Aufgabennotiz.
   row.onclick = (e) => {
     const mod = Keymap.isModEvent(e);
-    if (mod) openTaskNote(plugin.app, task.path, mod); else plugin.openEditTask(task);
+    if (mod) openTaskNote(plugin.app, task.path, mod); else openInlineTaskEditor(ctx, task, row);
   };
   // Mittelklick öffnet die Notiz in einem neuen Tab (die Geste, die im Browser und in Obsidians
   // Dateiliste dasselbe tut). `onauxclick`, weil die mittlere Taste gar kein `click` auslöst;
@@ -2302,9 +2387,22 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
   const navColor = (path: string, stored: string | null): string | null =>
     plugin.colorPreview?.key === path ? plugin.colorPreview.color : stored;
 
-  // „Aufgabe hinzufügen" ganz oben: öffnet die kompakte Schnell-Erfassung.
-  // Folgt dem Kontext der geöffneten Seite – wie der Command und der „+ Aufgabe"-Knopf (addContext).
-  navItem(c, plugin, { cls: "bt-nav-add-task", icon: "bt-add-task", label: t("btn_add_task"), onClick: () => plugin.openQuickAddHere() });
+  // Fester App-Kopf: Globale Erstellung hat einen eindeutigen Ort und hängt nicht am Menü eines
+  // Projekts. „Neue Aufgabe" nutzt weiterhin den aktiven Seitenkontext als hilfreichen Default.
+  const appHead = c.createDiv({ cls: "bt-nav-app-head" });
+  appHead.createSpan({ cls: "bt-nav-brand", text: "VibeTask" });
+  const create = appHead.createEl("button", {
+    cls: "bt-nav-new",
+    attr: { type: "button", "aria-haspopup": "menu" },
+  });
+  create.createSpan({ text: t("menu_create_new") });
+  setIcon(create.createSpan({ cls: "bt-nav-new-chevron" }), "chevron-down");
+  create.onclick = (e) => {
+    e.stopPropagation();
+    const menu = new Menu();
+    addCreateItems(menu, plugin, true);
+    menu.showAtMouseEvent(e);
+  };
 
   // „Suchen" darunter: öffnet die Aufgaben-Suche (Command-Palette-Stil).
   navItem(c, plugin, { cls: "bt-nav-search", icon: "search", label: t("nav_search"), onClick: () => plugin.openSearch() });
@@ -2635,6 +2733,7 @@ export class MainView extends ItemView {
     const page: PageRef = kind && key ? { kind, key } : this.page;
     const changed = !samePage(page, this.page);
     if (changed) {
+      closeInlineTaskEditor(this.id, false);
       // Transienten Zustand der ALTEN Seite wegwerfen: Scrollposition und aufgeklappte Badges
       // gehören zu ihr, nicht zum Tab – sonst erbte die neue Seite eine fremde Position.
       dropViewKeys(this.id);
@@ -2809,6 +2908,7 @@ export class MainView extends ItemView {
     this.draw();
   }
   async onClose(): Promise<void> {
+    closeInlineTaskEditor(this.id, false);
     this.unsub?.(); this.unsub = null;
     this.unsubTpl?.(); this.unsubTpl = null;
     dropViewKeys(this.id);   // sonst wüchsen die Modul-Maps mit jedem geschlossenen Tab weiter
@@ -2830,6 +2930,9 @@ export class MainView extends ItemView {
     // zweiten Projekt schickte den verdeckten Kalender-Tab auf die neue Seite, beschriftet
     // blieb er mit der alten. Kostet zwei setText – kein Grund, es aufzuschieben.
     this.syncTitle();
+    // Ein Inline-Editor ist selbst die aktuelle Arbeitsfläche. Index-Meldungen (etwa ein im
+    // Editor geänderter Status) dürfen seinen DOM nicht unter dem Cursor wegzeichnen.
+    if (inlineTaskEditorOpen(this.id)) return;
     // Ein VERDECKTER Tab (anderer Tab derselben Gruppe) wird nur vorgemerkt. Solange es genau
     // eine Dashboard-Leaf gab, war das kein Thema; mit drei offenen Tabs zahlte man den vollen
     // Aufbau (gemessen ~110 ms) bei JEDER Aufgabenänderung dreifach – zweimal davon für Seiten,

@@ -172,7 +172,7 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
       reset.onclick = () => {
         resetSubtaskToggles(ctx);
         ctx.resetOptions();   // setzt Anzeige-Optionen UND Ansichtsfilter zurück
-        o = { ...DEFAULT_OPTIONS }; c = { ...DEFAULT_CRITERIA };
+        o = { ...DEFAULT_OPTIONS, calMode: ctx.plugin.settings.defaultCalendarView }; c = { ...DEFAULT_CRITERIA };
         render();
       };
     };

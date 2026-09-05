@@ -8,6 +8,7 @@ import { DEFAULT_CALENDAR_NAME, CalendarInfo } from "./gcalSync";
 import { PlanTabId, readPlanTabs, dailyNotesEnabled, forceListLeft } from "./planTabs";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
+import { CAL_MODES, CalMode } from "./calendarModel";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
@@ -191,6 +192,16 @@ export class VibeTaskSettingTab extends PluginSettingTab {
         (v) => { p.settings.startPage = v; void p.saveSettings(); zeichneStart(); }).open();
     };
     zeichneStart();
+
+    new Setting(containerEl).setName(t("set_default_calendar_view")).setDesc(t("set_default_calendar_view_desc")).addDropdown((dd) => {
+      for (const mode of CAL_MODES) dd.addOption(mode, t("cal_mode_" + mode));
+      dd.setValue(p.settings.defaultCalendarView);
+      dd.onChange(async (v) => {
+        p.settings.defaultCalendarView = v as CalMode;
+        await p.saveSettings();
+        p.renderAll();
+      });
+    });
 
     new Setting(containerEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
       tg.setValue(p.settings.parseNaturalLanguage).onChange(async (v) => { p.settings.parseNaturalLanguage = v; await p.saveSettings(); }));

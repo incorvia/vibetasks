@@ -36,11 +36,11 @@ export class FilterModal extends Modal {
   constructor(private plugin: VibeTaskPlugin, editPath?: string, preset?: FilterCriteria, private focusField: EditFocus = "name") {
     super(plugin.app);
     this.editPath = editPath ?? null;
-    const existing = editPath ? readFilter(plugin.app, editPath) : null;
+    const existing = editPath ? readFilter(plugin.app, editPath, plugin.settings.defaultCalendarView) : null;
     this.name = existing?.name ?? "";
     this.origName = this.name;
     this.c = { ...DEFAULT_CRITERIA, ...(existing?.criteria ?? preset ?? {}) };
-    this.o = { ...DEFAULT_OPTIONS, ...(existing?.options ?? {}) };
+    this.o = { ...DEFAULT_OPTIONS, calMode: plugin.settings.defaultCalendarView, ...(existing?.options ?? {}) };
     this.color = existing?.color ?? null;
     this.description = existing?.description ?? "";
     this.visible = existing ? !existing.hidden : true;   // neuer Filter: standardmäßig sichtbar

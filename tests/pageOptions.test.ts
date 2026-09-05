@@ -115,6 +115,21 @@ describe("listSubtasks – „Einzeln“ gibt es in der Liste nicht mehr", () =>
 });
 
 describe("writeViewOptions – Notiz bleibt schlank", () => {
+  it("uses the configured calendar default while preserving an explicit page choice", () => {
+    expect(readViewOptions(undefined, "week").calMode).toBe("week");
+
+    const fm: Record<string, unknown> = {};
+    writeViewOptions(fm, { ...DEFAULT_OPTIONS, calMode: "month" }, "3day");
+    expect(fm.calMode).toBe("month");
+    expect(readViewOptions(fm, "3day").calMode).toBe("month");
+  });
+
+  it("omits a page calendar choice when it matches the configured default", () => {
+    const fm: Record<string, unknown> = {};
+    writeViewOptions(fm, { ...DEFAULT_OPTIONS, calMode: "week" }, "week");
+    expect(fm.calMode).toBeUndefined();
+  });
+
   it("schreibt den Default NICHT ins Frontmatter", () => {
     const fm: Record<string, unknown> = {};
     writeViewOptions(fm, { ...DEFAULT_OPTIONS });

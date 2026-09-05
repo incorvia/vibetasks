@@ -156,6 +156,7 @@ export interface VibeTaskSettings {
   startPage?: import("./pageCtx").StartPage;   // Startseite: feste Seite (PageRef) oder "last" = Seite des Tabs behalten (s. startPage.ts)
                            // Die WAHL ist Vault-Ebene; welche Ansicht zuletzt offen war, nicht
                            // (DeviceState.lastView).
+  defaultCalendarView: import("./calendarModel").CalMode; // Kalender-Modus für Seiten ohne eigene Wahl
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
   showUnfiledInInbox: boolean;    // projektlose offene Aufgaben (auch handgeschriebene type:task-Notizen) im Eingang zeigen
   excludeFolders: string[];       // Ordner-Präfixe: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen)
@@ -221,6 +222,7 @@ export const DEFAULT_SETTINGS: VibeTaskSettings = {
   metaTheme: "minimalisdo",
   metaColors: {},
   startPage: { kind: "view", key: "heute" },
+  defaultCalendarView: "3day",
   parseNaturalLanguage: true,
   showUnfiledInInbox: true,
   excludeFolders: [],

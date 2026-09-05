@@ -399,6 +399,78 @@ body {
 
 /* ── Aufgaben-Modal ── */
 .bt-task-modal { width: 800px; max-width: 92vw; padding-left: 0; padding-right: 0; }
+/* Things-artiger Editor direkt in der Aufgabenliste. `.modal` bringt aus Obsidian fixed/
+   zentrierte Geometrie mit; hier wird sie bewusst zu einer normalen, breiten Kartenfläche. */
+.bt-inline-editor-slot {
+  margin: 0 0 12px;
+  padding-left: calc(var(--bt-depth, 0) * 18px);
+  animation: bt-inline-editor-in 120ms ease-out;
+}
+.bt-inline-editor-slot.bt-task-modal {
+  position: relative; inset: auto; transform: none;
+  width: 100%; max-width: none; max-height: none; min-height: 0;
+  margin: 0; padding-left: 0; padding-right: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-primary);
+  box-shadow: none;
+}
+.bt-inline-editor .modal-content {
+  max-height: none; overflow-y: visible;
+  padding-top: 4px;
+  padding-bottom: var(--size-4-4);
+}
+/* Das Modal stand bisher außerhalb von `.bt-view`. Inline trifft es nun auch mit den Listen-
+   Pseudoelementen für Meta-Chips; ohne diese Abgrenzung erschien vor jedem Editor-Chip ein
+   schwarzes, unmaskiertes Quadrat. Die Editor-Icons sind echte Kind-Spans. */
+.bt-view .bt-inline-editor .bt-chip::before { content: none; display: none; }
+.bt-view .bt-inline-editor.bt-task-modal .bt-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 9px;
+  border: 1px solid var(--background-modifier-border); border-radius: 6px;
+  background: transparent; color: var(--text-muted); font-size: 0.85em;
+  line-height: normal; cursor: pointer; box-shadow: none;
+}
+.bt-view .bt-inline-editor.bt-task-modal .bt-chip:hover {
+  background: var(--background-modifier-hover); color: var(--text-normal);
+}
+.bt-view .bt-inline-editor.bt-task-modal .bt-chip.is-set,
+.bt-view .bt-inline-editor.bt-task-modal .bt-chip-details.is-open {
+  color: var(--text-normal); border-color: var(--interactive-accent);
+}
+.bt-view .bt-inline-editor.bt-task-modal .bt-chip-actions {
+  width: 28px; padding: 0; gap: 0; justify-content: center;
+}
+
+/* Bestehende Aufgabe = eine zusammenhängende, wachsende Zeile: Der alte Titel wird zum Input,
+   redundante Vorschau-Metadaten verschwinden, und der Editor-Rumpf schließt ohne Kartenlücke an. */
+.bt-task.is-editing {
+  cursor: default;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  padding: 10px 16px 4px;
+}
+.bt-task.is-editing::before,
+.bt-task.is-editing::after { display: none; }
+.bt-task.is-editing > .bt-body > :is(.bt-desc, .bt-meta),
+.bt-task.is-editing > .bt-extras { display: none; }
+.bt-task .bt-inline-row-title {
+  display: block; width: 100%; height: auto; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none;
+  color: var(--text-normal); font: inherit; line-height: 1.4;
+}
+.bt-task .bt-inline-row-title:focus { outline: none; box-shadow: none; }
+.bt-task.is-editing + .bt-inline-editor-slot.bt-task-modal {
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+}
+@keyframes bt-inline-editor-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 /* Damit die randlose Trennlinie den ECHTEN Modal-Rand erreicht: den horizontalen Innen-
    abstand vom Modal auf .modal-content verlagern (oben: padding-left/right 0 am Modal, hier
    der Abstand). So füllt .modal-content die volle Modalbreite; die Linie kann per negativer
@@ -939,6 +1011,24 @@ body {
 
 /* ── Linke Navigation ── */
 .bt-nav { padding: 6px 6px 16px; }
+.bt-nav-app-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  min-height: 38px; padding: 2px 6px 7px;
+}
+.bt-nav-brand {
+  grid-column: 2; font-size: calc(0.9em * var(--bt-nav-scale, 1));
+  font-weight: 700; color: var(--text-normal); letter-spacing: 0.01em;
+}
+.bt-nav-new {
+  grid-column: 3; justify-self: end; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--background-modifier-border); background: var(--background-primary);
+  color: var(--text-normal); font-size: var(--font-ui-small); font-weight: 600;
+  box-shadow: none; white-space: nowrap;
+}
+.bt-nav-new:hover { background: var(--background-modifier-hover); }
+.bt-nav-new-chevron { display: inline-flex; }
+.bt-nav-new-chevron svg { width: 15px; height: 15px; }
 .bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
 /* Hover & Aktiv sind aus der Akzentfarbe abgeleitet. Der Hover ist bewusst schwächer als der
    aktive Eintrag, damit beide Zustände unterscheidbar bleiben. */
@@ -955,13 +1045,6 @@ body {
 .bt-nav-ic svg { width: 16px; height: 16px; }
 /* Seitenleisten-Icon-Farben: Boards einzeln, Labels/Bereiche/Projekte je gemeinsam.
    Eine per-Item-Frontmatter-Farbe (inline gesetzt) sticht die Gruppenfarbe. */
-/* „Aufgabe hinzufügen" ganz oben: das Icon bt-add-task (siehe registerIcons in
-   main.ts) ist ein gefüllter Kreis mit ausgestanztem Plus. currentColor färbt den Kreis, also
-   reicht hier color. Text bleibt --text-normal (Schwarz im hellen, Weiß im dunklen Theme). */
-.bt-nav-add-task { color: var(--text-normal); font-weight: 700; }
-.bt-nav-add-task:hover { color: var(--text-normal); }
-.bt-nav-add-task .bt-nav-ic { color: var(--interactive-accent); }
-.bt-nav-add-task .bt-nav-ic svg { display: block; width: 16px; height: 16px; }
 .bt-nav-search .bt-nav-ic { color: var(--bt-nav-search); }
 .bt-nav-inbox .bt-nav-ic { color: var(--bt-nav-inbox); }
 .bt-nav-heute .bt-nav-ic { color: var(--bt-nav-heute); }

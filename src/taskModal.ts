@@ -55,6 +55,17 @@ export class TaskModal extends Modal {
   private get editScope(): EditScope { return (this.editScopeCache ??= this.opts.scope ?? { index: this.plugin.index }); }
   private discarding = false;          // true = bewusst verwerfen („Cancel") -> kein Auto-Speichern
   private persisted = false;           // true sobald geschrieben -> kein Doppel-Speichern
+  /** In Dashboard-Listen lebt derselbe Editor direkt unter der angeklickten Zeile. Der Modal-
+   *  Unterbau bleibt dabei absichtlich derselbe, damit Chips, Unteraufgaben und Kommentare nicht
+   *  in einer zweiten, langsam auseinanderlaufenden Editor-Implementierung landen. */
+  private inline = false;
+  private inlineClosed = false;
+  private inlineDone: (() => void) | null = null;
+  private inlineKeydown: ((e: KeyboardEvent) => void) | null = null;
+  private inlineOriginalTitle: HTMLElement | null = null;
+  private inlineHost: HTMLElement | null = null;
+  private inlineTitleRow: HTMLElement | null = null;
+  private inlineOutside: ((e: PointerEvent) => void) | null = null;
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
@@ -91,6 +102,69 @@ export class TaskModal extends Modal {
     if (opts.duePinned) this.duePinned = true;   // aus der Schnelleingabe übernommen (⤢)
   }
 
+  /** Den vollwertigen Editor ohne Overlay in einen Listen-/Karten-Slot einhängen. Quick Add und
+   *  Aufrufe ohne sichtbare Zeile benutzen weiterhin Modal.open(). */
+  openInline(host: HTMLElement, done: () => void, titleRow?: HTMLElement): void {
+    if (this.inline || this.inlineClosed) return;
+    this.inline = true;
+    this.inlineDone = done;
+    this.inlineHost = host;
+    this.inlineTitleRow = titleRow ?? null;
+    this.shouldRestoreSelection = false;
+    // Erst den gemeinsamen Editor-Inhalt aufbauen, dann NUR `.modal-content` in die Liste
+    // verschieben. Der native Modal-Rahmen bleibt unverbunden; damit können dessen Schließer,
+    // Positionierung und Theme-Chrome nicht in der Inline-Fläche auftauchen.
+    this.onOpen();
+    host.addClasses(["bt-task-modal", "bt-inline-editor"]);
+    host.toggleClass("bt-chips-icons-only", chipsCompact(this.plugin.settings));
+    host.appendChild(this.contentEl);
+    // Beim Bearbeiten wird nicht eine zweite Titelzeile unter die Aufgabe gesetzt: Das sichtbare
+    // Listentitel-Element selbst wird durch das echte Eingabefeld ersetzt. So wird aus der Zeile
+    // der Kopf des Editors, statt dass darunter ein Dialog-Duplikat aufspringt.
+    const shownTitle = titleRow?.querySelector<HTMLElement>(":scope > .bt-body > .bt-title");
+    if (shownTitle) {
+      this.inlineOriginalTitle = shownTitle;
+      this.titleInput.addClass("bt-inline-row-title");
+      this.titleInput.onclick = (e) => e.stopPropagation();
+      shownTitle.replaceWith(this.titleInput);
+    }
+    this.inlineKeydown = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault(); e.stopPropagation(); this.close();
+    };
+    this.contentEl.addEventListener("keydown", this.inlineKeydown);
+    // Wie Things: Außerhalb weiterarbeiten klappt den Editor zu und speichert über denselben
+    // onClose-Weg wie Escape. Schwebende Bedienflächen des Editors zählen semantisch als innen,
+    // obwohl Obsidian sie am Dokument-Body statt im Editor-DOM einhängt.
+    this.inlineOutside = (e: PointerEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (!target || this.inlineHost?.contains(target) || this.inlineTitleRow?.contains(target)) return;
+      if (target.closest(".bt-pop, .menu, .suggestion-container, .modal-container, .popover")) return;
+      this.close();
+    };
+    // Erst nach der auslösenden Klick-Geste registrieren; sonst würde genau der Klick, der den
+    // Editor öffnet, ihn im selben Durchlauf wieder schließen.
+    window.setTimeout(() => {
+      if (!this.inlineClosed && this.inlineOutside) host.ownerDocument.addEventListener("pointerdown", this.inlineOutside, true);
+    }, 0);
+  }
+
+  /** Erneuter Klick auf die bereits offene Zeile setzt den Cursor wieder in den Titel. */
+  focusTitle(): void { this.titleInput?.focus(); }
+
+  close(): void {
+    if (!this.inline) { super.close(); return; }
+    if (this.inlineClosed) return;
+    this.inlineClosed = true;
+    if (this.inlineKeydown) this.contentEl.removeEventListener("keydown", this.inlineKeydown);
+    if (this.inlineOutside) this.inlineHost?.ownerDocument.removeEventListener("pointerdown", this.inlineOutside, true);
+    this.inlineOutside = null;
+    if (this.inlineOriginalTitle && this.titleInput.isConnected) this.titleInput.replaceWith(this.inlineOriginalTitle);
+    this.onClose();
+    this.modalEl.remove();
+    const done = this.inlineDone; this.inlineDone = null; done?.();
+  }
+
   onOpen(): void {
     const { contentEl, modalEl } = this;
     modalEl.addClass("bt-task-modal");
@@ -98,8 +172,10 @@ export class TaskModal extends Modal {
     // über das Modal (sonst erschiene sie dahinter). Bewusst eine feste Klasse statt body:has(...) –
     // die :has-Auswertung kann einen Frame nachhinken, wodurch die Vorschau beim Hovern kurz
     // hinter dem Modal aufblitzt und dann nach vorne springt (das gemeldete Ruckeln).
-    openModals++;
-    document.body.addClass("bt-task-modal-open");
+    if (!this.inline) {
+      openModals++;
+      document.body.addClass("bt-task-modal-open");
+    }
     modalEl.toggleClass("bt-chips-icons-only", chipsCompact(this.plugin.settings));   // nur Chip-Icons (auf Mobile immer)
     contentEl.empty();
 
@@ -225,7 +301,7 @@ export class TaskModal extends Modal {
     this.log?.unload();
     // Erst wenn das LETZTE Aufgaben-Modal weg ist – sonst verlöre ein noch offenes
     // Elternmodal die Klasse und seine Seitenvorschau erschiene wieder hinter dem Modal.
-    if (--openModals <= 0) { openModals = 0; document.body.removeClass("bt-task-modal-open"); }
+    if (!this.inline && --openModals <= 0) { openModals = 0; document.body.removeClass("bt-task-modal-open"); }
     this.contentEl.empty();
   }
 

@@ -297,6 +297,7 @@ const STRINGS: Record<string, Dict> = {
     set_appearance_heading: "Appearance",
     set_language: "Language", set_language_desc: "Language for the interface.", set_language_auto: "Automatic (follow Obsidian)",
     set_start_page: "Start page", set_start_page_desc: "Which page opens on start. “Last used” opens wherever you were.", set_start_page_missing: "The selected page no longer exists. “Today” opens instead.", set_start_view_last: "Last used", start_page_search: "Search pages …", kind_view: "View", kind_project: "Project", kind_area: "Area", kind_label: "Label", kind_filter: "Filter", start_page_hidden: "hidden",
+    set_default_calendar_view: "Default calendar view", set_default_calendar_view_desc: "Used when a page does not have its own calendar view selected.",
     set_nl: "Detect date and #labels in title", set_nl_desc: "Parse due dates and #labels automatically while typing the task title.",
     set_show_unfiled: "Show unfiled tasks in inbox",
     set_show_unfiled_desc: "List open tasks that have no project – including notes you create by hand with `type: task` – in the inbox. Turn off to keep the inbox to tasks you filed there explicitly.",

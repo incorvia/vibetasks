@@ -120,30 +120,19 @@ function renameItem(plugin: VibeTaskPlugin, item: NavMenuItem, v: string): void 
   void plugin.renameProject(item.key, v);   // projects + areas (Pfad)
 }
 
-/** Übersetzungs-Schlüssel für „Zur …übersicht" je Sektion (Board-Kebab).
- *  Vorlagen fehlen bewusst: Der Eintrag erscheint nur auf einer Einzel-SEITE (`onBoard`), und eine
- *  Vorlage hat keine – sie wird angewendet oder im Editor bearbeitet. Deshalb Partial mit Guard
- *  statt eines Textes, den nie jemand zu sehen bekäme. */
-const GOTO_KEY: Partial<Record<NavSection, string>> = {
-  projects: "menu_goto_projects", areas: "menu_goto_areas", labels: "menu_goto_labels", filters: "menu_goto_filters",
-};
-
 /** Baut das vollständige Item-Kontextmenü (typ-spezifisch) in ein bestehendes Menu.
  *  `source` steuert die Weiche:
  *   - "sidebar": Umsortieren bewegt nur die SICHTBARE Reihenfolge (Drag-Modus / visible-only).
  *   - "manage":  Umsortieren bewegt die VOLLE Liste; „Reihenfolge ändern" entfällt (Zieh-Griff vorhanden).
- *   - "board":   Kebab auf einer Einzelseite – ohne alle Sortier-Optionen, dafür mit „Zur …übersicht". */
+ *   - "board":   Kebab auf einer Einzelseite – ausschließlich Aktionen für diesen Eintrag. */
 export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuItem, source: "sidebar" | "manage" | "board" = "sidebar"): void {
   const isProjLike = item.sec === "projects" || item.sec === "areas";
   const fromSidebar = source === "sidebar";
   const onBoard = source === "board";
 
-  // Archivierte Projekte/Bereiche (nur auf ihrer Einzelseite erreichbar): reduziertes Menü, damit man
-  // wieder rausnavigieren UND wiederherstellen/endgültig löschen kann – dieselben Aktionen wie die
-  // Schnell-Icons in der Archivübersicht. Trennlinie nach „Zur Archivübersicht" (eigene Section).
+  // Archivierte Projekte/Bereiche (nur auf ihrer Einzelseite erreichbar): reduziertes Menü mit
+  // genau den beiden Aktionen, die den aktuellen Eintrag betreffen.
   if (item.archived) {
-    menu.addItem((m) => m.setSection("bt-goto").setTitle(t("menu_goto_archive")).setIcon("archive")
-      .onClick(() => void plugin.activateManage(item.sec, "archive")));
     menu.addItem((m) => m.setSection("bt-archive").setTitle(t("btn_restore")).setIcon("archive-restore")
       .onClick(() => void plugin.archiveProject(item.key, false)));
     menu.addItem((m) => m.setSection("bt-archive").setTitle(t("btn_delete_forever")).setIcon("trash-2").setWarning(true)
@@ -175,13 +164,6 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
       menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_open_linked_note")).setIcon("external-link")
         .onClick(() => void plugin.app.workspace.getLeaf("tab").openFile(linked)));
     }
-  }
-
-  // — Zur Übersicht — (nur auf der Einzelseite; ersetzt den früheren „list-plus"-Kopf-Button)
-  const gotoKey = GOTO_KEY[item.sec];
-  if (onBoard && gotoKey) {
-    menu.addItem((m) => m.setSection("bt-goto").setTitle(t(gotoKey)).setIcon("list-plus")
-      .onClick(() => void plugin.activateManage(item.sec)));
   }
 
   // — Bearbeiten —
@@ -227,8 +209,9 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
       .onClick(() => void (fromSidebar ? plugin.moveNavItemVisible(item.sec, item.key, 1) : plugin.moveNavItem(item.sec, item.key, 1))));
   }
 
-  // — Neu erstellen — (global, nicht auf diesen Eintrag bezogen; deshalb weit unten)
-  buildCreateSubmenu(menu, plugin, "bt-new");
+  // — Neu erstellen — ist global und gehört deshalb nicht in das Menü einer Einzelseite.
+  // In der Seitenleiste und der Verwaltung bleibt der bequeme Kontext-Einstieg erhalten.
+  if (!onBoard) buildCreateSubmenu(menu, plugin, "bt-new");
 
   // — Kalender-Sync (nur Projekt/Bereich; Helfer prüft die Verbindung selbst) —
   if (isProjLike) addGcalSyncItem(menu, plugin, item.key);
@@ -278,20 +261,24 @@ export function buildCreateSubmenu(menu: Menu, plugin: VibeTaskPlugin, section?:
   menu.addItem((parent) => {
     if (section) parent.setSection(section);
     parent.setTitle(t("menu_create_new")).setIcon("plus");
-    const sub = parent.setSubmenu();
-    const row = (key: string, icon: string, open: () => void): void => {
-      sub.addItem((m) => m.setTitle(t(key)).setIcon(icon).onClick(open));
-    };
-    // Icons wie in der Seitenleiste: Projekt = folder, Bereich = circle, Label = hash,
-    // Filter = tag (fest vergeben in filterService.toItem – NICHT der Trichter „filter", so
-    // naheliegend der auch wäre; der Eintrag muss dasselbe Zeichen tragen wie die Zeile, die
-    // er erzeugt).
-    row("create_project", "folder", () => new NewItemModal(plugin, "project").open());
-    row("create_area", "circle", () => new NewItemModal(plugin, "area").open());
-    row("create_label", "hash", () => new NewItemModal(plugin, "label").open());
-    row("create_filter", "tag", () => new FilterModal(plugin).open());
-    row("create_template", "clipboard-list", () => promptNewTemplate(plugin));
+    addCreateItems(parent.setSubmenu(), plugin);
   });
+}
+
+/** Direkte Einträge für ein globales „Neu"-Menü. Im App-Kopf steht zusätzlich die Aufgabe;
+ *  Kontext-Untermenüs bieten wie bisher nur die verwalteten Sammlungsarten an. */
+export function addCreateItems(menu: Menu, plugin: VibeTaskPlugin, includeTask = false): void {
+  const row = (key: string, icon: string, open: () => void): void => {
+    menu.addItem((m) => m.setTitle(t(key)).setIcon(icon).onClick(open));
+  };
+  if (includeTask) row("cmd_new_task", "circle-plus", () => plugin.openQuickAddHere());
+  // Icons wie in der Seitenleiste: Projekt = folder, Bereich = circle, Label = hash,
+  // Filter = tag (fest vergeben in filterService.toItem – nicht der Trichter „filter").
+  row("create_project", "folder", () => new NewItemModal(plugin, "project").open());
+  row("create_area", "circle", () => new NewItemModal(plugin, "area").open());
+  row("create_label", "hash", () => new NewItemModal(plugin, "label").open());
+  row("create_filter", "tag", () => new FilterModal(plugin).open());
+  row("create_template", "clipboard-list", () => promptNewTemplate(plugin));
 }
 
 export function showHiddenSubmenu(menu: Menu, plugin: VibeTaskPlugin, sec: NavSection): boolean {

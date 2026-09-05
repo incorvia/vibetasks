@@ -3,7 +3,7 @@ import type VibeTaskPlugin from "./main";
 import type { PageCtx, PageRef } from "./pageCtx";
 import { filterTasks, hasCriteria } from "./filterEngine";
 import { todayStr } from "./format";
-import { dropViewState, renderProjectBoardInto } from "./heuteView";
+import { closeInlineTaskEditor, dropViewState, inlineTaskEditorOpen, renderProjectBoardInto } from "./heuteView";
 import { installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation } from "./taskMenu";
 
@@ -30,6 +30,7 @@ export class ProjectEmbed extends MarkdownRenderChild {
   }
 
   onunload(): void {
+    closeInlineTaskEditor(this.id, false);
     this.unsubscribe?.();
     this.unsubscribe = null;
     dropViewState(this.id);
@@ -68,6 +69,7 @@ export class ProjectEmbed extends MarkdownRenderChild {
   }
 
   draw(): void {
+    if (inlineTaskEditorOpen(this.id)) return;
     if (this.renderComponent) this.removeChild(this.renderComponent);
     this.renderComponent = this.addChild(new Component());
     renderProjectBoardInto(this.containerEl, this.context(), this.projectPath);

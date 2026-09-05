@@ -27,7 +27,7 @@ import { clearScanCaches, noteScanChanged, noteScanGone } from "./scanCache";
 import { createFilterNote, updateFilterNote, deleteFilterNote, setFilterNavHidden, setFilterColor, renameFilterNote, listFilters, readFilter, FilterItem } from "./filterService";
 import { FilterCriteria, ViewOptions, DEFAULT_OPTIONS, DEFAULT_CRITERIA, countFilter, sortTasks, planReorder, collectTrashTargets, subtasksToDuplicate, ORDER_GAP } from "./filterEngine";
 import { ConfirmModal } from "./confirmModal";
-import { readNoteViewOptions, setNoteViewOption, readViewOptions, readNoteCriteria, setNoteCriteria, readCriteria, writeCriteria } from "./pageOptions";
+import { readNoteViewOptions, setNoteViewOption, readViewOptions, writeViewOptions, readNoteCriteria, setNoteCriteria, readCriteria, writeCriteria } from "./pageOptions";
 import { nextInstance, legacyToRRule } from "./recurrence";
 import { todayStr, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
@@ -1021,22 +1021,25 @@ export default class VibeTaskPlugin extends Plugin {
   /** Gespeicherte Anzeige-Optionen einer Seite (aus Frontmatter bzw. Settings). */
   pageOptions(page: PageRef): ViewOptions {
     const p = pageInfo(page);
-    if (p.kind === "project") return readNoteViewOptions(this.app, p.key);
-    if (p.kind === "filter") { const fl = readFilter(this.app, p.key); return fl ? fl.options : { ...DEFAULT_OPTIONS }; }
-    return readViewOptions(this.settings.pageViewOptions?.[p.kind === "label" ? "label:" + p.key : p.key]);
+    const calMode = this.settings.defaultCalendarView;
+    if (p.kind === "project") return readNoteViewOptions(this.app, p.key, calMode);
+    if (p.kind === "filter") { const fl = readFilter(this.app, p.key, calMode); return fl ? fl.options : { ...DEFAULT_OPTIONS, calMode }; }
+    return readViewOptions(this.settings.pageViewOptions?.[p.kind === "label" ? "label:" + p.key : p.key], calMode);
   }
   /** Eine Anzeige-Option einer Seite setzen – am richtigen Ort gespeichert. */
   async setPageOption(page: PageRef, patch: Partial<ViewOptions>): Promise<void> {
     const p = pageInfo(page);
-    if (p.kind === "project") { this.refreshOnChange(p.key); await setNoteViewOption(this.app, p.key, patch); return; }
+    if (p.kind === "project") { this.refreshOnChange(p.key); await setNoteViewOption(this.app, p.key, patch, this.settings.defaultCalendarView); return; }
     if (p.kind === "filter") {
-      const fl = readFilter(this.app, p.key); if (!fl) return;
+      const fl = readFilter(this.app, p.key, this.settings.defaultCalendarView); if (!fl) return;
       await this.updateFilter(p.key, fl.criteria, { ...fl.options, ...patch }, fl.color);
       return;
     }
     const map = this.settings.pageViewOptions ?? {};
     const skey = p.kind === "label" ? "label:" + p.key : p.key;
-    map[skey] = { ...readViewOptions(map[skey]), ...patch };
+    const stored: Record<string, unknown> = { ...(map[skey] ?? {}) };
+    writeViewOptions(stored, { ...readViewOptions(stored, this.settings.defaultCalendarView), ...patch }, this.settings.defaultCalendarView);
+    if (Object.keys(stored).length) map[skey] = stored; else delete map[skey];
     this.settings.pageViewOptions = map;
     await this.saveSettings();
     this.renderMain();
@@ -1049,11 +1052,11 @@ export default class VibeTaskPlugin extends Plugin {
     const p = pageInfo(page);
     if (p.kind === "project") {
       this.refreshOnChange(p.key);
-      await setNoteViewOption(this.app, p.key, { ...DEFAULT_OPTIONS });
+      await setNoteViewOption(this.app, p.key, { ...DEFAULT_OPTIONS, calMode: this.settings.defaultCalendarView }, this.settings.defaultCalendarView);
       await setNoteCriteria(this.app, p.key, { ...DEFAULT_CRITERIA });
       return;
     }
-    if (p.kind === "filter") { const fl = readFilter(this.app, p.key); if (fl) await this.updateFilter(p.key, fl.criteria, { ...DEFAULT_OPTIONS }, fl.color); return; }
+    if (p.kind === "filter") { const fl = readFilter(this.app, p.key); if (fl) await this.updateFilter(p.key, fl.criteria, { ...DEFAULT_OPTIONS, calMode: this.settings.defaultCalendarView }, fl.color); return; }
     const skey = p.kind === "label" ? "label:" + p.key : p.key;
     if (this.settings.pageViewOptions) delete this.settings.pageViewOptions[skey];
     if (this.settings.pageFilters) delete this.settings.pageFilters[skey];
@@ -1105,7 +1108,7 @@ export default class VibeTaskPlugin extends Plugin {
    *  die Seite bis zum nächsten Ereignis den alten Stand). */
   async updateFilter(path: string, criteria: FilterCriteria, options: ViewOptions, color: string | null): Promise<void> {
     this.refreshOnChange(path);
-    await updateFilterNote(this.app, path, criteria, options, color);
+    await updateFilterNote(this.app, path, criteria, options, color, this.settings.defaultCalendarView);
   }
   /** Filter umbenennen (Datei + „# Überschrift"). Gibt neuen Basenamen zurück oder null bei
    *  Kollision. renameFile löst ein vault-„rename" aus; zur Sicherheit zusätzlich neu zeichnen. */

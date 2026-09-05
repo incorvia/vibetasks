@@ -45,6 +45,11 @@ describe("toDelta – was in der Datei landet", () => {
     expect(toDelta(geladen({ startPage: { kind: "view", key: "heute" } })).startPage).toBeUndefined();
   });
 
+  it("uses 3 days as the default calendar view and persists another choice", () => {
+    expect(geladen({}).defaultCalendarView).toBe("3day");
+    expect(toDelta(geladen({ defaultCalendarView: "month" })).defaultCalendarView).toBe("month");
+  });
+
   it("behält alles, wofür es gar keinen Standard gibt – das ist immer Nutzerinhalt", () => {
     const d = toDelta(geladen({
       schemaVersion: 3, didInitialSetup: true, lastSeenVersion: "1.37.2",

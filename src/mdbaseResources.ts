@@ -91,7 +91,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     showDone: { type: "boolean" },
     subtasks: { enum: ["compact", "indented", "standalone"] },
     sortDir: { enum: ["asc", "desc"] },
-    calMode: { enum: ["year", "month", "week", "day"] },
+    calMode: { enum: ["year", "month", "week", "3day", "day"] },
     calPanel: { type: "boolean" },
     range: { type: "string" },
     deadline_range: { type: "string" },
