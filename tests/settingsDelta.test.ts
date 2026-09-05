@@ -68,20 +68,19 @@ describe("toDelta – was in der Datei landet", () => {
     expect(toDelta(geladen({ statuses: kopie })).statuses).toBeUndefined();
   });
 
-  it("behält eine bearbeitete Statusliste vollständig", () => {
+  it("schreibt Status nicht mehr als zweite Kopie in data.json", () => {
     const eigen = DEFAULT_STATUSES.map((s) => ({ ...s }));
     eigen[0] = { ...eigen[0], label: "Offen (eigen)" } as never;
     const d = toDelta(geladen({ statuses: eigen }));
-    expect(d.statuses).toEqual(eigen);
+    expect(d.statuses).toBeUndefined();
   });
 
-  it("behält geänderte Feldnamen, lässt die Standardnamen weg", () => {
+  it("verwirft abgelöste konfigurierbare Feldnamen", () => {
     // Vollstaendige Tabelle, wie sie nach dem Laden immer vorliegt: loadSettings setzt
     // `fieldNames = allFieldNames()` direkt nach initFieldNames. Eine luekenhafte Tabelle aus einer
     // alten data.json erreicht toDelta also nie.
     expect(toDelta(geladen({ fieldNames: { type: "type", title: "title", labels: "labels" } })).fieldNames).toBeUndefined();
-    expect(toDelta(geladen({ fieldNames: { type: "art", title: "title", labels: "tags" } })).fieldNames)
-      .toEqual({ type: "art", title: "title", labels: "tags" });
+    expect(toDelta(geladen({ fieldNames: { type: "art", title: "title", labels: "tags" } })).fieldNames).toBeUndefined();
   });
 });
 
@@ -108,9 +107,6 @@ describe("Hin und zurück – die Eigenschaft, auf die es ankommt", () => {
       schemaVersion: 3, didInitialSetup: true, lastSeenVersion: "1.37.2",
       pageViewOptions: { heute: { sort: "smart" } },
       boardColumnOrder: { label: ["bug", "ui"] },
-    },
-    "mit bearbeiteter Statusliste": {
-      statuses: [...DEFAULT_STATUSES.map((s) => ({ ...s })), { id: "wartet", labelKey: "x", kind: "open" }],
     },
   };
 
@@ -148,13 +144,13 @@ describe("abgelöste Schlüssel aus früheren Fassungen", () => {
     }
   });
 
-  it("ihr Ersatz bleibt selbstverständlich erhalten", () => {
+  it("behält lebende Ersatzwerte, aber keine Feldnamen-Tabelle", () => {
     const d = toDelta(geladen({
       chipProfiles: { editor: { order: ["due"] } },
       fieldNames: { type: "type", title: "titel" },
     }));
     expect(d.chipProfiles).toEqual({ editor: { order: ["due"] } });
-    expect(d.fieldNames).toEqual({ type: "type", title: "titel" });
+    expect(d.fieldNames).toBeUndefined();
   });
 });
 
@@ -195,7 +191,6 @@ describe("Standardwerte bleiben unberührt", () => {
     const a = geladen({}), b = geladen({});
     expect(a.statuses).not.toBe(EFFECTIVE_DEFAULTS.statuses);
     expect(a.statuses).not.toBe(b.statuses);
-    expect(a.fieldNames).not.toBe(EFFECTIVE_DEFAULTS.fieldNames);
     a.statuses![0].labelKey = "kaputt";
     expect(EFFECTIVE_DEFAULTS.statuses![0].labelKey).not.toBe("kaputt");
     expect(geladen({}).statuses![0].labelKey).not.toBe("kaputt");
@@ -215,7 +210,7 @@ describe("Standardwerte bleiben unberührt", () => {
  */
 describe("Rundlauf für jede Sammlung, ausgehend von einer leeren data.json", () => {
   const sammlungen = Object.entries(EFFECTIVE_DEFAULTS as unknown as Record<string, unknown>)
-    .filter(([, v]) => v !== null && typeof v === "object");
+    .filter(([key, v]) => key !== "statuses" && v !== null && typeof v === "object");
 
   /** Etwas hinzufügen, ohne Vorhandenes anzutasten – wie jede Schreibstelle im Plugin. */
   const ergaenzen = (wert: unknown): unknown =>

@@ -7,6 +7,7 @@ import {
 } from "./filterEngine";
 import { isKnownStatus } from "./statuses";
 import { CalMode, CAL_MODES } from "./calendarModel";
+import { updateRecord } from "./mdbaseRepository";
 
 // Gemeinsames Lesen/Schreiben der Anzeige-Optionen (Layout/Sortieren/Gruppieren/Erledigte).
 // Notiz-Seiten (Projekte, Bereiche, Filter) speichern sie im Frontmatter (obsidian-nativ,
@@ -141,9 +142,12 @@ export function readNoteCriteria(app: App, path: string): FilterCriteria {
 export async function setNoteCriteria(app: App, path: string, patch: Partial<FilterCriteria>): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+  const change = (fm: Record<string, unknown>) => {
     writePageCriteria(fm, { ...readPageCriteria(fm), ...patch });
-  });
+  };
+  const type: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.type;
+  if (["project", "area", "filter"].includes(String(type))) await updateRecord(app, f, change);
+  else await app.fileManager.processFrontMatter(f, change);
 }
 
 /** Notiz-Seite (Projekt/Bereich): Anzeige-Optionen aus dem Frontmatter. */
@@ -157,7 +161,10 @@ export function readNoteViewOptions(app: App, path: string): ViewOptions {
 export async function setNoteViewOption(app: App, path: string, patch: Partial<ViewOptions>): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+  const change = (fm: Record<string, unknown>) => {
     writeViewOptions(fm, { ...readViewOptions(fm), ...patch });
-  });
+  };
+  const type: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.type;
+  if (["project", "area", "filter"].includes(String(type))) await updateRecord(app, f, change);
+  else await app.fileManager.processFrontMatter(f, change);
 }

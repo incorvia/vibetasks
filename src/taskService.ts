@@ -1,12 +1,14 @@
 import { App, Notice, TFile, normalizePath, stringifyYaml } from "obsidian";
 import { VibeTaskSettings, Priority, Task, TaskStatus } from "./types";
 import type { ShiftedDates } from "./templatePlan";
-import { combineDT, localStamp } from "./format";
+import { combineDT } from "./format";
 import { firstOpenStatus, isDone, isTrashed } from "./statuses";
-import { titleKey, fmTitle, findH1Line, replaceHeadingLine, renameHeadingLine, newTaskBody } from "./taskTitle";
+import { findH1Line, renameHeadingLine, newTaskBody } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
 import { ScanCache } from "./scanCache";
 import { t } from "./i18n";
+import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
+import { isCollectionPath } from "./mdbaseResources";
 
 export const slugify = (s: string): string =>
   s.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Task";
@@ -20,8 +22,8 @@ export const normalizeLabel = (s: string): string =>
  *  wörtlich gleich, einmal als `projectName` in einer View-Datei, aus der sogar `main.ts` sie zog. */
 export const baseName = (path: string): string => path.split("/").pop()!.replace(/\.md$/, "");
 
-export const newId = (p: string): string =>
-  p + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+export const newId = (_p: string): string =>
+  newUlid();
 
 // Lokales Datum (YYYY-MM-DD), NICHT UTC: toISOString() würde nachts (lokal 00:00 bis
 // UTC-Offset) noch „gestern" liefern. Identisch zur iso()-Logik im Datepicker.
@@ -35,8 +37,9 @@ export const todayIso = (): string => {
  *  Für handgeschriebene `type: task`-Notizen, sobald sie erstmals über die App bearbeitet werden:
  *  hält die Identität über Umbenennen und GCal-Sync stabil. `status`/`project` bleiben unberührt. */
 export function ensureCanonicalFm(fm: Record<string, unknown>): void {
-  if (fm.id == null || fm.id === "") fm.id = newId("t");
-  if (typeof fm.created !== "string" || !fm.created) fm.created = localStamp();
+  if (fm.id == null || fm.id === "") fm.id = newUlid();
+  if (typeof fm.created !== "string" || !fm.created) fm.created = rfc3339Now();
+  if (typeof fm.modified !== "string" || !fm.modified) fm.modified = rfc3339Now();
 }
 
 /** Frontmatter-Block – nur gesetzte Felder. */
@@ -237,14 +240,15 @@ export async function createTaskNote(app: App, settings: VibeTaskSettings, f: Ta
     if (n > 200) break;
   }
   const status = f.status ?? firstOpenStatus();
-  const jetzt = localStamp();
+  const jetzt = rfc3339Now();
   const stamps = creationStamps(status, jetzt);
-  const fm = buildFrontmatter({
-    [fieldKey("type")]: target?.type ?? "task",
-    id: newId("t"),
+  const recordType = (target?.type ?? "task") as "task" | "template";
+  const frontmatter: Record<string, unknown> = {
+    type: recordType,
+    id: newUlid(),
     // Regelfall: der Titel steht hier. Nur wenn er ausdrücklich in den Text soll, bleibt das
     // Feld leer (null wird von buildFrontmatter verworfen) und newTaskBody schreibt die H1.
-    [titleKey()]: f.titleInFrontmatter === false ? null : f.title,
+    title: f.title,
     status,
     completed: stamps.completed,   // null -> von buildFrontmatter verworfen
     cancelled: stamps.cancelled,
@@ -264,8 +268,15 @@ export async function createTaskNote(app: App, settings: VibeTaskSettings, f: Ta
     // behalten ihr reines Datum – der Vergleich in sortTasks kommt mit beidem zurecht.
     created: jetzt,
     description: (f.description ?? "").trim() || null,   // Beschreibung im Frontmatter, nicht im Body
-  });
-  return app.vault.create(dest, fm + newTaskBody(f.title, f.titleInFrontmatter !== false));
+    modified: jetzt,
+    template_of: recordType === "template" ? "task" : undefined,
+  };
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) continue;
+    clean[key] = value;
+  }
+  return repositoryFor(app).create({ type: recordType, path: dest, frontmatter: clean, body: newTaskBody(f.title, true) });
 }
 
 /** Titel einer bestehenden Aufgaben-Notiz setzen – nach der Kaskade aus taskTitle.ts.
@@ -277,22 +288,7 @@ export async function createTaskNote(app: App, settings: VibeTaskSettings, f: Ta
  *  nicht veralten; passt die Zeile wider Erwarten nicht mehr, landet der Titel im Frontmatter,
  *  statt blind irgendwohin geschrieben zu werden. Der Dateiname bleibt unberührt (Slug/Identität). */
 export async function setTaskTitle(app: App, file: TFile, title: string): Promise<void> {
-  let inFm = false;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-    inFm = fmTitle(fm[titleKey()]) !== null;
-    if (inFm) fm[titleKey()] = title;
-  });
-  if (inFm) return;
-  let wrote = false;
-  await app.vault.process(file, (c) => {
-    const line = findH1Line(c);
-    if (line === null) return c;
-    const out = replaceHeadingLine(c, line, title);
-    if (out === null) return c;
-    wrote = true;
-    return out;
-  });
-  if (!wrote) await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => { fm[titleKey()] = title; });
+  await repositoryFor(app).update(file.path, { title });
 }
 
 /** Erste H1 einer Notiz umschreiben – für Notizen, deren Name aus dem DATEINAMEN kommt (Projekte,
@@ -334,7 +330,7 @@ export function openTaskNote(app: App, path: string, where: "tab" | "split" | "w
 /** Vorhandene Projekte (Basename, alphabetisch) für den Picker. */
 export function listProjects(app: App): string[] {
   return app.vault.getMarkdownFiles()
-    .filter((file) => app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")] === "project")
+    .filter((file) => isCollectionPath(file.path) && app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")] === "project")
     .map((file) => file.basename)
     .sort((a, b) => a.localeCompare(b, "de"));
 }
@@ -342,6 +338,7 @@ export function listProjects(app: App): string[] {
 export interface ProjItem {
   name: string; path: string; icon: string; color: string | null;
   type: "project" | "area"; hidden: boolean; archived: boolean;
+  area?: string | null;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
 }
 
@@ -390,17 +387,19 @@ export const isInboxLink = (project: string | null | undefined): boolean =>
  *  bei jeder Index-Meldung – bei jedem Häkchen also, wo sich hier nichts geändert haben kann. */
 const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
   app.vault.getMarkdownFiles().flatMap((f) => {
+    if (!isCollectionPath(f.path)) return [];
     const fm = app.metadataCache.getFileCache(f)?.frontmatter;
     const ty: unknown = fm?.[fieldKey("type")];
     const type: "project" | "area" | null = ty === "area" ? "area" : ty === "project" ? "project" : null;
     if (!type) return [];
     return [{
-      name: f.basename, path: f.path, type,
+      name: typeof fm?.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path, type,
       // Bereiche immer circle-small (per CSS gefüllt), unabhängig vom icon-Frontmatter.
       // Projekte: eigenes icon-Frontmatter respektieren, sonst Default „folder".
       icon: type === "area" ? "circle-small" : (typeof fm?.icon === "string" && fm.icon ? fm.icon : "folder"),
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
+      area: typeof fm?.area === "string" ? fm.area : null,
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
     }];
   }));
@@ -448,17 +447,19 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
  *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
-export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<string> {
+export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);
   let dest = normalizePath(folder + "/" + base + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
-  const fm = buildFrontmatter({ [fieldKey("type")]: asArea ? "area" : "project", id: newId("p"), status: "active", color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: todayIso() });
+  const type = asArea ? "area" : "project";
+  const now = rfc3339Now();
+  const fm: Record<string, unknown> = { type, id: newUlid(), title: base, status: "active", area: !asArea && area ? `[[${area}]]` : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
-  await app.vault.create(dest, fm + "\n");
+  await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
   return base;
 }
 
@@ -467,11 +468,18 @@ export async function createProjectNote(app: App, settings: VibeTaskSettings, na
 export async function setProjectType(app: App, path: string, toArea: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => { fm[fieldKey("type")] = toArea ? "area" : "project"; });
+  await updateRecord(app, file, (fm) => { fm.type = toArea ? "area" : "project"; if (toArea) delete fm.area; });
+}
+
+export async function setProjectArea(app: App, path: string, area: string | null): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  await updateRecord(app, file, (fm) => { if (area) fm.area = `[[${area}]]`; else delete fm.area; });
 }
 
 /** Ist die Notiz an diesem Pfad ein Bereich (type: area)? */
 export function isAreaPath(app: App, path: string): boolean {
+  if (!isCollectionPath(path)) return false;
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return false;
   const fm = app.metadataCache.getFileCache(file)?.frontmatter;
@@ -482,14 +490,14 @@ export function isAreaPath(app: App, path: string): boolean {
 export async function setProjectArchived(app: App, path: string, archived: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => { fm.status = archived ? "archived" : "active"; });
+  await updateRecord(app, file, (fm) => { fm.status = archived ? "archived" : "active"; });
 }
 
 /** Sichtbarkeit in der Nav umschalten (nav_hidden gesetzt = ausgeblendet). */
 export async function setNavHidden(app: App, path: string, hidden: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+  await updateRecord(app, file, (fm) => {
     if (hidden) fm.nav_hidden = true; else delete fm.nav_hidden;
   });
 }
@@ -498,7 +506,7 @@ export async function setNavHidden(app: App, path: string, hidden: boolean): Pro
 export async function setProjectColor(app: App, path: string, color: string | null): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => { if (color) fm.color = color; else delete fm.color; });
+  await updateRecord(app, file, (fm) => { if (color) fm.color = color; else delete fm.color; });
 }
 
 /** Kurzbeschreibung eines Projekts/Bereichs setzen (Frontmatter `description`; leer = entfernen).
@@ -507,7 +515,7 @@ export async function setProjectDescription(app: App, path: string, description:
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
   const text = description.trim();
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+  await updateRecord(app, file, (fm) => {
     if (text) fm.description = text; else delete fm.description;
   });
 }
@@ -517,20 +525,17 @@ export async function setProjectDescription(app: App, path: string, description:
 export async function renameProjectNote(app: App, path: string, newName: string): Promise<string | null> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return null;
-  const oldName = file.basename;   // vor dem Umbenennen merken – danach heißt die Datei anders
   const base = slugify(newName);
   if (!base || base === file.basename) return file.basename;
   const dir = file.parent?.path ?? "";
   const dest = normalizePath((dir ? dir + "/" : "") + base + ".md");
   if (app.vault.getAbstractFileByPath(dest)) return null;   // Namenskollision
-  await app.fileManager.renameFile(file, dest);
-  const renamed = app.vault.getAbstractFileByPath(dest);
-  if (renamed instanceof TFile) await retitleHeading(app, renamed, oldName, newName);
+  await repositoryFor(app).rename(file.path, dest, base);
   return base;
 }
 
 /** Projekt in den Obsidian-Papierkorb verschieben (reversibel). */
 export async function deleteProjectNote(app: App, path: string): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
-  if (file instanceof TFile) await app.fileManager.trashFile(file);
+  if (file instanceof TFile) await repositoryFor(app).trash(file.path);
 }

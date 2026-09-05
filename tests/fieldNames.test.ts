@@ -67,11 +67,11 @@ describe("Feldnamen-Registry", () => {
     expect(fieldKey("title")).toBe("title");
   });
 
-  it("übernimmt gespeicherte Namen und normalisiert dabei", () => {
+  it("ignoriert gespeicherte Namen zugunsten der mdbase-Kanonfelder", () => {
     initFieldNames({ type: "bt_type", title: "status" });   // `status` ist reserviert
-    expect(fieldKey("type")).toBe("bt_type");
+    expect(fieldKey("type")).toBe("type");
     expect(fieldKey("title")).toBe("title");
-    expect(allFieldNames()).toEqual({ type: "bt_type", title: "title", labels: "labels" });
+    expect(allFieldNames()).toEqual({ type: "type", title: "title", labels: "labels" });
   });
 });
 

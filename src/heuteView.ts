@@ -47,6 +47,7 @@ function dropViewKeys(id: string): void {
   for (const k of [...gcalExpanded]) if (k.startsWith(prefix)) gcalExpanded.delete(k);
   dropCalendarAnchors(id);   // der angezeigte Zeitraum des Kalenders liegt drüben (calendarView)
 }
+export const dropViewState = (id: string): void => dropViewKeys(id);
 // Horizontale Board-Scrollposition je Board-Identität – überlebt Re-Renders (z. B. nach Karten-Drop).
 const boardScroll = new Map<string, number>();
 // Senkrechte Position INNERHALB einer Spalte (Schlüssel: Board-Identität + Spalten-ID).
@@ -453,6 +454,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   const today = todayStr();
   c.empty();
   c.addClass("bt-view");
+  if (ctx.embedded) c.addClass("bt-project-embed"); else c.removeClass("bt-project-embed");
   c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
   const root = c.createDiv({ cls: "bt-sizer" });
@@ -469,8 +471,8 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     ? { sec: meta.type === "area" ? "areas" : "projects", key: meta.path, name: meta.name, hidden: meta.hidden, color: meta.color, type: meta.type, archived: meta.archived }
     : null;
   pageHeader(top, ctx, top.createEl("h1", { text: isInbox ? t("nav_inbox") : projectDisplayName(name) }),
-    projItem ? { menu: projItem } : {});
-  pageDesc(top, plugin, meta?.description, projItem);
+    { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded });
+  if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
   // Im Eingang neue Aufgaben OHNE Projekt anlegen (Eingang = kein Projekt), sonst im Projekt.
   addBar(top, plugin, () => plugin.openNewTask(isInbox ? undefined : name, undefined, false, undefined, addDue(ctx)));
 
@@ -650,6 +652,7 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
 // ── Seiten-Kopf: Titel links, rechts eine Aktionsgruppe (Variante 02) ──
 interface HeaderOpts {
   menu?: NavMenuItem;     // Kebab: Item-Kontextmenü (Board-Variante); fehlt → kein Kebab (z. B. Eingang)
+  hideTitle?: boolean;
 }
 /** Board-Überschrift: Titel + rechte Gruppe [Kebab-Menü] [Anzeige].
  *  Der Kebab öffnet dasselbe Kontextmenü wie ein Rechtsklick in der Seitenleiste – ohne die
@@ -657,7 +660,8 @@ interface HeaderOpts {
 function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts: HeaderOpts = {}): void {
   const plugin = ctx.plugin;
   const head = root.createDiv({ cls: "bt-board-head" });
-  head.appendChild(titleEl);
+  if (opts.hideTitle) titleEl.remove();
+  else head.appendChild(titleEl);
   const actions = head.createDiv({ cls: "bt-head-actions" });
   if (opts.menu) {
     const it = opts.menu;

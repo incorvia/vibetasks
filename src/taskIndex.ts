@@ -5,6 +5,7 @@ import { isKnownStatus, isOpen, isDone, isTrashed, firstOpenStatus } from "./sta
 import { titleKey, fmTitle, firstH1, resolveTitle } from "./taskTitle";
 import { fieldKey, labelKey } from "./fieldNames";
 import { clearScanCaches } from "./scanCache";
+import { MDBASE_COLLECTION_ROOT, isCollectionPath } from "./mdbaseResources";
 import { orderChain, severReferences, agendaDate, isOverdueTask, isTodayTask, isUpcomingTask } from "./filterEngine";   // umgekehrt nur `import type` – kein Laufzeit-Zyklus
 
 const PRIO = new Set<string>(["highest", "high", "medium", "normal", "low", "lowest"]);
@@ -36,7 +37,7 @@ export interface IndexScope {
   restrictTo?: (s: VibeTaskSettings) => string;
 }
 
-export const TASK_SCOPE: IndexScope = { typeValue: "task" };
+export const TASK_SCOPE: IndexScope = { typeValue: "task", restrictTo: () => MDBASE_COLLECTION_ROOT };
 export const TEMPLATE_SCOPE: IndexScope = { typeValue: "template", restrictTo: (s) => s.templatesFolder };
 
 /** Dünne, reaktive Schicht über metadataCache. Liest Aufgaben aus dem geparsten
@@ -147,6 +148,7 @@ export class TaskIndex extends Component {
     if (this.projPathDirty) {
       const m = new Map<string, string>();
       for (const f of this.app.vault.getMarkdownFiles()) {
+        if (!isCollectionPath(f.path)) continue;
         const ty: unknown = this.app.metadataCache.getFileCache(f)?.frontmatter?.[fieldKey("type")];
         if (isProjectType(ty)) m.set(f.basename.toLowerCase(), f.path);
       }
@@ -175,7 +177,8 @@ export class TaskIndex extends Component {
     this.byPath.clear();
     this.byId.clear();
     this.invalidate();
-    // Ein ordner-gebundener Index (Vorlagen) filtert VORHER: Sein Ordner hält eine Handvoll
+    // Ordner-gebundene Indizes filtern VORHER: Die mdbase-Sammlung hat eine feste
+    // Dateisystemgrenze; gleich benannte Typen ausserhalb davon sind gewöhnliche Notizen.
     // Notizen, der Vault Zehntausende. Ohne den Filter liefe für jede fremde Datei ein `upsert`,
     // das nur wieder aussteigt. Der Aufgaben-Index filtert NICHT vor – dort hat `upsert` auch für
     // Nicht-Aufgaben etwas zu tun (Projekt-/Bereichs-Notizen halten die Auflösungskarte frisch).
@@ -184,7 +187,7 @@ export class TaskIndex extends Component {
     // Feldnamen-Wechsel sucht er sonst weiter unter dem alten Schlüssel (s. scanCache).
     clearScanCaches();
     const alle = this.app.vault.getMarkdownFiles();
-    const files = this.scope.restrictTo ? alle.filter((f) => this.inScope(f.path)) : alle;
+    const files = alle.filter((f) => this.inScope(f.path));
     for (const f of files) this.upsert(f, false, true);   // Frontmatter sofort, Body separat (s. u.)
     // Body-Metadaten (Beschreibung + Kommentarzahl) asynchron nachladen – und GENAU EINMAL melden.
     // Würde jede Datei einzeln melden (readBodyMeta ruft sonst notify), lösen die Promises über

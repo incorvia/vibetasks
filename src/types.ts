@@ -159,7 +159,6 @@ export interface VibeTaskSettings {
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
   showUnfiledInInbox: boolean;    // projektlose offene Aufgaben (auch handgeschriebene type:task-Notizen) im Eingang zeigen
   excludeFolders: string[];       // Ordner-Präfixe: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen)
-  fieldNames?: Partial<Record<import("./fieldNames").FieldId, string>>;   // eigene Namen für `type`/`title` (s. fieldNames.ts)
   chipsIconsOnly: boolean;         // In der Aufgaben-Maske nur die Chip-Icons zeigen (ohne Text)
   chipProfiles?: Partial<Record<ChipSurface, ChipProfile>>;   // Chip-Konfiguration je Fläche (Editor/Schnelleingabe)
   boardColumnOrder?: Record<string, string[]>;   // manuelle Kanban-Spalten-Reihenfolge je Gruppierung (status/label/project); board-eigen, entkoppelt von der Sidebar
@@ -204,11 +203,11 @@ export interface VibeTaskSettings {
  * settingsDelta.ts: types.ts darf statuses.ts nicht importieren (Zirkelbezug).
  */
 export const DEFAULT_SETTINGS: VibeTaskSettings = {
-  itemsFolder: "VibeTask/Items",
-  projectsFolder: "VibeTask/Projects",
-  filtersFolder: "VibeTask/Filters",
-  templatesFolder: "VibeTask/Templates",
-  attachmentsFolder: "VibeTask/Attachments",
+  itemsFolder: "_vibetasks/tasks",
+  projectsFolder: "_vibetasks/projects",
+  filtersFolder: "_vibetasks/filters",
+  templatesFolder: "_vibetasks/templates",
+  attachmentsFolder: "_vibetasks/attachments",
   knownLabels: [],
   visibleLabels: [],
   labelColors: {},

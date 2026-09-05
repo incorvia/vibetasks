@@ -66,14 +66,14 @@ const neuerIndex = (dateien: Datei[]) => {
 
 describe("TaskIndex.ready – leer vs. noch nicht nachgesehen", () => {
   it("ist vor dem ersten Aufbau false, danach true", () => {
-    const { index } = neuerIndex([datei("Items/a.md", aufgabe(["health"]))]);
+    const { index } = neuerIndex([datei("_vibetasks/tasks/a.md", aufgabe(["health"]))]);
     expect(index.ready).toBe(false);   // NICHT „dieser Vault hat keine Labels"
     index.build();
     expect(index.ready).toBe(true);
   });
 
   it("ohne Aufbau kennt der Index kein einziges Label – die Aufgaben liegen längst da", () => {
-    const { index } = neuerIndex([datei("Items/a.md", aufgabe(["health", "errands"]))]);
+    const { index } = neuerIndex([datei("_vibetasks/tasks/a.md", aufgabe(["health", "errands"]))]);
     expect(index.all()).toEqual([]);          // genau der Zustand, den die Seitenleiste sah
     index.build();
     expect(index.all()).toHaveLength(1);
@@ -83,7 +83,7 @@ describe("TaskIndex.ready – leer vs. noch nicht nachgesehen", () => {
 
 describe("Kalter Metadaten-Cache", () => {
   it("holt der Index nach, sobald Obsidian das Ende des Indizierens meldet", () => {
-    const dateien = [datei("Items/a.md", null)];   // Cache noch kalt: kein Frontmatter zu holen
+    const dateien = [datei("_vibetasks/tasks/a.md", null)];   // Cache noch kalt: kein Frontmatter zu holen
     const { index, feuern } = neuerIndex(dateien);
     index.build();
     expect(index.all()).toEqual([]);   // onLayoutReady sagt nichts über den Cache-Stand
@@ -94,7 +94,7 @@ describe("Kalter Metadaten-Cache", () => {
   });
 
   it("hört danach auf zuzuhören – resolved feuert auch bei jeder späteren Änderung", () => {
-    const { index, feuern, abos } = neuerIndex([datei("Items/a.md", aufgabe([]))]);
+    const { index, feuern, abos } = neuerIndex([datei("_vibetasks/tasks/a.md", aufgabe([]))]);
     index.build();
     expect(abos("mc:resolved")).toBe(1);
     feuern("mc:resolved");
@@ -104,7 +104,7 @@ describe("Kalter Metadaten-Cache", () => {
 
 describe("Mehrfacher Aufbau", () => {
   it("belegt die Kanäle nur EINMAL – build() läuft bei Migrationen und Importen erneut", () => {
-    const { index, abos } = neuerIndex([datei("Items/a.md", aufgabe([]))]);
+    const { index, abos } = neuerIndex([datei("_vibetasks/tasks/a.md", aufgabe([]))]);
     index.build();
     index.build();
     index.build();
@@ -116,10 +116,10 @@ describe("Mehrfacher Aufbau", () => {
   });
 
   it("baut den Inhalt trotzdem jedes Mal neu auf", () => {
-    const dateien = [datei("Items/a.md", aufgabe(["health"]))];
+    const dateien = [datei("_vibetasks/tasks/a.md", aufgabe(["health"]))];
     const { index } = neuerIndex(dateien);
     index.build();
-    dateien.push(datei("Items/b.md", aufgabe(["health"])));
+    dateien.push(datei("_vibetasks/tasks/b.md", aufgabe(["health"])));
     index.build();
     expect(index.byLabel("health")).toHaveLength(2);
   });

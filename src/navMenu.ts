@@ -94,8 +94,8 @@ export function addGcalSyncItem(menu: Menu, plugin: VibeTaskPlugin, path: string
 export function openEdit(plugin: VibeTaskPlugin, item: NavMenuItem, focus: EditFocus = "name"): void {
   if (item.sec === "filters") { new FilterModal(plugin, item.key, undefined, focus).open(); return; }
   const kind = item.sec === "labels" ? "label" : (item.type ?? "project");
-  const desc = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived).find((p) => p.path === item.key)?.description ?? "";
-  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: desc }, focus).open();
+  const managed = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived).find((p) => p.path === item.key);
+  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: managed?.description ?? "", area: managed?.area ?? null }, focus).open();
 }
 
 function setVisible(plugin: VibeTaskPlugin, sec: NavSection, key: string, visible: boolean): Promise<void> {
@@ -163,6 +163,18 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
         const f = plugin.app.vault.getAbstractFileByPath(item.key);
         if (f instanceof TFile) void plugin.app.workspace.getLeaf("tab").openFile(f);
       }));
+  }
+  if (isProjLike) {
+    const record = plugin.app.vault.getAbstractFileByPath(item.key);
+    const raw: unknown = record instanceof TFile
+      ? plugin.app.metadataCache.getFileCache(record)?.frontmatter?.linked_note
+      : undefined;
+    const link = typeof raw === "string" ? raw.match(/^\[\[([^\]|#]+)/)?.[1] : undefined;
+    const linked = link ? plugin.app.metadataCache.getFirstLinkpathDest(link, item.key) : null;
+    if (linked) {
+      menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_open_linked_note")).setIcon("external-link")
+        .onClick(() => void plugin.app.workspace.getLeaf("tab").openFile(linked)));
+    }
   }
 
   // — Zur Übersicht — (nur auf der Einzelseite; ersetzt den früheren „list-plus"-Kopf-Button)
@@ -327,4 +339,3 @@ export function buildTemplateMenu(plugin: VibeTaskPlugin, tpl: TemplateInfo): Me
     }, () => void deleteTemplate(plugin, tpl.root.path).then(() => refreshTemplates(plugin))).open()));
   return m;
 }
-

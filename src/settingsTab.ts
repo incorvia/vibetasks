@@ -1,11 +1,10 @@
-import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ButtonComponent, ColorComponent, ExtraButtonComponent, TextComponent } from "obsidian";
+import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ColorComponent, ExtraButtonComponent } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { ChipId, ChipTier, ChipSurface, MetaColorKey, DEFAULT_SETTINGS } from "./types";
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
 import { StartPageModal, listStartPages, startPageLabel } from "./startPagePicker";
 import { renderStatusEditor } from "./statusEditor";
 import { DEFAULT_CALENDAR_NAME, CalendarInfo } from "./gcalSync";
-import { FieldId, FIELD_IDS, normalizeFieldName, allFieldNames } from "./fieldNames";
 import { PlanTabId, readPlanTabs, dailyNotesEnabled, forceListLeft } from "./planTabs";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
@@ -375,18 +374,18 @@ export class VibeTaskSettingTab extends PluginSettingTab {
 
     // ── Ordner ──
     new Setting(containerEl).setName(t("set_folders_heading")).setHeading();
-    const folderRow = (name: string, desc: string, get: () => string, set: (v: string) => void) => {
+    const folderRow = (name: string, desc: string, get: () => string, set: (v: string) => void | Promise<void>) => {
       new Setting(containerEl).setName(name).setDesc(desc).addText((text) => {
         text.setValue(get());
-        const save = (raw: string) => { const v = normalizePath(raw.trim()); if (v && v !== ".") { set(v); void p.saveSettings(); } };
+        const save = (raw: string) => { const v = normalizePath(raw.trim()); if (v && v !== ".") void set(v); };
         text.onChange(save);
         new FolderSuggest(this.app, text.inputEl, (path) => { text.setValue(path); save(path); });
       });
     };
-    folderRow(t("set_folder_items"), t("set_folder_items_desc"), () => p.settings.itemsFolder, (v) => (p.settings.itemsFolder = v));
-    folderRow(t("set_folder_projects"), t("set_folder_projects_desc"), () => p.settings.projectsFolder, (v) => (p.settings.projectsFolder = v));
-    folderRow(t("set_folder_templates"), t("set_folder_templates_desc"), () => p.settings.templatesFolder, (v) => (p.settings.templatesFolder = v));
-    folderRow(t("set_folder_attachments"), t("set_folder_attachments_desc"), () => p.settings.attachmentsFolder, (v) => (p.settings.attachmentsFolder = v));
+    folderRow(t("set_folder_items"), t("set_folder_items_desc"), () => p.settings.itemsFolder, (v) => p.setCollectionFolder("task", v));
+    folderRow(t("set_folder_projects"), t("set_folder_projects_desc"), () => p.settings.projectsFolder, (v) => p.setCollectionFolder("project", v));
+    folderRow(t("set_folder_templates"), t("set_folder_templates_desc"), () => p.settings.templatesFolder, (v) => p.setCollectionFolder("template", v));
+    folderRow(t("set_folder_attachments"), t("set_folder_attachments_desc"), () => p.settings.attachmentsFolder, async (v) => { p.settings.attachmentsFolder = v; await p.saveSettings(); });
 
     // Ausschluss-Ordner: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen).
     // Ein Ordner pro Zeile. Änderung erfordert einen Index-Neuaufbau (parse-Ergebnis ändert sich).
@@ -402,46 +401,6 @@ export class VibeTaskSettingTab extends PluginSettingTab {
         });
         ta.inputEl.addEventListener("blur", () => { p.index.build(); p.renderAll(); });
       });
-
-    // ── Feldnamen ──
-    // Welche Frontmatter-Felder VibeTask benutzt. `type` und `title` sind beliebte Namen; wer
-    // sie schon für Eigenes belegt, stellt hier um. Die Änderung greift erst beim Verlassen des
-    // Feldes und geht über eine Rückfrage – die entscheidet, was mit den vorhandenen Notizen
-    // passiert (bei `type` umschreiben, bei `title` optional übernehmen).
-    new Setting(containerEl).setName(t("set_fields_heading")).setHeading();
-    containerEl.createDiv({ cls: "setting-item-description", text: t("set_fields_desc") });
-    const fieldLabel: Record<FieldId, string> = { type: t("set_field_type"), title: t("set_field_title"), labels: t("set_field_labels") };
-    const fieldDesc: Record<FieldId, string> = { type: t("set_field_type_desc"), title: t("set_field_title_desc"), labels: t("set_field_labels_desc") };
-    for (const id of FIELD_IDS) {
-      // Bewusst KEIN Auslösen beim Verlassen des Feldes: Der Wechsel schreibt den halben Vault um,
-      // das gehört an einen Klick und nicht daran, dass man zufällig woanders hinklickt (beim
-      // Fokuswechsel aus dem Fenster landete die Rückfrage sonst unerreichbar hinter den
-      // Einstellungen). Der Knopf ist nur aktiv, wenn der eingegebene Name gültig UND anders ist.
-      let input: TextComponent | null = null;
-      let apply: ButtonComponent | null = null;
-      const shown = (): string => allFieldNames()[id];
-      /** Der einzusetzende Name – oder null, wenn unbrauchbar, vergeben oder unverändert. */
-      const pending = (): string | null => {
-        const typed = (input?.getValue() ?? "").trim();
-        const next = normalizeFieldName(id, typed, allFieldNames());
-        return next === typed && next !== shown() ? next : null;
-      };
-      const sync = (): void => { apply?.setDisabled(pending() === null); };
-      const run = (): void => {
-        const next = pending();
-        if (next) p.changeFieldName(id, next, () => { input?.setValue(shown()); sync(); });
-      };
-      new Setting(containerEl).setName(fieldLabel[id]).setDesc(fieldDesc[id])
-        .addText((text) => {
-          input = text;
-          text.setValue(shown());
-          text.onChange(() => sync());
-          text.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
-            if (e.key === "Enter") { e.preventDefault(); run(); }
-          });
-        })
-        .addButton((b) => { apply = b; b.setButtonText(t("btn_change")).onClick(() => run()); sync(); });
-    }
 
     // ── Import & Export ──
     new Setting(containerEl).setName(t("set_data_heading")).setHeading();

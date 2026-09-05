@@ -1,7 +1,7 @@
 import { App, FuzzySuggestModal, TFile, normalizePath } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { VibeTaskSettings, Priority, TaskStatus, Task } from "./types";
-import { buildFrontmatter, ensureFolder, slugify, newId, todayIso, createProjectNote, listManaged, baseName, ProjItem } from "./taskService";
+import { ensureFolder, slugify, newId, createProjectNote, listManaged, baseName, ProjItem } from "./taskService";
 import { titleKey, newTaskBody, findH1LineInBody } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
 import { combineDT } from "./format";
@@ -9,6 +9,8 @@ import { listFilters, createFilterNote, FilterItem } from "./filterService";
 import { FilterCriteria, ViewOptions } from "./filterEngine";
 import { isKnownStatus } from "./statuses";
 import { t } from "./i18n";
+import { repositoryFor, rfc3339Now } from "./mdbaseRepository";
+import { isCollectionPath } from "./mdbaseResources";
 
 const EXPORT_FORMAT = "vibetask";
 const EXPORT_VERSION = 3;
@@ -65,6 +67,7 @@ export interface ExportList {
   icon?: string | null;
   description?: string;
   hidden?: boolean;
+  area?: string | null;
 }
 
 /** Ein gespeicherter Filter. Kriterien und Anzeige-Optionen wandern als Ganzes mit – sie
@@ -205,6 +208,7 @@ export function toExportList(p: ProjItem): ExportList {
   return {
     name: p.name, type: p.type, color: p.color, archived: p.archived,
     icon, description: p.description || "", hidden: p.hidden,
+    ...(p.area ? { area: p.area.match(/\[\[([^\]|#]+)/)?.[1]?.split("/").pop() ?? null } : {}),
   };
 }
 
@@ -218,6 +222,8 @@ export function toExportList(p: ProjItem): ExportList {
  * nicht gibt.
  */
 export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleName: string): Record<string, unknown> {
+  const now = rfc3339Now();
+  const created = et.created && /T/.test(et.created) ? et.created : et.created ? `${et.created}T00:00:00Z` : now;
   return {
     [typeName]: "task",
     id: et.id || newId("t"),
@@ -235,7 +241,8 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
     recur_basis: et.recurrence && et.recurBasis === "done" ? "done" : null,
     reminders: et.reminders ?? [],
     sort_order: et.sortOrder ?? null,
-    created: et.created || todayIso(),
+    created,
+    modified: now,
     completed: et.completed ?? null,
     cancelled: et.cancelled ?? null,
     external_id: et.externalId ?? null,
@@ -245,15 +252,19 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
 
 /** Datensatz -> Frontmatter einer Listen-Notiz (Projekt/Bereich). */
 export function importedListFrontmatter(list: ExportList, typeName: string): Record<string, unknown> {
+  const now = rfc3339Now();
   return {
     [typeName]: list.type === "area" ? "area" : "project",
     id: newId("p"),
+    title: list.name,
+    created: now,
+    modified: now,
     status: list.archived ? "archived" : "active",
+    area: list.type === "project" && list.area ? `[[${list.area}]]` : undefined,
     color: list.color ?? undefined,
     icon: list.icon || undefined,
     description: (list.description ?? "").trim() || undefined,
     nav_hidden: list.hidden ? true : undefined,
-    created: todayIso(),
   };
 }
 
@@ -325,10 +336,10 @@ async function writeImportedTask(app: App, settings: VibeTaskSettings, et: Expor
   let dest = normalizePath(settings.itemsFolder + "/" + slug + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(settings.itemsFolder + "/" + slug + " " + n + ".md"); n++; if (n > 500) break; }
-  const fm = buildFrontmatter(importedTaskFrontmatter(et, fieldKey("type"), titleKey()));
+  const fm = importedTaskFrontmatter(et, fieldKey("type"), titleKey());
   // Der Body kommt UNTER die (leere) Titelzeile – wörtlich so, wie er exportiert wurde.
   const body = (et.body ?? "").trim();
-  await app.vault.create(dest, fm + newTaskBody(et.title, true) + (body ? body + "\n" : ""));
+  await repositoryFor(app).create({ type: "task", path: dest, frontmatter: fm, body: newTaskBody(et.title, true) + (body ? body + "\n" : "") });
 }
 
 /** Eine importierte Liste mit KORREKTEM Typ (Projekt/Bereich) + Farbe/Archiv-Status anlegen. */
@@ -339,14 +350,16 @@ async function writeImportedList(app: App, settings: VibeTaskSettings, list: Exp
   let dest = normalizePath(folder + "/" + base + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
-  const fm = buildFrontmatter(importedListFrontmatter(list, fieldKey("type")));
-  await app.vault.create(dest, fm + "\n# " + list.name + "\n");
+  const type = list.type === "area" ? "area" : "project";
+  const fm = importedListFrontmatter(list, fieldKey("type"));
+  await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
 }
 
 /** Basenamen (lowercase) aller vorhandenen Projekt-/Bereich-Notizen. */
 function existingListNames(app: App): Set<string> {
   const out = new Set<string>();
   for (const f of app.vault.getMarkdownFiles()) {
+    if (!isCollectionPath(f.path)) continue;
     const type = app.metadataCache.getFileCache(f)?.frontmatter?.[fieldKey("type")] as unknown;
     if (type === "project" || type === "area") out.add(f.basename.toLowerCase());
   }

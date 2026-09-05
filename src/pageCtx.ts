@@ -103,6 +103,8 @@ export interface PageCtx {
   readonly page: PageRef;
   /** Speicher-Schlüssel der Seite (pageInfo().key) – u. a. für pageShowsEvents. */
   readonly pageKey: string;
+  /** Compact presentation inside a Markdown note rather than a full dashboard pane. */
+  readonly embedded?: boolean;
   /** Effektive Anzeige-Optionen: Seiten-Standard, überlagert von der Wahl DIESES Tabs
    *  (Layout und Kalender-Seitenspalte – s. LocalOptions in heuteView.ts). */
   readonly opts: ViewOptions;

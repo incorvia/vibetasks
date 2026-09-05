@@ -1,7 +1,7 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
@@ -11,6 +11,7 @@ import { SubtaskList } from "./subtaskList";
 import { ConfirmModal } from "./confirmModal";
 import { firstOpenStatus } from "./statuses";
 import { labelKey } from "./fieldNames";
+import { updateRecord } from "./mdbaseRepository";
 import { CHIPS, ChipHost, ChipFields, chipsCompact, resolveChipOrder, isInline, plusHasSetHidden, renderPlusChips, renderStatusChip, renderValueChip, openChipSettings, PRIOS, PRIO_KEY } from "./chips";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
@@ -673,11 +674,12 @@ export class TaskModal extends Modal {
     if (this.existing) {
       const file = this.app.vault.getAbstractFileByPath(this.existing.path);
       if (file instanceof TFile) {
-        await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+        await updateRecord(this.app, file, (fm) => {
           ensureCanonicalFm(fm);   // handgeschriebene Notiz beim ersten Editieren kanonisieren
           const set = (k: string, v: unknown) => {
             if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) delete fm[k]; else fm[k] = v;
           };
+          set("title", title);
           set("priority", this.f.priority && this.f.priority !== "normal" ? this.f.priority : null);
           set("due", this.f.due ? combineDT(this.f.due, this.f.dueTime) : null);
           set("scheduled", this.f.scheduled ? combineDT(this.f.scheduled, this.f.scheduledTime) : null);
@@ -690,10 +692,6 @@ export class TaskModal extends Modal {
           set("reminders", this.f.reminders);
           set("description", (this.f.description ?? "").trim() || null);   // leer => Feld entfernen
         });
-        // Titel-Kaskade (s. taskTitle.ts): `title:` im Frontmatter, sonst die erste H1 – der
-        // Dateiname bleibt der Slug (kein Umbenennen, sonst brechen Eltern-Links; keine
-        // Längenbegrenzung). Notizen mit eigener Struktur behalten so ihren Body.
-        if (title !== this.existing.title) await setTaskTitle(this.app, file, title);
       }
     } else {
       const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null }, this.editScope.target);

@@ -76,8 +76,8 @@ export function resolveFieldNames(saved?: Partial<Record<FieldId, string>> | nul
 // die Einstellungen durchgereicht bekommen muss.
 let CURRENT: Record<FieldId, string> = { ...DEFAULT_FIELD_NAMES };
 
-export function initFieldNames(saved?: Partial<Record<FieldId, string>> | null): void {
-  CURRENT = resolveFieldNames(saved);
+export function initFieldNames(_saved?: Partial<Record<FieldId, string>> | null): void {
+  CURRENT = { ...DEFAULT_FIELD_NAMES };
 }
 export function fieldKey(id: FieldId): string { return CURRENT[id]; }
 /** Kurzform fuer die haeufigste Abfrage – wie `titleKey()` in taskTitle.ts. */

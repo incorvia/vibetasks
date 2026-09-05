@@ -1,13 +1,12 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
-// Die puren Helfer importieren teils Typen/Util aus "obsidian" (kein echtes npm-Paket).
-// Fürs Testen wird es auf einen schlanken Stub gemappt.
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
-    exclude: ["tests/mdbaseCompatibility.test.ts"],
+    include: ["tests/mdbaseCompatibility.test.ts"],
+    pool: "forks",
+    maxWorkers: 1,
   },
   resolve: {
     alias: {

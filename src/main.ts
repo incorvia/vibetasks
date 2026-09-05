@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon } from "obsidian";
+import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
 import { VibeTaskSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
@@ -16,23 +16,20 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArea as setProjectParentArea, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
-import { FieldId, fieldKey, initFieldNames, allFieldNames, isTypeRenameTarget, labelKey } from "./fieldNames";
+import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
 import { clearScanCaches, noteScanChanged, noteScanGone } from "./scanCache";
 
 /** Je Feld ein eigener Bestaetigungstext – die Folgen unterscheiden sich zu sehr fuer einen
  *  gemeinsamen Satz: `type` schreibt vault-weit um, `title` und `labels` nur Aufgaben. */
-const CONFIRM_KEY: Record<FieldId, string> = {
-  type: "set_field_confirm_type", title: "set_field_confirm_title", labels: "set_field_confirm_labels",
-};
 import { createFilterNote, updateFilterNote, deleteFilterNote, setFilterNavHidden, setFilterColor, renameFilterNote, listFilters, readFilter, FilterItem } from "./filterService";
 import { FilterCriteria, ViewOptions, DEFAULT_OPTIONS, DEFAULT_CRITERIA, countFilter, sortTasks, planReorder, collectTrashTargets, subtasksToDuplicate, ORDER_GAP } from "./filterEngine";
 import { ConfirmModal } from "./confirmModal";
 import { readNoteViewOptions, setNoteViewOption, readViewOptions, readNoteCriteria, setNoteCriteria, readCriteria, writeCriteria } from "./pageOptions";
 import { nextInstance, legacyToRRule } from "./recurrence";
-import { todayStr, localStamp, dateOf, timeOf, combineDT } from "./format";
+import { todayStr, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
 import { tip } from "./tooltip";
 import { VibeTaskSettingTab } from "./settingsTab";
@@ -44,6 +41,9 @@ import { calendarDayAnchor } from "./calendarView";
 import { GCalAuth, TokenStore, DevicePrompt, GCalTokens, planTokenMigration } from "./gcalAuth";
 import { GCalSync, GCalSyncHost, GCalCache, LegacyGCalLink, emptyGCalCache, calIndex, seedGCalCache, resignLegacySignature, DEFAULT_GCAL_SETTINGS, listCalendars, ensureDefaultCalendar, fetchAccountEmail, CalendarInfo, GCalStatusInfo } from "./gcalSync";
 import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
+import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
+import { isCollectionPath } from "./mdbaseResources";
+import { ProjectEmbed } from "./projectEmbed";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -74,6 +74,7 @@ export default class VibeTaskPlugin extends Plugin {
    *  Getrennt zu halten ist der ganze Trick: Vorlagen sind für Ansichten, Zähler, Google-Sync
    *  und Erinnerungen dadurch nicht vorhanden, ohne dass dort irgendwo ausgeschlossen wird. */
   templates!: TaskIndex;
+  repository!: MdbaseRepository;
   gcalAuth!: GCalAuth;
   gcalSync!: GCalSync;
   gcalFeed!: GCalFeed;
@@ -104,6 +105,31 @@ export default class VibeTaskPlugin extends Plugin {
   async onload(): Promise<void> {
     registerIcons();
     await this.loadSettings();
+    this.repository = new MdbaseRepository(this.app);
+    bindRepository(this.app, this.repository);
+    this.addChild(this.repository);
+    const collection = await this.repository.initialize();
+    this.registerMarkdownCodeBlockProcessor("vibetask", async (source, el, context) => {
+      let config: unknown;
+      try { config = parseYaml(source); }
+      catch { el.createDiv({ text: "VibeTask: invalid embedded-view configuration" }); return; }
+      const input = config && typeof config === "object" && !Array.isArray(config) ? config as Record<string, unknown> : {};
+      if (input.view !== "project" || typeof input.id !== "string") {
+        el.createDiv({ text: "VibeTask: expected a project view and record id" });
+        return;
+      }
+      const record = (await this.repository.list("project")).find((candidate) => candidate.id === input.id);
+      if (!record) {
+        el.createDiv({ text: `VibeTask: project ${input.id} was not found` });
+        return;
+      }
+      context.addChild(new ProjectEmbed(el, this, record.path));
+    });
+    if (collection.ready) {
+      this.repository.applyDomainConfiguration(this.settings);
+      this.settings.statuses = ensureStatusInvariants(this.settings.statuses);
+      initStatuses(this.settings.statuses);
+    }
     this.applyLocale();                        // "auto" folgt Obsidian; sonst EN (Kanon) / DE
     this.applyFontSizes();                     // überschreibbare Textgrößen als body-CSS-Variablen
     this.applyColors();                        // vom Nutzer gewählte Meta-Farben als body-CSS-Variablen
@@ -128,6 +154,18 @@ export default class VibeTaskPlugin extends Plugin {
     // bei Erstinstallation (0) ab jetzt starten -> kein Fehlalarm für heute Vergangenes.
     this.reminderScan = this.device.reminderLastScan || Date.now();
     this.app.workspace.onLayoutReady(async () => {
+      if (!collection.ready) {
+        console.error("VibeTask: mdbase collection is incompatible", collection.issues);
+        const first = collection.issues[0];
+        const detail = first ? `: ${first.message}` : "";
+        new Notice(`VibeTask: mdbase collection needs attention (${collection.issues.length})${detail}`, 0);
+      } else {
+        const issues = await this.repository.scanIssues();
+        if (issues.length) {
+          console.warn("VibeTask: mdbase validation diagnostics", issues);
+          new Notice(`VibeTask: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"}; files were left unchanged`);
+        }
+      }
       // Vor dem Erst-Setup merken, ob es ein bestehender Nutzer ist und welche Version zuletzt lief.
       const wasExisting = this.settings.didInitialSetup;
       const prevVersion = this.settings.lastSeenVersion;
@@ -231,6 +269,22 @@ export default class VibeTaskPlugin extends Plugin {
         return true;
       },
     });
+    this.addCommand({
+      id: "project-from-note", name: t("cmd_project_from_note"),
+      callback: () => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== "md") { new Notice(t("notice_project_note_required")); return; }
+        const type: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")];
+        if (isCollectionPath(file.path) && ["task", "project", "area", "filter", "template"].includes(String(type))) {
+          new Notice(t("notice_project_record_already"));
+          return;
+        }
+        void this.createProjectFromNote(file).catch((error) => {
+          console.error("VibeTask: failed to create embedded project", error);
+          new Notice(error instanceof Error ? error.message : String(error));
+        });
+      },
+    });
     this.addCommand({ id: "plan-split", name: t("plan_open"), callback: () => void this.openPlanSplit() });
     // Eigener Befehl statt eines Umschalters mit festem Namen: In der Befehlspalette steht der
     // Name fest, ein Eintrag „öffnen", der schließt, wäre schlicht falsch beschriftet.
@@ -250,6 +304,11 @@ export default class VibeTaskPlugin extends Plugin {
       id: "count-tasks", name: t("cmd_count_tasks"),
       callback: () => new Notice(t("notice_count", this.index.all().length, this.index.open().length)),
     });
+    this.addCommand({ id: "mdbase-diagnostics", name: "Show mdbase diagnostics", callback: () => void (async () => {
+      const issues = [...this.repository.status().issues, ...await this.repository.scanIssues()];
+      if (issues.length) console.warn("VibeTask: mdbase diagnostics", issues);
+      new Notice(issues.length ? `VibeTask: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"} (details in console)` : "VibeTask: mdbase collection is valid");
+    })() });
     this.addCommand({ id: "export-json", name: t("cmd_export_json"), callback: () => void this.exportTasksJson() });
     this.addCommand({ id: "import-json", name: t("cmd_import_json"), callback: () => this.importTasksFromVault() });
     this.addCommand({ id: "import-tasknotes", name: t("cmd_import_tasknotes"), callback: () => this.importFromTaskNotes() });
@@ -1125,15 +1184,67 @@ export default class VibeTaskPlugin extends Plugin {
   /** Neues Projekt (oder direkt Bereich) anlegen. Nav/Board lesen den metadataCache, der
    *  nach create erst kurz später aktualisiert wird -> einmaliger „changed"-Listener zeichnet
    *  dann neu, damit der neue Eintrag sofort in der Seitenleiste erscheint. */
-  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<void> {
-    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description);
+  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null): Promise<void> {
+    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description, area);
     const ref = this.app.metadataCache.on("changed", () => { this.app.metadataCache.offref(ref); this.renderAll(); });
     this.registerEvent(ref);
+  }
+
+  /** Create a canonical project record while leaving the source note untouched. */
+  async createProjectFromNote(note: TFile): Promise<void> {
+    const cache = this.app.metadataCache.getFileCache(note);
+    const title = fmTitle(cache?.frontmatter?.[titleKey()])
+      ?? ((firstH1(cache?.headings) ?? "").trim() || note.basename);
+    const linkedNote = `[[${note.path.replace(/\.md$/i, "")}]]`;
+    const existing = (await this.repository.list("project"))
+      .find((record) => record.frontmatter.linked_note === linkedNote);
+    let id = existing?.id;
+    if (!id) {
+      await ensureFolder(this.app, this.settings.projectsFolder);
+      const base = slugify(title);
+      let recordTitle = base;
+      let path = normalizePath(`${this.settings.projectsFolder}/${recordTitle}.md`);
+      let suffix = 2;
+      while (this.app.vault.getAbstractFileByPath(path)) {
+        recordTitle = `${base} ${suffix++}`;
+        path = normalizePath(`${this.settings.projectsFolder}/${recordTitle}.md`);
+      }
+      const now = rfc3339Now();
+      id = newUlid();
+      await this.repository.create({
+        type: "project",
+        path,
+        frontmatter: {
+          type: "project", id, title: recordTitle, status: "active",
+          linked_note: linkedNote, created: now, modified: now,
+        },
+        body: "\n",
+      });
+    }
+    const block = `\`\`\`vibetask\nview: project\nid: ${id}\n\`\`\``;
+    await this.app.vault.process(note, (content) => {
+      if (content.includes(block)) return content;
+      const gap = content.length === 0 || content.endsWith("\n\n") ? "" : content.endsWith("\n") ? "\n" : "\n\n";
+      return `${content}${gap}${block}\n`;
+    });
+    new Notice(t("notice_project_from_note"));
+  }
+
+  async setCollectionFolder(type: "task" | "project" | "template", folder: string): Promise<void> {
+    await this.repository.updatePath(type, folder);
+    if (type === "task") this.settings.itemsFolder = folder;
+    else if (type === "project") this.settings.projectsFolder = folder;
+    else this.settings.templatesFolder = folder;
+    await this.saveSettings();
   }
 
   async setProjectArea(path: string, toArea: boolean): Promise<void> {
     this.refreshOnChange(path);
     await setProjectType(this.app, path, toArea);
+  }
+  async assignProjectArea(path: string, area: string | null): Promise<void> {
+    this.refreshOnChange(path);
+    await setProjectParentArea(this.app, path, area);
   }
   async archiveProject(path: string, archived: boolean): Promise<void> {
     this.refreshOnChange(path);
@@ -1320,7 +1431,7 @@ export default class VibeTaskPlugin extends Plugin {
     for (const task of this.index.all()) {
       if (!task.labels.includes(oldName)) continue;
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
         const arr = Array.isArray(fm[labelKey()]) ? (fm[labelKey()] as unknown[]).map(String) : [];
         fm[labelKey()] = [...new Set(arr.map((x) => (x === oldName ? nu : x)))];
       });
@@ -1329,7 +1440,7 @@ export default class VibeTaskPlugin extends Plugin {
     for (const fl of listFilters(this.app)) {
       if (!fl.criteria.labels.includes(oldName) && !fl.criteria.labelsAll.includes(oldName) && !fl.criteria.labelsNot.includes(oldName)) continue;
       const ff = this.app.vault.getAbstractFileByPath(fl.path);
-      if (ff instanceof TFile) await this.app.fileManager.processFrontMatter(ff, (fm: Record<string, unknown>) => {
+      if (ff instanceof TFile) await updateRecord(this.app, ff, (fm) => {
         for (const key of ["labels", "labels_all", "labels_not"]) {
           if (Array.isArray(fm[key])) fm[key] = [...new Set((fm[key] as unknown[]).map(String).map((x) => (x === oldName ? nu : x)))];
         }
@@ -1358,6 +1469,7 @@ export default class VibeTaskPlugin extends Plugin {
   /** Reagiert auf jedes Umbenennen einer verwalteten Notiz und zieht alle Referenzen selbst nach. */
   private async onNoteRenamed(file: TAbstractFile, oldPath: string): Promise<void> {
     if (!(file instanceof TFile) || file.extension !== "md") return;
+    if (!isCollectionPath(file.path) && !isCollectionPath(oldPath)) return;
     const type = this.app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")] as unknown;
     if (type !== "project" && type !== "area" && type !== "filter" && type !== "task") return;
 
@@ -1383,14 +1495,14 @@ export default class VibeTaskPlugin extends Plugin {
     for (const task of this.index.all()) {
       if (this.wikiBase(task.project) !== oldBase) continue;
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
         if (this.wikiBase(fm.project) === oldBase) fm.project = "[[" + newBase + "]]";
       });
     }
     for (const fl of listFilters(this.app)) {
       if (!fl.criteria.projects.includes(oldBase) && !fl.criteria.projectsNot.includes(oldBase)) continue;
       const f = this.app.vault.getAbstractFileByPath(fl.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
         for (const key of ["projects", "projects_not"]) {
           if (Array.isArray(fm[key])) fm[key] = [...new Set((fm[key] as unknown[]).map(String).map((x) => (x === oldBase ? newBase : x)))];
         }
@@ -1402,7 +1514,7 @@ export default class VibeTaskPlugin extends Plugin {
     for (const task of this.index.all()) {
       if (this.wikiBase(task.parent) !== oldBase) continue;
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
         if (this.wikiBase(fm.parent) === oldBase) fm.parent = "[[" + newBase + "]]";
       });
     }
@@ -1423,7 +1535,7 @@ export default class VibeTaskPlugin extends Plugin {
     for (const task of this.index.all()) {
       if (!task.labels.includes(name)) continue;
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
         const arr = Array.isArray(fm[labelKey()]) ? (fm[labelKey()] as unknown[]).map(String) : [];
         fm[labelKey()] = arr.filter((x) => x !== name);
       });
@@ -1667,13 +1779,14 @@ export default class VibeTaskPlugin extends Plugin {
     const s = list.find((x) => x.id === oldId);
     if (!s || oldId === newId) return 0;
     const affected = this.index.all().filter((tk) => tk.status === oldId);
-    for (const tk of affected) {
-      const f = this.app.vault.getAbstractFileByPath(tk.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { fm.status = newId; });
-    }
-    await this.remapStatusRefs(oldId, newId);
     s.id = newId;
     this.settings.statuses = list;
+    await this.repository.updateStatuses(list);
+    for (const tk of affected) {
+      const f = this.app.vault.getAbstractFileByPath(tk.path);
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.status = newId; });
+    }
+    await this.remapStatusRefs(oldId, newId);
     await this.commitStatuses();
     return affected.length;
   }
@@ -1695,12 +1808,14 @@ export default class VibeTaskPlugin extends Plugin {
     for (const f of this.app.vault.getMarkdownFiles()) {
       const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
       if (!fm || (!swap(fm.statuses) && !swap(fm.statuses_not))) continue;
-      await this.app.fileManager.processFrontMatter(f, (m: Record<string, unknown>) => {
+      const change = (m: Record<string, unknown>) => {
         for (const key of ["statuses", "statuses_not"]) {
           const next = swap(m[key]);
           if (next) m[key] = next;
         }
-      });
+      };
+      if (isCollectionPath(f.path) && ["task", "project", "area", "filter", "template"].includes(String(fm.type))) await updateRecord(this.app, f, change);
+      else await this.app.fileManager.processFrontMatter(f, change);
     }
     const map = this.settings.boardColumnOrder;
     if (map) for (const key of Object.keys(map)) {
@@ -1714,6 +1829,7 @@ export default class VibeTaskPlugin extends Plugin {
   private async commitStatuses(): Promise<void> {
     this.settings.statuses = ensureStatusInvariants(this.statusList());
     initStatuses(this.settings.statuses);
+    await this.repository.updateStatuses(this.settings.statuses);
     await this.saveSettings();
     this.index.build();
     this.renderAll();
@@ -1814,7 +1930,7 @@ export default class VibeTaskPlugin extends Plugin {
     const affected = this.index.all().filter((tk) => tk.status === id);
     for (const tk of affected) {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { fm.status = target; });
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.status = target; });
     }
     this.settings.statuses = list.filter((x) => x.id !== id);
     await this.commitStatuses();
@@ -1838,11 +1954,25 @@ export default class VibeTaskPlugin extends Plugin {
     // gehört seinem Dokument und nicht uns. Der Aufgabentitel zieht ins Frontmatter: der Text der
     // H1, wenn es eine gibt, sonst der Dateiname (eine `##`-Zwischenüberschrift ist kein Titel).
     const title = (firstH1(this.app.metadataCache.getFileCache(f)?.headings) ?? "").trim() || f.basename;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
-      fm[fieldKey("type")] = "task";
-      ensureCanonicalFm(fm);
-      if (typeof fm.status !== "string" || !fm.status) fm.status = firstOpenStatus();
-      if (fmTitle(fm[titleKey()]) === null) fm[titleKey()] = title;
+    const existing = this.app.metadataCache.getFileCache(f)?.frontmatter ?? {};
+    let target = f;
+    if (!isCollectionPath(f.path)) {
+      await ensureFolder(this.app, this.settings.itemsFolder);
+      const base = slugify(title);
+      let dest = normalizePath(`${this.settings.itemsFolder}/${base}.md`);
+      let n = 2;
+      while (this.app.vault.getAbstractFileByPath(dest)) {
+        dest = normalizePath(`${this.settings.itemsFolder}/${base} ${n}.md`);
+        n++;
+      }
+      await this.app.fileManager.renameFile(f, dest);
+      const moved = this.app.vault.getAbstractFileByPath(dest);
+      if (!(moved instanceof TFile)) throw new Error(`Could not move note into ${this.settings.itemsFolder}`);
+      target = moved;
+    }
+    await this.repository.adopt(target.path, "task", {
+      status: typeof existing.status === "string" && existing.status ? existing.status : firstOpenStatus(),
+      title: fmTitle(existing[titleKey()]) ?? title,
     });
     // Bewusst KEIN reconcileTaskDescription mehr: Das verschob einen kurzen Text aus der Notiz ins
     // Feld `description` (und entfernte ihn dort) bzw. hängte einen „Notiz öffnen"-Kommentar an –
@@ -1871,14 +2001,14 @@ export default class VibeTaskPlugin extends Plugin {
     if (!combined) return "none";
     // Dokument: eigener Inhalt bleibt im Body, Hinweis + „Notiz öffnen"-Kommentar (rein additiv).
     if (preH1 || isDocumentBody(combined)) {
-      await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      await updateRecord(this.app, f, (fm) => {
         if (typeof fm.description !== "string" || !fm.description) fm.description = t("desc_note_content_hint");
       });
       await ensureNoteLinkLog(this.app, f, t("log_open_note"));
       return "document";
     }
     // Kurze Beschreibung (kein Pre-H1-Inhalt): ins Frontmatter verschieben und aus dem Body entfernen.
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { fm.description = bodyDesc; });
+    await updateRecord(this.app, f, (fm) => { fm.description = bodyDesc; });
     await writeDescription(this.app, f, "");
     return "moved";
   }
@@ -1938,7 +2068,7 @@ export default class VibeTaskPlugin extends Plugin {
       if (!next) continue;
       const f = this.app.vault.getAbstractFileByPath(tk.path);
       if (!(f instanceof TFile)) continue;
-      await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      await updateRecord(this.app, f, (fm) => {
         // Erneut prüfen statt dem Index zu vertrauen: Zwischen Lesen und Schreiben kann die Datei
         // sich geändert haben, und dann gehörte der Wert nicht mehr uns.
         if (typeof fm.recurrence !== "string") return;
@@ -1957,7 +2087,7 @@ export default class VibeTaskPlugin extends Plugin {
       const plan = titleToStore(cache?.frontmatter?.[titleKey()], cache?.headings, f.basename);
       if (!plan) continue;
       let wrote = false;
-      await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      await updateRecord(this.app, f, (fm) => {
         if (fmTitle(fm[titleKey()]) !== null) return;   // lebende Quelle entscheidet
         fm[titleKey()] = plan.title;
         wrote = true;
@@ -1979,95 +2109,6 @@ export default class VibeTaskPlugin extends Plugin {
     this.settings.didTitleMigration = true;
     await this.saveSettings();
     if (!opts.silent) { window.setTimeout(() => this.index.build(), 400); new Notice(t("notice_titles_moved", moved)); }
-  }
-
-  /** Feldnamen umstellen (Einstellungen). Der Wechsel selbst ist eine Zeile – gefährlich ist, was
-   *  danach in den Notizen steht. Deshalb IMMER erst zählen, rückfragen, umschreiben; und erst wenn
-   *  die Dateien durch sind, die Einstellung setzen. Bricht der Lauf ab, zeigt die Einstellung noch
-   *  auf den alten Schlüssel – ein zweiter Versuch findet dann genau die Restmenge, statt dass
-   *  halb umgeschriebene Notizen unsichtbar werden.
-   *
-   *  Zwei Felder, zwei Regeln (deshalb parametrisiert statt zweimal geschrieben):
-   *  - `type` entscheidet, ob eine Notiz überhaupt zu VibeTask gehört. Betroffen ist der ganze
-   *    Vault (Projekte, Bereiche und Filter stehen nicht im Aufgaben-Index), und der Wert wird
-   *    VERSCHOBEN – `task` gehört uns, ihn stehen zu lassen konservierte die Kollision.
-   *  - `title` betrifft nur Aufgaben, und der Wert wird KOPIERT: Wer das Feld wechselt, tut das in
-   *    der Regel, weil `title` ihm selbst gehört. */
-  changeFieldName(id: FieldId, next: string, done?: () => void): void {
-    const prev = fieldKey(id);
-    if (next === prev) { done?.(); return; }
-    // Der Wert wird IMMER übernommen – sonst verlöre man mit einem Häkchen alle Titel bzw. alle
-    // Aufgaben. Zur Wahl steht nur, ob das alte Feld danach verschwindet: Bei `type` gehört der
-    // Wert uns, da wird ohne Rückfrage aufgeräumt. Bei `title` gehört das Feld meist dem Nutzer,
-    // deshalb bleibt es stehen, solange er das Häkchen nicht setzt.
-    const move = id === "type";
-    const targets = this.fieldRenameTargets(id, prev, next);
-    new ConfirmModal(this.app, {
-      title: t("set_field_confirm_t"),
-      message: t(CONFIRM_KEY[id], next, prev, targets.length),
-      confirmText: t("btn_save"),
-      destructive: false,
-      checkbox: move ? undefined : { label: t("set_field_drop_old", prev), checked: false },
-    }, (dropOld: boolean) => {
-      void (async () => {
-        let done_ = 0, failed = 0;
-        const remove = move || dropOld;
-        for (const path of targets) {
-          const f = this.app.vault.getAbstractFileByPath(path);
-          if (!(f instanceof TFile)) continue;
-          try {
-            await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
-              const from = fm[prev];                            // lebende Quelle entscheidet
-              if (from === undefined || fm[next] !== undefined) return;
-              fm[next] = from;
-              if (remove) delete fm[prev];
-            });
-            done_++;
-          } catch (err) { failed++; console.error("VibeTask: field rename failed", path, err); }
-        }
-        // Erst jetzt die Einstellung – s. Kommentar oben.
-        this.settings.fieldNames = { ...allFieldNames(), [id]: next };
-        initFieldNames(this.settings.fieldNames);
-        this.settings.fieldNames = allFieldNames();
-        await this.saveSettings();
-        this.index.build();
-        this.renderAll();
-        new Notice(failed ? t("set_field_done_failed", next, done_, failed) : t("set_field_done", next, done_));
-        done?.();
-      })();
-    }).open();
-    // Abbruch schließt das Modal ohne Rückruf – das Eingabefeld setzt der Aufrufer beim nächsten
-    // Zeichnen ohnehin auf den gespeicherten Wert zurück.
-  }
-
-  /** Pfade der Notizen, die ein Feldnamen-Wechsel anfassen würde. `type` geht vault-weit über die
-   *  vier VibeTask-Werte; `title` nur über Aufgaben mit einem brauchbaren Wert. Notizen, die den
-   *  neuen Schlüssel schon führen, bleiben außen vor – das macht den Lauf wiederholbar. Notizen in
-   *  Ausschluss-Ordnern werden nie angefasst: Dort hat der Nutzer erklärt, dass sie uns nicht
-   *  gehören. */
-  private fieldRenameTargets(id: FieldId, prev: string, next: string): string[] {
-    const out: string[] = [];
-    if (id === "type") {
-      for (const f of this.app.vault.getMarkdownFiles()) {
-        if (this.settings.excludeFolders.some((dir) => isUnderFolder(f.path, dir))) continue;
-        const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
-        if (isTypeRenameTarget(fm, prev, next)) out.push(f.path);
-      }
-      return out;
-    }
-    for (const tk of this.index.all()) {
-      const f = this.app.vault.getAbstractFileByPath(tk.path);
-      if (!(f instanceof TFile)) continue;
-      const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
-      // Labels sind eine Liste, kein Text: „brauchbar" heisst hier „ist ein Array mit Inhalt".
-      // Wie bei `title` bleiben Notizen aussen vor, die den neuen Schluessel schon fuehren – das
-      // macht den Lauf wiederholbar.
-      const useful = id === "labels"
-        ? Array.isArray(fm?.[prev]) && (fm?.[prev] as unknown[]).length > 0 && fm?.[next] === undefined
-        : fmTitle(fm?.[prev]) !== null && fmTitle(fm?.[next]) === null;
-      if (useful) out.push(f.path);
-    }
-    return out;
   }
 
   /** Einmalige Migration „Inbox-Notiz entfernen": übernimmt View-Optionen + GCal-Ausschluss der
@@ -2212,7 +2253,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskDate(task: Task, field: "due" | "scheduled", isoVal: string): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { this.ensureCanonical(fm); if (isoVal) fm[field] = isoVal; else delete fm[field]; });
+    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (isoVal) fm[field] = isoVal; else delete fm[field]; });
   }
 
   /** Sammel-Verschieben („Verschieben" im Kopf der Überfällig-Sektion): setzt `due` ALLER
@@ -2235,7 +2276,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskDuration(task: Task, minutes: number | null): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { this.ensureCanonical(fm); if (minutes) fm.duration = minutes; else delete fm.duration; });
+    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (minutes) fm.duration = minutes; else delete fm.duration; });
   }
 
   /** Checkbox-Umschalten: erledigt ⇄ offen. Delegiert an setTaskStatus, damit die
@@ -2261,7 +2302,7 @@ export default class VibeTaskPlugin extends Plugin {
     if (remove === add) return;
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
       let arr = Array.isArray(fm[labelKey()]) ? (fm[labelKey()] as unknown[]).map(String) : [];
       if (remove) arr = arr.filter((x) => x !== remove);
@@ -2273,7 +2314,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskPriority(task: Task, priority: Priority): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
       fm.priority = priority !== "normal" ? priority : null;
     });
@@ -2297,7 +2338,7 @@ export default class VibeTaskPlugin extends Plugin {
     for (const w of writes) {
       const f = this.app.vault.getAbstractFileByPath(w.path);
       if (!(f instanceof TFile)) continue;
-      await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      await updateRecord(this.app, f, (fm) => {
         this.ensureCanonical(fm);
         fm.sort_order = w.order;
       });
@@ -2307,7 +2348,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskProject(task: Task, project: string | null): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
       fm.project = project ? "[[" + project + "]]" : null;
     });
@@ -2322,8 +2363,8 @@ export default class VibeTaskPlugin extends Plugin {
     // drifteten sie um Millisekunden auseinander. Der Abgebrochen-Fall landet über die Oberfläche
     // heute nie hier (das Board kennt keine Papierkorb-Spalte, das Zeilenmenü leitet auf
     // cancelTask um); ein neuer Aufrufer soll aber nicht in dieselbe Falle laufen.
-    const stamps = transitionStamps(task.status, status, localStamp());
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    const stamps = transitionStamps(task.status, status, rfc3339Now());
+    await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
       fm.status = status;
       if ("completed" in stamps) fm.completed = stamps.completed;
@@ -2358,7 +2399,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskReminders(task: Task, reminders: string[]): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
       if (reminders.length) fm.reminders = reminders; else delete fm.reminders;
     });
@@ -2474,14 +2515,14 @@ export default class VibeTaskPlugin extends Plugin {
    *  Sortierwert und der Papierkorb fiele bei Gleichstand auf die Datei-Reihenfolge zurück). Das
    *  `project`-Feld bleibt unberührt (wie beim Einzel-Abbrechen). */
   private async trashTasks(roots: Task[], from: { descendants(p: string): Task[] } = this.index): Promise<void> {
-    const stamp = localStamp();
+    const stamp = rfc3339Now();
     const cancelId = firstCancelledStatus();   // definierter Abgebrochen-Status oder Sentinel "cancelled"
     // Die Kaskade muss aus DEMSELBEN Bestand lesen wie die Zeile, die gelöscht wird: Beim
     // Löschen in einer Vorlage kennt der Aufgaben-Index deren Kinder nicht und liesse sie stehen.
     const targets = collectTrashTargets(roots, (p) => from.descendants(p));
     for (const tk of targets) {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { this.ensureCanonical(fm); fm.status = cancelId; fm.cancelled = stamp; });
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); fm.status = cancelId; fm.cancelled = stamp; });
     }
   }
 
@@ -2497,7 +2538,7 @@ export default class VibeTaskPlugin extends Plugin {
     const targets = [task, ...this.index.descendants(task.path)].filter((tk) => isTrashed(tk.status));
     for (const tk of targets) {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { this.ensureCanonical(fm); fm.status = firstOpenStatus(); delete fm.cancelled; delete fm.completed; });
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); fm.status = firstOpenStatus(); delete fm.cancelled; delete fm.completed; });
     }
     new Notice(t("msg_restored", task.title));
   }
@@ -2505,7 +2546,7 @@ export default class VibeTaskPlugin extends Plugin {
   /** Einzelne Aufgabe endgültig löschen (in Obsidians Papierkorb – dort wiederherstellbar). */
   async deleteTaskForever(path: string): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.fileManager.trashFile(f);
+    if (f instanceof TFile) await this.repository.trash(f.path);
   }
 
   /** Alle abgebrochenen Aufgaben wiederherstellen (reversibel, ohne Rückfrage). */
@@ -2514,7 +2555,7 @@ export default class VibeTaskPlugin extends Plugin {
     if (!items.length) { new Notice(t("report_trash_empty_restore")); return; }
     for (const task of items) {
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { this.ensureCanonical(fm); fm.status = firstOpenStatus(); delete fm.cancelled; delete fm.completed; });
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); fm.status = firstOpenStatus(); delete fm.cancelled; delete fm.completed; });
     }
     new Notice(t("report_tasks_restored", items.length));
   }
@@ -2525,7 +2566,7 @@ export default class VibeTaskPlugin extends Plugin {
     if (!items.length) { new Notice(t("msg_trash_empty")); return; }
     for (const task of items) {
       const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await this.app.fileManager.trashFile(f);
+      if (f instanceof TFile) await this.repository.trash(f.path);
     }
     new Notice(t("msg_trash_emptied", items.length));
   }
@@ -2555,24 +2596,13 @@ export default class VibeTaskPlugin extends Plugin {
     // ein versehentlich gelöschter Papierkorb-Status. Danach die Registry setzen.
     this.settings.statuses = ensureStatusInvariants(this.settings.statuses);
     initStatuses(this.settings.statuses);   // Status-Registry aus den Einstellungen (sonst Defaults)
-    // Feldnamen: früheres einzelnes `titleProperty` (1.31.x) in die Namenstabelle übernehmen.
-    // Gefragt wird die DATEI (`legacy`), nicht `this.settings`: Seit die Standardwerte nicht mehr
-    // mitgeschrieben werden, ist `settings.fieldNames` immer belegt (s. settingsDelta.ts). Eine
-    // Prüfung auf `!this.settings.fieldNames` wäre nie wieder wahr – und ein eigener Titel-Feldname
-    // aus 1.31.x ginge still verloren, das Plugin suchte danach im falschen Frontmatter-Feld.
-    if (typeof legacy.titleProperty === "string" && !legacy.fieldNames) {
-      this.settings.fieldNames = { title: legacy.titleProperty };
-    }
     // Startseite: früher ein einzelner String (`startView`, nur ViewId oder "last"), jetzt eine
     // vollständige Seitenangabe. Auch hier entscheidet die DATEI, nicht der aufgefüllte Zustand –
     // `startPage` hat einen Standardwert und wäre sonst immer belegt.
     if (typeof legacy.startView === "string" && !legacy.startPage) {
       this.settings.startPage = fromLegacyStartView(legacy.startView, VIEW_IDS);
     }
-    // resolveFieldNames fängt Vertipptes, feste und doppelt vergebene Namen ab und fällt auf die
-    // Vorgabe zurück – eine kaputte Einstellung darf nie Daten treffen.
-    initFieldNames(this.settings.fieldNames);
-    this.settings.fieldNames = allFieldNames();
+    initFieldNames();
     // Google-Kalender-Sub-Objekt mit Defaults auffüllen (fehlende/neue Felder ergänzen,
     // gespeicherte Werte behalten). Lebendes Objekt – die Engine mutiert lastSynced/syncTokens darin.
     this.settings.gcal = Object.assign({}, DEFAULT_GCAL_SETTINGS, this.settings.gcal);
@@ -2826,7 +2856,7 @@ export default class VibeTaskPlugin extends Plugin {
     }
     const f = this.app.vault.getAbstractFileByPath(path);
     if (!(f instanceof TFile)) return;
-    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.app, f, (fm) => {
       if (excluded) fm.gcal_sync = false; else delete fm.gcal_sync;
     });
     void this.gcalSync.syncNow();

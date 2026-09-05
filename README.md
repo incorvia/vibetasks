@@ -13,7 +13,7 @@ A Todoist-style task & project manager that lives **inside** Obsidian — with a
 - **One note per task.** Each task is a normal Markdown file with YAML frontmatter. Nothing is locked in a proprietary database — search it, edit it by hand, sync it, or version it with Git.
 - **A real task app, natively.** A Todoist-inspired dashboard with sidebar navigation, a chip-based task editor, quick capture and keyboard-friendly flows — all rendered inside Obsidian, popout-window compatible.
 - **Zero plugin dependencies, local-first.** No other plugin and no account required. Your tasks are plain Markdown in your vault — the one optional online feature is two-way **Google Calendar sync**, which stays off until you set it up.
-- **Your frontmatter stays yours.** The two field names VibeTask needs — `type` and `title` — are configurable, so it never has to claim a property you already use. Turning an existing note into a task adds frontmatter and nothing else; your text is never rewritten.
+- **Your frontmatter stays yours.** VibeTask uses a documented mdbase schema and preserves additional properties it does not understand. Turning an existing note into a task adds canonical frontmatter and leaves its Markdown body alone.
 - **Fully themeable.** Every color is a CSS variable; works with your theme, CSS snippets, or the Style Settings plugin — including a monochrome mode.
 - **10 languages.** The interface is available in English, German, Spanish, Portuguese (Brazil), French, Italian, Turkish, Russian, Simplified Chinese and Japanese (auto-detected from Obsidian, or set in settings). Natural-language **dates and times** work in all of them except Turkish, where English keywords (`tomorrow`, `next monday`) still do. English keywords work in every language, alongside your own.
 
@@ -241,26 +241,20 @@ Upgrading from an earlier version? A one-time pass moves existing titles from th
 your tasks folder — and only when the line really was the title. Everything you wrote yourself
 keeps its heading, and no task changes the title it displays.
 
-### Field names
+### Local mdbase collection
 
-Two frontmatter fields carry VibeTask' own meaning, and both are popular property names:
+On first run VibeTask initializes an isolated mdbase collection at `_vibetasks/`, with
+`mdbase.yaml` and five JSON Schema type definitions under `_vibetasks/_types/`: `task`, `project`,
+`area`, `filter`, and `template`. Notes elsewhere in the vault are not collection records, even
+when they happen to use the same `type` value. Canonical fields (`type`, `id`, `title`, `created`, and `modified`) make the files predictable
+for other local software, while every schema permits additional user properties.
 
-| Field | What it does |
-| --- | --- |
-| `type` | marks a note as a task, project, area or filter |
-| `title` | holds the task title |
+Markdown remains authoritative. VibeTask validates its own writes, preserves manually introduced
+invalid records and reports diagnostics instead of rewriting them. Statuses, priorities, and record
+paths are defined in the type files; their corresponding settings edit those definitions.
 
-If you already use one of these names for something else, Settings → **Field names** points
-VibeTask at your own field instead, e.g. `bt_type`. Changing a name asks first and shows how
-many notes it affects:
-
-- **`type`** — your notes are rewritten to the new field and the old one is removed. Notes in
-  excluded folders are never touched, and neither are foreign values: a note with `type: meeting`
-  stays exactly as it is. Your own Dataview or Bases queries on the old field will find nothing
-  afterwards, so adjust those yourself.
-- **`title`** — existing titles always move over, so nothing can get lost. Whether the old field
-  is removed afterwards is a checkbox, off by default: if `title` is yours, it stays exactly as it
-  is.
+The Obsidian plugin uses only mobile-safe Vault and metadata APIs. It does not ship the Node mdbase
+library, SQLite, mdbase Connect, a hosted mirror, or a dependency on another Obsidian plugin.
 
 ### Project notes
 
@@ -273,7 +267,11 @@ A **description** in the frontmatter is shown above the task list (switch it off
 ```yaml
 ---
 type: project
-id: p-8f3a1
+id: 01K4D9HQ2B32F6B8QKM4E9N6J5
+title: September launch
+created: 2026-09-05T12:00:00Z
+modified: 2026-09-05T12:00:00Z
+status: active
 description: Everything for the September launch
 color: "#4caf50"
 ---
@@ -281,18 +279,28 @@ color: "#4caf50"
 Your own notes start right here.
 ```
 
-The name always comes from the **file name**, never from the body or a `title:` field. That keeps one name for one thing: renaming the project renames the file, and Obsidian plus VibeTask update every `[[link]]` pointing at it.
+The name comes from the required `title` field. Renaming a project, area, filter, or template updates both its title and filename, and Obsidian plus VibeTask update links pointing at it.
 
 By default, notes live under these folders (all configurable in settings):
 
 | Content | Default folder |
 | --- | --- |
-| Tasks | `VibeTask/Items` |
-| Projects & Areas | `VibeTask/Projects` |
-| Saved filters | `VibeTask/Filters` |
-| Attachments | `VibeTask/Attachments` |
+| Collection root | `_vibetasks` |
+| Tasks | `_vibetasks/tasks` |
+| Projects & Areas | `_vibetasks/projects` |
+| Saved filters | `_vibetasks/filters` |
+| Templates | `_vibetasks/templates` |
+| Attachments | `_vibetasks/attachments` |
+| mdbase type definitions | `_vibetasks/_types` |
 
 Projects and areas are the same kind of note (`type: project` / `type: area`), so they share one folder.
+
+To associate an existing vault note without turning it into a database record, focus the note and run
+**VibeTask: Create linked project from current note**. VibeTask silently creates the canonical record
+under `_vibetasks/projects/`, stores a `linked_note` wikilink on that record, and appends a live
+`vibetask` project embed to the original note. The embed refers to the stable project ID, so renaming
+either file does not disconnect the view. Running the command again reuses the linked project instead
+of creating a duplicate. The project menu also offers **Open project record** and **Open linked note**.
 
 ## Google Calendar sync
 
@@ -337,42 +345,13 @@ Your Client ID/secret and the OAuth token are stored locally in `.obsidian/plugi
 
 VibeTask itself runs on Obsidian mobile — the views, the editor and quick capture all work there. What a plugin *cannot* do on iOS or Android is put a widget on your home screen or notify you while Obsidian is closed. That is an operating-system boundary, not something a plugin can work around: reminders only fire while Obsidian is open and in the foreground.
 
-Two ways around it, depending on what you need:
+For notifications while Obsidian is closed, turn on Google Calendar sync above. Dated tasks become
+calendar events and the phone's calendar app can notify you with the screen off.
 
-- **Notifications** — turn on Google Calendar sync (above). Dated tasks become calendar events, and your phone's calendar app notifies you reliably, even with the screen off.
-- **A real task app with widgets** — because every task is a plain Markdown note, other apps can read your vault directly. [TaskForge](https://taskforge.md) is one such app (third party, not affiliated, free with a paid tier).
-
-### Setting up TaskForge
-
-Everything below was tested on a real device against a copy of a real vault, in August 2026. It describes what actually happened, not what the documentation promises.
-
-**In TaskForge:**
-
-1. Point it at your vault and set the **tasks folder** — by default `VibeTask/Items`, or whatever you chose under *Settings → Folders*.
-2. Set task identification to **by property → `type: task`**. Do not skip this: it is also what makes TaskForge *write* that property, so tasks you create on your phone show up in VibeTask. Folder-only detection reads your tasks fine but creates ones VibeTask cannot see.
-3. Under field mapping, point **`dateCreated` at `created`**.
-
-**In VibeTask → Settings:**
-
-4. **Field names → Labels:** set it to `tags`. TaskForge writes Obsidian's own tag field and cannot be remapped away from it, so this is the side that has to move. Your labels are stored as slugs already (lower case, no spaces), so they are valid tags as they are.
-5. **Statuses:** TaskForge writes `status: open` for tasks it creates. Open the stored value of your own open status (the `</>` button next to it) and set it to `open`, so both sides mean the same thing.
-
-### What works
-
-| | |
-| --- | --- |
-| Viewing your tasks | Titles, dates, descriptions, priorities, recurring, completed and cancelled tasks — all read correctly |
-| Creating tasks on your phone | They appear in VibeTask. Without a project they land in the **Inbox**, which is where you want them |
-| Editing existing tasks | Your project link, manual sort order and Google Calendar link survive untouched — TaskForge keeps properties it does not know |
-| Recurring tasks | TaskForge rewrites the rule in iCalendar notation; VibeTask reads that as of 1.41.0 |
-
-TaskForge also adds a few fields of its own (`taskSource`, `dateModified`). They are harmless — VibeTask ignores them and leaves them alone.
-
-### Two things worth knowing
-
-**Your labels become real Obsidian tags.** That is the point of step 4, and it cuts both ways: every tag you put on a task note now counts as a VibeTask label. If you use tags on task notes for something else, keep the label field at `labels` and accept that labels stay behind on the phone.
-
-**“Repeat from completion” is ours alone.** A task set to repeat *after it is done* uses an extra field that the iCalendar standard has no concept for — Outlook and Todoist solve it the same way, outside the standard. TaskForge will show such a task as a plain repeat and cannot edit that part. The behaviour in VibeTask is unaffected.
+An independent task application can also consume the same mdbase collection when it has direct
+filesystem access to the vault. No compatibility with TaskNotes or any particular third-party task
+lifecycle is claimed. Obsidian Sync remains private Obsidian-to-Obsidian synchronization; VibeTask
+does not route it through mdbase Connect or another cloud service.
 
 ## Commands
 

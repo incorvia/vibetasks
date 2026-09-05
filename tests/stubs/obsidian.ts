@@ -10,6 +10,19 @@ export function stringifyYaml(obj: Record<string, unknown>): string {
   return Object.entries(obj).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join("\n") + "\n";
 }
 
+export function parseYaml(source: string): unknown {
+  const out: Record<string, unknown> = {};
+  for (const line of source.split(/\r?\n/)) {
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const key = line.slice(0, colon).trim();
+    const raw = line.slice(colon + 1).trim();
+    if (!key) continue;
+    try { out[key] = JSON.parse(raw); } catch { out[key] = raw; }
+  }
+  return out;
+}
+
 export class App {}
 export class TFile {}
 /** Nur so viel Component, wie TaskIndex braucht: Abos einsammeln. `registerEvent` zählt

@@ -1,6 +1,5 @@
 import { VibeTaskSettings, DEFAULT_SETTINGS } from "./types";
 import { DEFAULT_STATUSES } from "./statuses";
-import { DEFAULT_FIELD_NAMES } from "./fieldNames";
 
 /**
  * Gespeichert wird nur, was vom Standard ABWEICHT — nicht der ganze Einstellungsblock.
@@ -33,7 +32,6 @@ import { DEFAULT_FIELD_NAMES } from "./fieldNames";
 export const EFFECTIVE_DEFAULTS: VibeTaskSettings = {
   ...DEFAULT_SETTINGS,
   statuses: DEFAULT_STATUSES,
-  fieldNames: DEFAULT_FIELD_NAMES,
 };
 
 /**
@@ -47,6 +45,7 @@ export const OBSOLETE_KEYS = [
   "chipOrder",         // -> chipProfiles.editor.order (Flächen getrennt)
   "chipTiers",         // -> chipProfiles.editor.tiers
   "titleProperty",     // -> fieldNames.title (seit 1.32.0)
+  "fieldNames",       // mdbase uses fixed canonical property names
   "showParentMarker",  // ersatzlos entfallen, keine Fundstelle mehr im Code
   "areasFolder",       // ersatzlos entfallen, Bereiche liegen im projectsFolder
   "startView",         // -> startPage (jede Seite wählbar, nicht nur die vier Ansichten)
@@ -91,6 +90,7 @@ export function toDelta(settings: VibeTaskSettings): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings as unknown as Record<string, unknown>)) {
     if (value === undefined) continue;
+    if (key === "statuses") continue; // authoritative in _types/task.md x-vibetask
     if ((OBSOLETE_KEYS as readonly string[]).includes(key)) continue;
     if (hasOwn(defaults, key) && deepEqual(value, defaults[key])) continue;
     out[key] = value;

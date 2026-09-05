@@ -73,114 +73,114 @@ const pfade = (ts: { path: string }[]): string[] => ts.map((t) => t.path);
 describe("TaskIndex.children", () => {
   it("liefert die direkten Unteraufgaben – nicht die Enkel", () => {
     const { index } = neuerIndex([
-      datei("Items/wurzel.md", aufgabe()),
-      datei("Items/kind-a.md", aufgabe("wurzel")),
-      datei("Items/kind-b.md", aufgabe("wurzel")),
-      datei("Items/enkel.md", aufgabe("kind-a")),
+      datei("_vibetasks/tasks/wurzel.md", aufgabe()),
+      datei("_vibetasks/tasks/kind-a.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/kind-b.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/enkel.md", aufgabe("kind-a")),
     ]);
-    expect(pfade(index.children("Items/wurzel.md"))).toEqual(["Items/kind-a.md", "Items/kind-b.md"]);
-    expect(pfade(index.children("Items/kind-a.md"))).toEqual(["Items/enkel.md"]);
+    expect(pfade(index.children("_vibetasks/tasks/wurzel.md"))).toEqual(["_vibetasks/tasks/kind-a.md", "_vibetasks/tasks/kind-b.md"]);
+    expect(pfade(index.children("_vibetasks/tasks/kind-a.md"))).toEqual(["_vibetasks/tasks/enkel.md"]);
   });
 
   it("liefert für eine Aufgabe ohne Kinder eine leere Liste", () => {
-    const { index } = neuerIndex([datei("Items/allein.md", aufgabe())]);
-    expect(index.children("Items/allein.md")).toEqual([]);
-    expect(index.children("Items/gibt-es-nicht.md")).toEqual([]);
+    const { index } = neuerIndex([datei("_vibetasks/tasks/allein.md", aufgabe())]);
+    expect(index.children("_vibetasks/tasks/allein.md")).toEqual([]);
+    expect(index.children("_vibetasks/tasks/gibt-es-nicht.md")).toEqual([]);
   });
 
   it("zählt JEDEN Status mit – Filtern ist Sache der Aufrufer (Badge, Papierkorb)", () => {
     const { index } = neuerIndex([
-      datei("Items/wurzel.md", aufgabe()),
-      datei("Items/offen.md", aufgabe("wurzel")),
-      datei("Items/fertig.md", aufgabe("wurzel", { status: "done" })),
-      datei("Items/weg.md", aufgabe("wurzel", { status: "cancelled" })),
+      datei("_vibetasks/tasks/wurzel.md", aufgabe()),
+      datei("_vibetasks/tasks/offen.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/fertig.md", aufgabe("wurzel", { status: "done" })),
+      datei("_vibetasks/tasks/weg.md", aufgabe("wurzel", { status: "cancelled" })),
     ]);
-    expect(index.children("Items/wurzel.md")).toHaveLength(3);
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toHaveLength(3);
   });
 
   it("behält die Reihenfolge des Index bei (Einfügereihenfolge, wie beim früheren Vollscan)", () => {
     const { index } = neuerIndex([
-      datei("Items/wurzel.md", aufgabe()),
-      datei("Items/z.md", aufgabe("wurzel")),
-      datei("Items/a.md", aufgabe("wurzel")),
-      datei("Items/m.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/wurzel.md", aufgabe()),
+      datei("_vibetasks/tasks/z.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/a.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/m.md", aufgabe("wurzel")),
     ]);
-    expect(pfade(index.children("Items/wurzel.md"))).toEqual(["Items/z.md", "Items/a.md", "Items/m.md"]);
+    expect(pfade(index.children("_vibetasks/tasks/wurzel.md"))).toEqual(["_vibetasks/tasks/z.md", "_vibetasks/tasks/a.md", "_vibetasks/tasks/m.md"]);
   });
 });
 
 describe("TaskIndex.children – die Gruppierung darf nicht veralten", () => {
   it("kennt eine neu hinzugekommene Unteraufgabe sofort", () => {
-    const dateien = [datei("Items/wurzel.md", aufgabe())];
+    const dateien = [datei("_vibetasks/tasks/wurzel.md", aufgabe())];
     const { index, feuern } = neuerIndex(dateien);
-    expect(index.children("Items/wurzel.md")).toHaveLength(0);   // Cache füllen …
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toHaveLength(0);   // Cache füllen …
 
-    const neu = datei("Items/kind.md", aufgabe("wurzel"));
+    const neu = datei("_vibetasks/tasks/kind.md", aufgabe("wurzel"));
     dateien.push(neu);
     feuern("mc:changed", neu);
-    expect(pfade(index.children("Items/wurzel.md"))).toEqual(["Items/kind.md"]);
+    expect(pfade(index.children("_vibetasks/tasks/wurzel.md"))).toEqual(["_vibetasks/tasks/kind.md"]);
   });
 
   it("hängt eine Unteraufgabe um, wenn ihr Eltern-Verweis wechselt", () => {
     const dateien = [
-      datei("Items/alt.md", aufgabe()),
-      datei("Items/neu.md", aufgabe()),
-      datei("Items/kind.md", aufgabe("alt")),
+      datei("_vibetasks/tasks/alt.md", aufgabe()),
+      datei("_vibetasks/tasks/neu.md", aufgabe()),
+      datei("_vibetasks/tasks/kind.md", aufgabe("alt")),
     ];
     const { index, feuern } = neuerIndex(dateien);
-    expect(index.children("Items/alt.md")).toHaveLength(1);
+    expect(index.children("_vibetasks/tasks/alt.md")).toHaveLength(1);
 
     dateien[2].fm = aufgabe("neu");
     feuern("mc:changed", dateien[2]);
-    expect(index.children("Items/alt.md")).toEqual([]);
-    expect(pfade(index.children("Items/neu.md"))).toEqual(["Items/kind.md"]);
+    expect(index.children("_vibetasks/tasks/alt.md")).toEqual([]);
+    expect(pfade(index.children("_vibetasks/tasks/neu.md"))).toEqual(["_vibetasks/tasks/kind.md"]);
   });
 
   it("löst den Verweis, wenn die Unteraufgabe keine Aufgabe mehr ist", () => {
-    const dateien = [datei("Items/wurzel.md", aufgabe()), datei("Items/kind.md", aufgabe("wurzel"))];
+    const dateien = [datei("_vibetasks/tasks/wurzel.md", aufgabe()), datei("_vibetasks/tasks/kind.md", aufgabe("wurzel"))];
     const { index, feuern } = neuerIndex(dateien);
-    expect(index.children("Items/wurzel.md")).toHaveLength(1);
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toHaveLength(1);
 
     dateien[1].fm = { type: "note" };   // `type` weg -> keine Aufgabe mehr
     feuern("mc:changed", dateien[1]);
-    expect(index.children("Items/wurzel.md")).toEqual([]);
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toEqual([]);
   });
 
   it("vergisst eine gelöschte Unteraufgabe", () => {
-    const dateien = [datei("Items/wurzel.md", aufgabe()), datei("Items/kind.md", aufgabe("wurzel"))];
+    const dateien = [datei("_vibetasks/tasks/wurzel.md", aufgabe()), datei("_vibetasks/tasks/kind.md", aufgabe("wurzel"))];
     const { index, feuern } = neuerIndex(dateien);
-    expect(index.children("Items/wurzel.md")).toHaveLength(1);
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toHaveLength(1);
 
     dateien.splice(1, 1);
-    feuern("vault:delete", datei("Items/kind.md", null));
-    expect(index.children("Items/wurzel.md")).toEqual([]);
+    feuern("vault:delete", datei("_vibetasks/tasks/kind.md", null));
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toEqual([]);
   });
 
   it("macht aus einer Unteraufgabe eine Hauptaufgabe, wenn der Elter gelöscht wird", () => {
     // severReferences kappt den Verweis im Index sofort – sonst bliebe das Kind an einem Pfad
     // hängen, den es nicht mehr gibt (s. delete-Handler in TaskIndex).
-    const dateien = [datei("Items/wurzel.md", aufgabe()), datei("Items/kind.md", aufgabe("wurzel"))];
+    const dateien = [datei("_vibetasks/tasks/wurzel.md", aufgabe()), datei("_vibetasks/tasks/kind.md", aufgabe("wurzel"))];
     const { index, feuern } = neuerIndex(dateien);
-    expect(index.children("Items/wurzel.md")).toHaveLength(1);
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toHaveLength(1);
 
     dateien.splice(0, 1);
-    feuern("vault:delete", datei("Items/wurzel.md", null));
-    expect(index.children("Items/wurzel.md")).toEqual([]);
-    expect(index.get("Items/kind.md")?.parent).toBeNull();
+    feuern("vault:delete", datei("_vibetasks/tasks/wurzel.md", null));
+    expect(index.children("_vibetasks/tasks/wurzel.md")).toEqual([]);
+    expect(index.get("_vibetasks/tasks/kind.md")?.parent).toBeNull();
   });
 });
 
 describe("TaskIndex.descendants", () => {
   it("sammelt alle Ebenen unterhalb einer Aufgabe", () => {
     const { index } = neuerIndex([
-      datei("Items/wurzel.md", aufgabe()),
-      datei("Items/kind.md", aufgabe("wurzel")),
-      datei("Items/enkel.md", aufgabe("kind")),
-      datei("Items/urenkel.md", aufgabe("enkel")),
-      datei("Items/fremd.md", aufgabe()),
+      datei("_vibetasks/tasks/wurzel.md", aufgabe()),
+      datei("_vibetasks/tasks/kind.md", aufgabe("wurzel")),
+      datei("_vibetasks/tasks/enkel.md", aufgabe("kind")),
+      datei("_vibetasks/tasks/urenkel.md", aufgabe("enkel")),
+      datei("_vibetasks/tasks/fremd.md", aufgabe()),
     ]);
-    expect(pfade(index.descendants("Items/wurzel.md")).sort())
-      .toEqual(["Items/enkel.md", "Items/kind.md", "Items/urenkel.md"]);
-    expect(index.descendants("Items/fremd.md")).toEqual([]);
+    expect(pfade(index.descendants("_vibetasks/tasks/wurzel.md")).sort())
+      .toEqual(["_vibetasks/tasks/enkel.md", "_vibetasks/tasks/kind.md", "_vibetasks/tasks/urenkel.md"]);
+    expect(index.descendants("_vibetasks/tasks/fremd.md")).toEqual([]);
   });
 });

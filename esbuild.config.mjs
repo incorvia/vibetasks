@@ -17,11 +17,15 @@ const ctx = await esbuild.context({
   // vorher OHNE chrono ausgeliefert wurden.
   minify: prod,
   treeShaking: true,
+  metafile: prod,
   outfile: "main.js",
 });
 
 if (prod) {
-  await ctx.rebuild();
+  const result = await ctx.rebuild();
+  const imports = Object.values(result.metafile.outputs).flatMap((output) => output.imports.map((entry) => entry.path));
+  const forbidden = imports.filter((path) => path.startsWith("node:") || builtins.includes(path));
+  if (forbidden.length) throw new Error(`Mobile bundle contains Node built-ins: ${[...new Set(forbidden)].join(", ")}`);
   process.exit(0);
 } else {
   await ctx.watch();

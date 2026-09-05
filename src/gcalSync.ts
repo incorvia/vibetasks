@@ -4,6 +4,7 @@ import { isTrashed, isDone } from "./statuses";
 import { isInboxLink } from "./taskService";
 import { resolveReminders } from "./reminders";
 import { combineDT } from "./format";
+import { updateRecord } from "./mdbaseRepository";
 import { t } from "./i18n";
 import { GCalAuth, GCalAuthError } from "./gcalAuth";
 
@@ -651,14 +652,14 @@ export class GCalSync {
   private async writeBack(t: Task, eventId: string, calendarId: string): Promise<void> {
     const f = this.host.app.vault.getAbstractFileByPath(t.path);
     if (!(f instanceof TFile)) return;
-    await this.host.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.host.app, f, (fm) => {
       fm.gcal_event_id = eventId; fm.gcal_calendar_id = calendarId;
     });
   }
   private async clearBack(t: Task): Promise<void> {
     const f = this.host.app.vault.getAbstractFileByPath(t.path);
     if (!(f instanceof TFile)) return;
-    await this.host.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.host.app, f, (fm) => {
       delete fm.gcal_event_id; delete fm.gcal_calendar_id;
     });
   }
@@ -666,7 +667,7 @@ export class GCalSync {
   private async writeBackDue(t: Task, due: string | null, dueTime: string | null): Promise<void> {
     const f = this.host.app.vault.getAbstractFileByPath(t.path);
     if (!(f instanceof TFile)) return;
-    await this.host.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+    await updateRecord(this.host.app, f, (fm) => {
       if (due) fm.due = combineDT(due, dueTime); else delete fm.due;
     });
   }

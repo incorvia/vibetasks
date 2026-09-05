@@ -2,8 +2,9 @@ import { App, TFile, normalizePath } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { Task } from "./types";
 import { AnchorMode, planTemplateDates } from "./templatePlan";
-import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, setTaskTitle, slugify } from "./taskService";
+import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, slugify } from "./taskService";
 import { firstOpenStatus, isTrashed } from "./statuses";
+import { updateRecord } from "./mdbaseRepository";
 
 /**
  * Vorlagen: speichern und anwenden.
@@ -100,7 +101,7 @@ function rootMeta(app: App, path: string): { kind: TemplateKind; hidden: boolean
 export async function setTemplateHidden(app: App, path: string, hidden: boolean): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+  await updateRecord(app, f, (fm) => {
     if (hidden) fm.nav_hidden = true; else delete fm.nav_hidden;
   });
 }
@@ -139,7 +140,7 @@ export async function saveAsTemplate(plugin: VibeTaskPlugin, task: Task, kind: T
     reminders: [...task.reminders],
   }, target);
 
-  await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => { fm[TEMPLATE_OF] = kind; });
+  await updateRecord(plugin.app, root, (fm) => { fm[TEMPLATE_OF] = kind; });
   await plugin.duplicateSubtree(task.path, root.basename, { target, project: null });
   return root.path;
 }
@@ -165,7 +166,7 @@ export async function saveProjectAsTemplate(plugin: VibeTaskPlugin, projectPath:
   const root = await createTaskNote(plugin.app, plugin.settings, {
     title: name, description, status: firstOpenStatus(), project: null,
   }, target);
-  await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => { fm[TEMPLATE_OF] = "project"; });
+  await updateRecord(plugin.app, root, (fm) => { fm[TEMPLATE_OF] = "project"; });
 
   // Die Aufgaben DES Projekts, die keine Unteraufgabe sind – alles Tiefere holt die Rekursion.
   // Papierkorb bleibt aussen vor (subtasksToDuplicate filtert ihn ohnehin, aber schon hier
@@ -267,7 +268,7 @@ export async function createEmptyTemplate(plugin: VibeTaskPlugin, name: string, 
   const root = await createTaskNote(plugin.app, plugin.settings, {
     title: name, status: firstOpenStatus(), project: null,
   }, { folder, type: TEMPLATE_TYPE });
-  await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => { fm[TEMPLATE_OF] = kind; });
+  await updateRecord(plugin.app, root, (fm) => { fm[TEMPLATE_OF] = kind; });
   return root.path;
 }
 
@@ -282,9 +283,13 @@ export async function createEmptyTemplate(plugin: VibeTaskPlugin, name: string, 
 export async function renameTemplate(plugin: VibeTaskPlugin, rootPath: string, newName: string): Promise<void> {
   const file = plugin.app.vault.getAbstractFileByPath(rootPath);
   if (!(file instanceof TFile)) return;
-  await setTaskTitle(plugin.app, file, newName);
   const folder = file.parent;
-  if (!folder || folder.path === plugin.settings.templatesFolder) return;   // Wurzel liegt (noch) ohne eigenen Ordner
+  const title = newName.trim();
+  if (!title) return;
+  const base = slugify(title);
+  const rootDest = normalizePath(`${folder?.path ? folder.path + "/" : ""}${base}.md`);
+  await plugin.repository.rename(file.path, rootDest, title);
+  if (!folder || folder.path === plugin.settings.templatesFolder) return;
   const dest = freeFolder(plugin.app, templateFolder(plugin, newName));
   if (dest !== folder.path) await plugin.app.fileManager.renameFile(folder, dest);
 }
@@ -294,9 +299,15 @@ export async function deleteTemplate(plugin: VibeTaskPlugin, rootPath: string): 
   const folder = plugin.app.vault.getAbstractFileByPath(rootPath.split("/").slice(0, -1).join("/"));
   // Der Ordner gehört der Vorlage allein – ihn als Ganzes zu entfernen nimmt auch die Kinder mit,
   // ohne sie einzeln aufsammeln zu müssen. Fehlt er wider Erwarten, bleibt die Wurzel-Notiz.
-  if (folder) { await plugin.app.fileManager.trashFile(folder); return; }
+  if (folder) {
+    const prefix = folder.path + "/";
+    for (const record of await plugin.repository.list("template")) if (record.path.startsWith(prefix)) await plugin.repository.trash(record.path);
+    const empty = plugin.app.vault.getAbstractFileByPath(folder.path);
+    if (empty) await plugin.app.fileManager.trashFile(empty); // folder cleanup; record deletes went through the repository
+    return;
+  }
   const f = plugin.app.vault.getAbstractFileByPath(rootPath);
-  if (f instanceof TFile) await plugin.app.fileManager.trashFile(f);
+  if (f instanceof TFile) await plugin.repository.trash(f.path);
 }
 
 /** Für Anzeigezwecke: der Name der Vorlage, zu der eine Notiz gehört (= ihr Ordnername). */
@@ -317,4 +328,3 @@ export const templateNameOf = (path: string): string => baseName(path.split("/")
 export function refreshTemplates(plugin: VibeTaskPlugin): void {
   window.setTimeout(() => plugin.templates.build(), 150);
 }
-

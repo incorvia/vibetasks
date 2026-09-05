@@ -1,10 +1,12 @@
 import { App, TFile, normalizePath } from "obsidian";
 import { VibeTaskSettings } from "./types";
-import { buildFrontmatter, ensureFolder, newId, todayIso, slugify, retitleHeading } from "./taskService";
+import { ensureFolder, slugify } from "./taskService";
 import { fieldKey } from "./fieldNames";
 import { ScanCache } from "./scanCache";
 import { FilterCriteria, ViewOptions } from "./filterEngine";
 import { readViewOptions, writeViewOptions, readCriteria, writeCriteria } from "./pageOptions";
+import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
+import { isCollectionPath } from "./mdbaseResources";
 
 /** Ein gespeicherter Filter (`type: filter`-Notiz im Vault). */
 export interface FilterItem {
@@ -19,7 +21,7 @@ function readOptions(fm: Record<string, unknown>): ViewOptions {
 
 function toItem(f: TFile, fm: Record<string, unknown>): FilterItem {
   return {
-    name: f.basename, path: f.path,
+    name: typeof fm.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path,
     icon: "tag",   // fest (noch kein Icon-Picker) – gilt auch für Alt-Filter mit gespeichertem icon
     color: typeof fm.color === "string" ? fm.color : null,
     description: typeof fm.description === "string" ? fm.description : "",
@@ -33,6 +35,7 @@ function toItem(f: TFile, fm: Record<string, unknown>): FilterItem {
  *  Index-Meldung braucht und je Filter zusätzlich die Kriterien parst. */
 const filterScan = new ScanCache<FilterItem>((ty) => ty === "filter", (app) =>
   app.vault.getMarkdownFiles().flatMap((f) => {
+    if (!isCollectionPath(f.path)) return [];
     const fm = app.metadataCache.getFileCache(f)?.frontmatter;
     return fm?.[fieldKey("type")] === "filter" ? [toItem(f, fm)] : [];
   }).sort((a, b) => a.name.localeCompare(b.name, "de")));
@@ -47,6 +50,7 @@ export function listFilters(app: App): FilterItem[] {
 
 /** Einen Filter per Pfad lesen (null, wenn keine Filter-Notiz mehr). */
 export function readFilter(app: App, path: string): FilterItem | null {
+  if (!isCollectionPath(path)) return null;
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return null;
   const fm = app.metadataCache.getFileCache(f)?.frontmatter;
@@ -72,12 +76,13 @@ export async function createFilterNote(
   let dest = normalizePath(folder + "/" + base + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
-  const fm: Record<string, unknown> = { [fieldKey("type")]: "filter", id: newId("f"), created: todayIso() };
+  const now = rfc3339Now();
+  const fm: Record<string, unknown> = { type: "filter", id: newUlid(), title: base, created: now, modified: now };
   if (hidden) fm.nav_hidden = true;
   if (description.trim()) fm.description = description.trim();
   applyToFrontmatter(fm, criteria, options, color);
   // Kein „# Name" im Body: Der Name kommt aus dem Dateinamen; der Body gehört dem Nutzer.
-  await app.vault.create(dest, buildFrontmatter(fm) + "\n");
+  await repositoryFor(app).create({ type: "filter", path: dest, frontmatter: fm, body: "\n" });
   return base;
 }
 
@@ -85,22 +90,18 @@ export async function createFilterNote(
 export async function updateFilterNote(app: App, path: string, criteria: FilterCriteria, options: ViewOptions, color: string | null): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => applyToFrontmatter(fm, criteria, options, color));
+  await updateRecord(app, f, (fm) => applyToFrontmatter(fm, criteria, options, color));
 }
 
 /** Filter-Notiz umbenennen (Datei + „# Überschrift"). Gibt neuen Basenamen zurück oder null. */
 export async function renameFilterNote(app: App, path: string, newName: string): Promise<string | null> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return null;
-  const oldName = f.basename;   // vor dem Umbenennen merken
   const base = slugify(newName);
   const folder = f.parent?.path ?? "";
-  let dest = normalizePath((folder ? folder + "/" : "") + base + ".md");
+  const dest = normalizePath((folder ? folder + "/" : "") + base + ".md");
   if (dest !== path && app.vault.getAbstractFileByPath(dest)) return null;   // Kollision
-  await app.fileManager.renameFile(f, dest);
-  // „# Überschrift" nachziehen, aber nur solange sie noch den alten Namen trägt.
-  const nf = app.vault.getAbstractFileByPath(dest);
-  if (nf instanceof TFile) await retitleHeading(app, nf, oldName, newName);
+  await repositoryFor(app).rename(f.path, dest, base);
   return base;
 }
 
@@ -108,18 +109,18 @@ export async function renameFilterNote(app: App, path: string, newName: string):
 export async function setFilterColor(app: App, path: string, color: string | null): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { if (color) fm.color = color; else delete fm.color; });
+  await updateRecord(app, f, (fm) => { if (color) fm.color = color; else delete fm.color; });
 }
 
 /** Filter in der Seitenleiste ein-/ausblenden (Frontmatter `nav_hidden`). */
 export async function setFilterNavHidden(app: App, path: string, hidden: boolean): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { if (hidden) fm.nav_hidden = true; else delete fm.nav_hidden; });
+  await updateRecord(app, f, (fm) => { if (hidden) fm.nav_hidden = true; else delete fm.nav_hidden; });
 }
 
 /** Filter-Notiz löschen (in Obsidians Papierkorb). */
 export async function deleteFilterNote(app: App, path: string): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
-  if (f instanceof TFile) await app.fileManager.trashFile(f);
+  if (f instanceof TFile) await repositoryFor(app).trash(f.path);
 }
