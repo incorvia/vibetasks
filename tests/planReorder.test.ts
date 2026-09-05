@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Task } from "../src/types";
-import { planReorder, ORDER_GAP, sortTasks, orderChain } from "../src/filterEngine";
+import { planReorder, planInsert, ORDER_GAP, sortTasks, orderChain } from "../src/filterEngine";
 
 function mk(id: string, sortOrder: number | null = null): Task {
   return {
@@ -21,6 +21,25 @@ const apply = (all: Task[], writes: { path: string; order: number }[]): string[]
   const byPath = new Map(next.map((t) => [t.path, t]));
   return sortTasks(next, "manual", "asc", (t) => orderChain(t, (q) => byPath.get(q))).map((t) => t.id);
 };
+
+describe("planInsert – neue Aufgabe", () => {
+  it("uses the midpoint without rewriting established siblings", () => {
+    const list = [mk("a", 10), mk("b", 20)];
+    expect(planInsert(list, p("b"))).toEqual({ order: 15, writes: [] });
+  });
+
+  it("renumbers unmaterialized siblings and returns the inserted slot", () => {
+    const list = [mk("a"), mk("b")];
+    expect(planInsert(list, p("b"))).toEqual({
+      order: 2 * ORDER_GAP,
+      writes: [{ path: p("a"), order: ORDER_GAP }, { path: p("b"), order: 3 * ORDER_GAP }],
+    });
+  });
+
+  it("appends after the final sibling", () => {
+    expect(planInsert([mk("a", 10), mk("b", 20)], null)).toEqual({ order: 30, writes: [] });
+  });
+});
 
 describe("planReorder – erster Zug in einer Gruppe", () => {
   it("nummeriert die GANZE Gruppe durch, weil es keine Mitte zu bilden gibt", () => {

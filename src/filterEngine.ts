@@ -286,6 +286,8 @@ export const isUpcomingTask = (t: Task, today: string): boolean => {
 export const ORDER_GAP = 10;
 /** Ein zu schreibender Positionswert. */
 export interface OrderWrite { path: string; order: number; }
+/** Minimal shape needed by the manual-order planner. */
+export interface OrderItem { path: string; sortOrder: number | null; }
 
 /**
  * Plant die Schreibvorgänge für einen Zug: `moved` soll VOR `beforePath` stehen (null = ans Ende).
@@ -309,7 +311,7 @@ export interface OrderWrite { path: string; order: number; }
  * Status). Deshalb bekommt der Aufrufer die GANZE Gruppe herein – die Nachbarschaft wird über alle
  * Spalten hinweg bestimmt.
  */
-export function planReorder(ordered: Task[], moved: Task, beforePath: string | null): OrderWrite[] {
+export function planReorder(ordered: OrderItem[], moved: OrderItem, beforePath: string | null): OrderWrite[] {
   const rest = ordered.filter((t) => t.path !== moved.path);
   const found = beforePath ? rest.findIndex((t) => t.path === beforePath) : -1;
   const at = beforePath && found >= 0 ? found : rest.length;
@@ -331,6 +333,20 @@ export function planReorder(ordered: Task[], moved: Task, beforePath: string | n
   const mid = (prev! + next!) / 2;
   if (mid === prev || mid === next) return renumber();   // Lücke erschöpft
   return [{ path: moved.path, order: mid }];
+}
+
+/**
+ * Plans the position of a task that does not exist yet. Existing siblings are only rewritten when
+ * the target gap cannot be represented (the same rare renumbering cases as `planReorder`).
+ */
+export function planInsert(ordered: OrderItem[], beforePath: string | null): { order: number; writes: OrderWrite[] } {
+  const NEW_PATH = "\0new-task";
+  const planned = planReorder(ordered, { path: NEW_PATH, sortOrder: null }, beforePath);
+  const inserted = planned.find((w) => w.path === NEW_PATH);
+  return {
+    order: inserted?.order ?? ORDER_GAP,
+    writes: planned.filter((w) => w.path !== NEW_PATH),
+  };
 }
 
 /** Lokales Datum + n Tage als ISO (YYYY-MM-DD), ohne UTC-Drift. */

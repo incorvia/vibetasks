@@ -25,7 +25,7 @@ import { clearScanCaches, noteScanChanged, noteScanGone } from "./scanCache";
 /** Je Feld ein eigener Bestaetigungstext – die Folgen unterscheiden sich zu sehr fuer einen
  *  gemeinsamen Satz: `type` schreibt vault-weit um, `title` und `labels` nur Aufgaben. */
 import { createFilterNote, updateFilterNote, deleteFilterNote, setFilterNavHidden, setFilterColor, renameFilterNote, listFilters, readFilter, FilterItem } from "./filterService";
-import { FilterCriteria, ViewOptions, DEFAULT_OPTIONS, DEFAULT_CRITERIA, countFilter, sortTasks, planReorder, collectTrashTargets, subtasksToDuplicate, ORDER_GAP } from "./filterEngine";
+import { FilterCriteria, ViewOptions, DEFAULT_OPTIONS, DEFAULT_CRITERIA, countFilter, sortTasks, planReorder, planInsert, collectTrashTargets, subtasksToDuplicate, ORDER_GAP } from "./filterEngine";
 import { ConfirmModal } from "./confirmModal";
 import { readNoteViewOptions, setNoteViewOption, readViewOptions, writeViewOptions, readNoteCriteria, setNoteCriteria, readCriteria, writeCriteria } from "./pageOptions";
 import { nextInstance, legacyToRRule } from "./recurrence";
@@ -2346,6 +2346,22 @@ export default class VibeTaskPlugin extends Plugin {
         fm.sort_order = w.order;
       });
     }
+  }
+
+  /** Reserve a manual-order position for a new sibling immediately before `beforePath`. */
+  async prepareTaskInsert(parentPath: string | null, beforePath: string | null): Promise<number> {
+    const siblings = this.index.all().filter((t) => t.parent === parentPath && !isTrashed(t.status));
+    const ordered = sortTasks(siblings, "manual", "asc", (t) => this.index.orderKey(t));
+    const plan = planInsert(ordered, beforePath);
+    for (const w of plan.writes) {
+      const f = this.app.vault.getAbstractFileByPath(w.path);
+      if (!(f instanceof TFile)) continue;
+      await updateRecord(this.app, f, (fm) => {
+        this.ensureCanonical(fm);
+        fm.sort_order = w.order;
+      });
+    }
+    return plan.order;
   }
 
   async setTaskProject(task: Task, project: string | null): Promise<void> {

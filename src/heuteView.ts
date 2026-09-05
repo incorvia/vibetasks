@@ -96,18 +96,23 @@ function openInlineTaskEditor(ctx: PageCtx, task: Task, row: HTMLElement): void 
 /** Die normale „+ Aufgabe"-Zeile ist ebenfalls ein Inline-Composer. Das globale Quick Add bleibt
  *  ein Modal, weil es absichtlich ohne sichtbaren Seitenkontext von überall erreichbar ist. */
 function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, label?: string,
-  today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null): void {
+  today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null,
+  insert?: { side: "before" | "after"; task: Task; beforePath: string | null }): void {
   const current = inlineTaskEditors.get(ctx.id);
   if (current?.path === "\0new" && current.slot.isConnected) { current.modal.focusTitle(); return; }
   if (current) closeInlineTaskEditor(ctx.id, false);
 
   const slot = anchor.parentElement!.createDiv({ cls: "bt-sizer bt-inline-editor-slot bt-inline-new" });
   const top = anchor.closest<HTMLElement>(".bt-page-top") ?? anchor;
-  top.insertAdjacentElement("afterend", slot);
+  const taskRow = insert ? anchor.closest<HTMLElement>(".bt-task") : null;
+  (taskRow ?? top).insertAdjacentElement(insert?.side === "before" ? "beforebegin" : "afterend", slot);
   anchor.addClass("is-editing");
   const modal = new TaskModal(ctx.plugin, undefined, project, {
     defaultLabel: label, defaultToday: today, defaultStatus: status,
     seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
+    hideProjekt: !!insert?.task.parent,
+    parent: insert?.task.parent ? baseName(insert.task.parent) : undefined,
+    insertBefore: insert ? { parentPath: insert.task.parent, beforePath: insert.beforePath } : undefined,
   });
   const active: InlineTaskEditor = { modal, path: "\0new", row: anchor, slot, suppressRedraw: false };
   inlineTaskEditors.set(ctx.id, active);
@@ -1821,6 +1826,40 @@ function attachDragGhost(e: DragEvent, row: HTMLElement): void {
 /** Durchsichtiger Rand der Zughülle – muss zum `padding` von `.bt-drag-ghost` passen. */
 const GHOST_PAD = 4;
 
+/** The next rendered sibling is the visual “below” target; hidden rows stay out of the way. */
+function nextVisibleSiblingPath(row: HTMLElement, task: Task, plugin: VibeTaskPlugin): string | null {
+  const rows = Array.from(row.parentElement?.querySelectorAll<HTMLElement>(":scope > .bt-task") ?? []);
+  for (let i = rows.indexOf(row) + 1; i < rows.length; i++) {
+    const path = rows[i].dataset.path;
+    const candidate = path ? plugin.index.get(path) : undefined;
+    if (candidate?.parent === task.parent) return candidate.path;
+  }
+  return null;
+}
+
+/** Manual-order insertion controls. They deliberately do not exist in automatic sort modes. */
+function renderTaskInsertControls(row: HTMLElement, ctx: PageCtx, task: Task): void {
+  const page = pageInfo(ctx.page);
+  const project = task.project ? baseName(task.project) : undefined;
+  const label = page.kind === "label" ? page.key : undefined;
+  const onToday = page.kind === "view" && page.key === "heute";
+  const add = (side: "before" | "after"): void => {
+    const beforePath = side === "before" ? task.path : nextVisibleSiblingPath(row, task, ctx.plugin);
+    openInlineNewTask(ctx, row, project, label, onToday, undefined, addDue(ctx), undefined,
+      { side, task, beforePath });
+  };
+  for (const side of ["before", "after"] as const) {
+    const labelKey = side === "before" ? "task_add_above" : "task_add_below";
+    const button = row.createEl("button", {
+      cls: "bt-row-insert bt-row-insert-" + side,
+      attr: { "aria-label": t(labelKey), type: "button" },
+    });
+    setIcon(button, "plus");
+    tip(button, t(labelKey));
+    button.onclick = (e) => { e.preventDefault(); e.stopPropagation(); add(side); };
+  }
+}
+
 function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, depth: number, trash = false,
   opts: { flat?: boolean; colId?: string; subs?: SubtaskDisplay; manual?: boolean; showDone?: boolean; impliedDate?: string; deadlineImplied?: boolean; hideProject?: string } = {}): void {
   const plugin = ctx.plugin;
@@ -1854,6 +1893,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     setIcon(grip, "grip-vertical");
     attachTaskReorder(row, grip, list, task, plugin);
   }
+  if (opts.manual && !opts.flat && !trash && isOpen(task.status)) renderTaskInsertControls(row, ctx, task);
 
   // Per HTML5-Drag verschiebbar (Desktop): auf dem Board zwischen den Spalten, in der LISTE auf
   // einen Eintrag der Seitenleiste (Projekt/Bereich/Eingang – s. navItem/onDropTask). Beides

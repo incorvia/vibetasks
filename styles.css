@@ -1537,6 +1537,29 @@ body.bt-meta-colorado {
 .bt-task:hover .bt-row-grip { opacity: 0.8; }
 .bt-task.is-dragging .bt-row-grip { cursor: grabbing; opacity: 1; }
 
+/* Add directly above/below a row. Manual order only (the renderer omits these in every automatic
+   sort), and hidden until the row is hovered/focused so a long outline stays visually quiet. */
+.bt-row-insert {
+  position: absolute; z-index: 3; left: 28px;
+  width: 18px; height: 18px; min-width: 18px; padding: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; box-shadow: none;
+  color: var(--text-faint); background: var(--background-primary);
+  opacity: 0; cursor: pointer;
+}
+.bt-row-insert-before { top: 0; transform: translateY(-50%); }
+.bt-row-insert-after { bottom: 0; transform: translateY(50%); }
+.bt-row-insert svg { width: 13px; height: 13px; }
+.bt-task:hover > .bt-row-insert,
+.bt-task:focus-within > .bt-row-insert,
+.bt-row-insert:focus-visible { opacity: 1; }
+.bt-row-insert:hover, .bt-row-insert:focus-visible {
+  color: var(--text-on-accent); background: var(--interactive-accent); outline: none;
+}
+@media (hover: none) {
+  .bt-task > .bt-row-insert { opacity: 0.75; }
+}
+
 /* „is-open" färbt bewusst NICHT mehr um – der Badge behält in jedem Zustand denselben Grauton. */
 /* Auf einer Kanban-Karte ist das Badge reine Anzeige (aufklappen ginge dort nicht) – es darf
    deshalb auch nicht klickbar aussehen. Der Zeiger bleibt der der Karte selbst. */

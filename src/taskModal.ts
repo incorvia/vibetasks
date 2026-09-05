@@ -70,7 +70,7 @@ export class TaskModal extends Modal {
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
   constructor(private plugin: VibeTaskPlugin, private existing?: Task, private defaultProject?: string,
-              private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope } = {}) {
+              private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
     super(plugin.app);
     const seed = opts.seed;
     this.f = existing
@@ -770,7 +770,10 @@ export class TaskModal extends Modal {
         });
       }
     } else {
-      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null }, this.editScope.target);
+      const sortOrder = this.opts.insertBefore
+        ? await this.plugin.prepareTaskInsert(this.opts.insertBefore.parentPath, this.opts.insertBefore.beforePath)
+        : undefined;
+      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null, sortOrder }, this.editScope.target);
       await this.log.flush(file);
     }
   }
