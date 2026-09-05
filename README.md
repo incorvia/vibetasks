@@ -1,19 +1,19 @@
-# BeautyTasks
+# VibeTask
 
 A Todoist-style task & project manager that lives **inside** Obsidian — with a fast, native UI on top of plain Markdown. Every task is a single Markdown note, so your data stays open, portable and future-proof, and there are **no plugin dependencies** and no account required.
 
-![Release](https://img.shields.io/github/v/release/avnibilgin/BeautyTasks?sort=semver)
-![License](https://img.shields.io/github/license/avnibilgin/BeautyTasks)
-![Downloads](https://img.shields.io/github/downloads/avnibilgin/BeautyTasks/total)
+![Release](https://img.shields.io/github/v/release/incorvia/vibetasks?sort=semver)
+![License](https://img.shields.io/github/license/incorvia/vibetasks)
+![Downloads](https://img.shields.io/github/downloads/incorvia/vibetasks/total)
 
 ---
 
-## Why BeautyTasks
+## Why VibeTask
 
 - **One note per task.** Each task is a normal Markdown file with YAML frontmatter. Nothing is locked in a proprietary database — search it, edit it by hand, sync it, or version it with Git.
 - **A real task app, natively.** A Todoist-inspired dashboard with sidebar navigation, a chip-based task editor, quick capture and keyboard-friendly flows — all rendered inside Obsidian, popout-window compatible.
 - **Zero plugin dependencies, local-first.** No other plugin and no account required. Your tasks are plain Markdown in your vault — the one optional online feature is two-way **Google Calendar sync**, which stays off until you set it up.
-- **Your frontmatter stays yours.** The two field names BeautyTasks needs — `type` and `title` — are configurable, so it never has to claim a property you already use. Turning an existing note into a task adds frontmatter and nothing else; your text is never rewritten.
+- **Your frontmatter stays yours.** The two field names VibeTask needs — `type` and `title` — are configurable, so it never has to claim a property you already use. Turning an existing note into a task adds frontmatter and nothing else; your text is never rewritten.
 - **Fully themeable.** Every color is a CSS variable; works with your theme, CSS snippets, or the Style Settings plugin — including a monochrome mode.
 - **10 languages.** The interface is available in English, German, Spanish, Portuguese (Brazil), French, Italian, Turkish, Russian, Simplified Chinese and Japanese (auto-detected from Obsidian, or set in settings). Natural-language **dates and times** work in all of them except Turkish, where English keywords (`tomorrow`, `next monday`) still do. English keywords work in every language, alongside your own.
 
@@ -24,22 +24,22 @@ A Todoist-style task & project manager that lives **inside** Obsidian — with a
 ### The dashboard
 A Todoist-style dashboard with sidebar navigation and grouped task lists.
 
-![BeautyTasks dashboard — Today view](docs/dashboard.png)
+![VibeTask dashboard — Today view](docs/dashboard.png)
 
 ### Task editor
 The full editor with its chip row for date, priority, labels, recurrence, deadline and reminders.
 
-![BeautyTasks task editor](docs/task-editor.png)
+![VibeTask task editor](docs/task-editor.png)
 
 ### Quick capture
 Add tasks in plain language — dates, times, priority and `#labels` are parsed automatically.
 
-![BeautyTasks quick add](docs/quick-add.png)
+![VibeTask quick add](docs/quick-add.png)
 
 ### Reminders
 Relative (“30 min before”) or absolute reminders, delivered as system notifications.
 
-![BeautyTasks reminders popover](docs/reminders.png)
+![VibeTask reminders popover](docs/reminders.png)
 
 ---
 
@@ -64,7 +64,7 @@ Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, c
 ### Saved filters & smart views
 Build custom queries — by project/area, label, priority, status, date range and more — and **save them to the sidebar** as reusable smart views, each with its own color. Per-view display options (layout, grouping, sorting, show completed) are remembered.
 
-If a saved filter points at something you later deleted — a label, a project, a custom status — BeautyTasks doesn't quietly return nothing. The affected dropdown is **outlined in red** and the entry is listed as *“… (missing)”*, so you can see the cause and remove it with one click.
+If a saved filter points at something you later deleted — a label, a project, a custom status — VibeTask doesn't quietly return nothing. The affected dropdown is **outlined in red** and the entry is listed as *“… (missing)”*, so you can see the cause and remove it with one click.
 
 ### Three layouts: list, board or calendar
 
@@ -144,7 +144,7 @@ The ✕ simply writes that backslash for you: `Dentist tomorrow` → ✕ → `De
 Prefer full control? Open the Todoist-style task editor with its chip row for date, priority, labels, recurrence, deadline, reminder and parent — and **show, hide or reorder those chips** to taste (separately for quick add and the full editor).
 
 ### Reminders
-Attach one or more reminders to a task — either **relative** (“at time of task”, 10 min / 30 min / 1 h / 1 day before) or an **absolute** date & time. When a reminder is due, BeautyTasks shows a **system notification** on desktop (even when Obsidian is in the background) and an in-app notice; clicking it opens the task.
+Attach one or more reminders to a task — either **relative** (“at time of task”, 10 min / 30 min / 1 h / 1 day before) or an **absolute** date & time. When a reminder is due, VibeTask shows a **system notification** on desktop (even when Obsidian is in the background) and an in-app notice; clicking it opens the task.
 
 > **Good to know:** in-app reminders fire while Obsidian is running (on desktop that includes the background; on mobile while the app is open). To be notified even when Obsidian is **fully closed**, turn on **Google Calendar sync** — reminders are pushed onto the calendar event, so your phone or OS notifies you.
 
@@ -178,8 +178,8 @@ Drag a task onto a **project, area or the inbox** in the sidebar to move it ther
 
 ## Getting started
 
-1. Install BeautyTasks and enable it.
-2. Click the **check-circle** ribbon icon (or run **“Open BeautyTasks”**) to open the dashboard.
+1. Install VibeTask and enable it.
+2. Click the **check-circle** ribbon icon (or run **“Open VibeTask”**) to open the dashboard.
 3. Hit **Add task** / run **Quick add**, type something like `Buy milk tomorrow #errands`, and press Enter.
 
 That’s it — a new Markdown note is created for the task in your configured folder.
@@ -209,12 +209,12 @@ description: Free-form text shown under the title
 ---
 ```
 
-The body is yours — BeautyTasks keeps its own notes (comments, attachments) in a collapsible
-`###### BeautyTasks Details-Logbuch` section at the bottom and leaves everything above it alone.
+The body is yours — VibeTask keeps its own notes (comments, attachments) in a collapsible
+`###### VibeTask Details-Logbuch` section at the bottom and leaves everything above it alone.
 
 ### Where the title comes from
 
-Tasks keep their title in `title:`. If a note doesn't have that field, BeautyTasks falls back,
+Tasks keep their title in `title:`. If a note doesn't have that field, VibeTask falls back,
 in this order:
 
 1. **`title:` in the frontmatter**
@@ -225,7 +225,7 @@ Renaming a task writes the new title back to wherever it came from, so the two n
 The file name is never changed — it is the note's identity, and links to projects and parent
 tasks resolve through it.
 
-That gives you one guarantee worth spelling out: **BeautyTasks only writes into the body of a
+That gives you one guarantee worth spelling out: **VibeTask only writes into the body of a
 note that already has a title there — a level-1 heading as its first heading.** If your note
 starts with `## Something`, or has no heading at all, the title is stored as `title:` in the
 frontmatter instead and your text is left alone. Notes with a structure of their own keep it.
@@ -237,13 +237,13 @@ Add a description in the task dialog if you want one, and use **Open task note**
 context menu to jump back to it.
 
 Upgrading from an earlier version? A one-time pass moves existing titles from the heading into
-`title:`. It removes that heading line only in notes BeautyTasks created itself — those live in
+`title:`. It removes that heading line only in notes VibeTask created itself — those live in
 your tasks folder — and only when the line really was the title. Everything you wrote yourself
 keeps its heading, and no task changes the title it displays.
 
 ### Field names
 
-Two frontmatter fields carry BeautyTasks' own meaning, and both are popular property names:
+Two frontmatter fields carry VibeTask' own meaning, and both are popular property names:
 
 | Field | What it does |
 | --- | --- |
@@ -251,7 +251,7 @@ Two frontmatter fields carry BeautyTasks' own meaning, and both are popular prop
 | `title` | holds the task title |
 
 If you already use one of these names for something else, Settings → **Field names** points
-BeautyTasks at your own field instead, e.g. `bt_type`. Changing a name asks first and shows how
+VibeTask at your own field instead, e.g. `bt_type`. Changing a name asks first and shows how
 many notes it affects:
 
 - **`type`** — your notes are rewritten to the new field and the old one is removed. Notes in
@@ -264,7 +264,7 @@ many notes it affects:
 
 ### Project notes
 
-Projects, areas and saved filters are Markdown notes too — and **their body belongs to you**. BeautyTasks stores what it needs in the frontmatter and writes nothing into the text, so the note is a natural place for everything that belongs to that project: a brief, links, meeting notes, images.
+Projects, areas and saved filters are Markdown notes too — and **their body belongs to you**. VibeTask stores what it needs in the frontmatter and writes nothing into the text, so the note is a natural place for everything that belongs to that project: a brief, links, meeting notes, images.
 
 Reach it from the **context menu** of the sidebar entry, or from the **⋯ menu** on the project page → **Open project note** (or area / filter note). It is worth opening: because every task points at it with `project: "[[Name]]"`, that note is already where Obsidian's backlinks and graph converge.
 
@@ -281,22 +281,22 @@ color: "#4caf50"
 Your own notes start right here.
 ```
 
-The name always comes from the **file name**, never from the body or a `title:` field. That keeps one name for one thing: renaming the project renames the file, and Obsidian plus BeautyTasks update every `[[link]]` pointing at it.
+The name always comes from the **file name**, never from the body or a `title:` field. That keeps one name for one thing: renaming the project renames the file, and Obsidian plus VibeTask update every `[[link]]` pointing at it.
 
 By default, notes live under these folders (all configurable in settings):
 
 | Content | Default folder |
 | --- | --- |
-| Tasks | `BeautyTasks/Items` |
-| Projects & Areas | `BeautyTasks/Projects` |
-| Saved filters | `BeautyTasks/Filters` |
-| Attachments | `BeautyTasks/Attachments` |
+| Tasks | `VibeTask/Items` |
+| Projects & Areas | `VibeTask/Projects` |
+| Saved filters | `VibeTask/Filters` |
+| Attachments | `VibeTask/Attachments` |
 
 Projects and areas are the same kind of note (`type: project` / `type: area`), so they share one folder.
 
 ## Google Calendar sync
 
-BeautyTasks can mirror every task that has a **due date** into Google Calendar, two-way: the **date and time** flow in both directions, while everything else (title, duration, reminders) is driven by Obsidian. It uses **your own** Google API credentials — no third-party server is involved, and your token stays in your vault.
+VibeTask can mirror every task that has a **due date** into Google Calendar, two-way: the **date and time** flow in both directions, while everything else (title, duration, reminders) is driven by Obsidian. It uses **your own** Google API credentials — no third-party server is involved, and your token stays in your vault.
 
 ### Setup (one-time, ~5 min)
 
@@ -305,8 +305,8 @@ BeautyTasks can mirror every task that has a **due date** into Google Calendar, 
 3. **Consent screen** — open *Google Auth Platform → Get started*: set an app name and your email, and choose **Audience = External**. Then open **Audience** and **Publish app** so the status is **In production**.
    > ⚠️ **Important:** In *Testing* mode, refresh tokens for calendar scopes expire after **7 days**, so the sync would break every week. *In production* they stay valid. You do **not** need Google to verify the app while you are the only user.
 4. **Create the client** — go to *Clients → Create client*, set Application type to **Desktop app**, click **Create**, then copy the **Client ID** and **Client secret**.
-5. **Connect** — in Obsidian open *Settings → BeautyTasks → Google Calendar*, paste the Client ID and secret, and click **Connect**. On the “Google hasn’t verified this app” screen choose **Advanced → Continue** — this is expected for a personal app.
-6. **Calendar** — BeautyTasks creates and selects a dedicated **“BeautyTasks”** calendar (small blast radius; your other calendars are never touched). Done.
+5. **Connect** — in Obsidian open *Settings → VibeTask → Google Calendar*, paste the Client ID and secret, and click **Connect**. On the “Google hasn’t verified this app” screen choose **Advanced → Continue** — this is expected for a personal app.
+6. **Calendar** — VibeTask creates and selects a dedicated **“VibeTask”** calendar (small blast radius; your other calendars are never touched). Done.
 
 The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.created`) are requested when you connect — there is nothing to pre-register in the consent screen. On **mobile**, step 5 uses a device-code login (you enter a short code on another device) instead of the desktop loopback flow.
 
@@ -325,17 +325,17 @@ The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.
 
 ### Show your Google events
 
-Separate from the sync, and read-only: switch on **Show events in BeautyTasks** and your Google appointments appear in **Today** and **Upcoming**, next to the tasks due that day. Pick which calendars to show, hide events you declined, and set the text size. Nothing is written back and no note is created — an event never becomes a task.
+Separate from the sync, and read-only: switch on **Show events in VibeTask** and your Google appointments appear in **Today** and **Upcoming**, next to the tasks due that day. Pick which calendars to show, hide events you declined, and set the text size. Nothing is written back and no note is created — an event never becomes a task.
 
 Project, label and filter pages deliberately stay free of them: those are about your own work, not your day's appointments.
 
 ### Where credentials live
 
-Your Client ID/secret and the OAuth token are stored locally in `.obsidian/plugins/beautytasks/data.json` (git-ignored). **Disconnect** in settings revokes the token with Google and deletes it locally. If you sync your vault by other means (Obsidian Sync, Dropbox, iCloud…), this file travels with it.
+Your Client ID/secret and the OAuth token are stored locally in `.obsidian/plugins/vibetask/data.json` (git-ignored). **Disconnect** in settings revokes the token with Google and deletes it locally. If you sync your vault by other means (Obsidian Sync, Dropbox, iCloud…), this file travels with it.
 
 ## On your phone
 
-BeautyTasks itself runs on Obsidian mobile — the views, the editor and quick capture all work there. What a plugin *cannot* do on iOS or Android is put a widget on your home screen or notify you while Obsidian is closed. That is an operating-system boundary, not something a plugin can work around: reminders only fire while Obsidian is open and in the foreground.
+VibeTask itself runs on Obsidian mobile — the views, the editor and quick capture all work there. What a plugin *cannot* do on iOS or Android is put a widget on your home screen or notify you while Obsidian is closed. That is an operating-system boundary, not something a plugin can work around: reminders only fire while Obsidian is open and in the foreground.
 
 Two ways around it, depending on what you need:
 
@@ -348,11 +348,11 @@ Everything below was tested on a real device against a copy of a real vault, in 
 
 **In TaskForge:**
 
-1. Point it at your vault and set the **tasks folder** — by default `BeautyTasks/Items`, or whatever you chose under *Settings → Folders*.
-2. Set task identification to **by property → `type: task`**. Do not skip this: it is also what makes TaskForge *write* that property, so tasks you create on your phone show up in BeautyTasks. Folder-only detection reads your tasks fine but creates ones BeautyTasks cannot see.
+1. Point it at your vault and set the **tasks folder** — by default `VibeTask/Items`, or whatever you chose under *Settings → Folders*.
+2. Set task identification to **by property → `type: task`**. Do not skip this: it is also what makes TaskForge *write* that property, so tasks you create on your phone show up in VibeTask. Folder-only detection reads your tasks fine but creates ones VibeTask cannot see.
 3. Under field mapping, point **`dateCreated` at `created`**.
 
-**In BeautyTasks → Settings:**
+**In VibeTask → Settings:**
 
 4. **Field names → Labels:** set it to `tags`. TaskForge writes Obsidian's own tag field and cannot be remapped away from it, so this is the side that has to move. Your labels are stored as slugs already (lower case, no spaces), so they are valid tags as they are.
 5. **Statuses:** TaskForge writes `status: open` for tasks it creates. Open the stored value of your own open status (the `</>` button next to it) and set it to `open`, so both sides mean the same thing.
@@ -362,23 +362,23 @@ Everything below was tested on a real device against a copy of a real vault, in 
 | | |
 | --- | --- |
 | Viewing your tasks | Titles, dates, descriptions, priorities, recurring, completed and cancelled tasks — all read correctly |
-| Creating tasks on your phone | They appear in BeautyTasks. Without a project they land in the **Inbox**, which is where you want them |
+| Creating tasks on your phone | They appear in VibeTask. Without a project they land in the **Inbox**, which is where you want them |
 | Editing existing tasks | Your project link, manual sort order and Google Calendar link survive untouched — TaskForge keeps properties it does not know |
-| Recurring tasks | TaskForge rewrites the rule in iCalendar notation; BeautyTasks reads that as of 1.41.0 |
+| Recurring tasks | TaskForge rewrites the rule in iCalendar notation; VibeTask reads that as of 1.41.0 |
 
-TaskForge also adds a few fields of its own (`taskSource`, `dateModified`). They are harmless — BeautyTasks ignores them and leaves them alone.
+TaskForge also adds a few fields of its own (`taskSource`, `dateModified`). They are harmless — VibeTask ignores them and leaves them alone.
 
 ### Two things worth knowing
 
-**Your labels become real Obsidian tags.** That is the point of step 4, and it cuts both ways: every tag you put on a task note now counts as a BeautyTasks label. If you use tags on task notes for something else, keep the label field at `labels` and accept that labels stay behind on the phone.
+**Your labels become real Obsidian tags.** That is the point of step 4, and it cuts both ways: every tag you put on a task note now counts as a VibeTask label. If you use tags on task notes for something else, keep the label field at `labels` and accept that labels stay behind on the phone.
 
-**“Repeat from completion” is ours alone.** A task set to repeat *after it is done* uses an extra field that the iCalendar standard has no concept for — Outlook and Todoist solve it the same way, outside the standard. TaskForge will show such a task as a plain repeat and cannot edit that part. The behaviour in BeautyTasks is unaffected.
+**“Repeat from completion” is ours alone.** A task set to repeat *after it is done* uses an extra field that the iCalendar standard has no concept for — Outlook and Todoist solve it the same way, outside the standard. TaskForge will show such a task as a plain repeat and cannot edit that part. The behaviour in VibeTask is unaffected.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| Open BeautyTasks | Open the dashboard |
+| Open VibeTask | Open the dashboard |
 | Open Today / Upcoming / Recurring / Done | Jump straight to a view |
 | New task | Open the full task editor |
 | Quick add task | Fast natural-language capture |
@@ -398,7 +398,7 @@ Assign hotkeys to any of these under **Settings → Hotkeys**.
 ## Settings
 
 - **Folders** for tasks, projects, filters and attachments — plus **excluded folders**, whose notes are never treated as tasks.
-- **Field names** — which frontmatter fields BeautyTasks uses for `type` and `title` (see above).
+- **Field names** — which frontmatter fields VibeTask uses for `type` and `title` (see above).
 - **Language** — auto (follow Obsidian) or pick one of 10 languages (English, German, Spanish, Portuguese, French, Italian, Turkish, Russian, Simplified Chinese, Japanese).
 - **Start view** — which view opens by default (or the last used one).
 - **Natural-language parsing** — toggle date/label/priority detection in titles.
@@ -414,11 +414,11 @@ Assign hotkeys to any of these under **Settings → Hotkeys**.
 
 ## Theming
 
-BeautyTasks is fully themeable through CSS custom properties. It ships with a built-in color palette (separate values for dark and light mode, defined on `.theme-dark` / `.theme-light`). Everything is overridable, so you can adapt it to any theme.
+VibeTask is fully themeable through CSS custom properties. It ships with a built-in color palette (separate values for dark and light mode, defined on `.theme-dark` / `.theme-light`). Everything is overridable, so you can adapt it to any theme.
 
 ### 1. Style Settings plugin (color pickers, no CSS)
 
-If you have the community plugin **Style Settings** installed, open its tab and you’ll find a **BeautyTasks → Colors** section with color pickers for the semantic colors (overdue, due today, recurring, labels, priorities). These also drive the icon colors. Nothing is required in BeautyTasks itself — without Style Settings the defaults simply apply. A **Monochrome (no colors)** toggle at the top renders everything in the text color and overrides the pickers.
+If you have the community plugin **Style Settings** installed, open its tab and you’ll find a **VibeTask → Colors** section with color pickers for the semantic colors (overdue, due today, recurring, labels, priorities). These also drive the icon colors. Nothing is required in VibeTask itself — without Style Settings the defaults simply apply. A **Monochrome (no colors)** toggle at the top renders everything in the text color and overrides the pickers.
 
 ### 2. A CSS snippet (full control)
 
@@ -452,7 +452,7 @@ Individual projects, areas, labels and filters can have their own color. Pick on
 
 ## Roadmap
 
-BeautyTasks is under active development. This one is **planned and not yet available** — listed here so you know where it's headed:
+VibeTask is under active development. This one is **planned and not yet available** — listed here so you know where it's headed:
 
 - **Task & project templates** — reusable structures with relative dates (“three days after the start”), so a recurring set-up is one click instead of ten.
 
@@ -464,7 +464,7 @@ Have an idea or a request? Open an issue — feedback shapes the priorities.
 
 ## Support & feedback
 
-Found a bug or want a feature? Please [open an issue](https://github.com/avnibilgin/BeautyTasks/issues). Contributions and suggestions are welcome.
+Found a bug or want a feature? Please [open an issue](https://github.com/incorvia/vibetasks/issues). Contributions and suggestions are welcome.
 
 ## License
 

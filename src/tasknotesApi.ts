@@ -87,7 +87,7 @@ export function readTaskNotesConfig(app: App): TnConfig | null {
     if (!taskTag && !Object.keys(fieldMapping).length && !statuses.length) return null;
     return { taskTag, fieldMapping, statuses, priorities };
   } catch (e) {
-    console.warn("BeautyTasks: TaskNotes-Konfiguration nicht lesbar", e);
+    console.warn("VibeTask: TaskNotes-Konfiguration nicht lesbar", e);
     return null;
   }
 }

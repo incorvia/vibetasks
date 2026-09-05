@@ -1,4 +1,4 @@
-# Umsetzungsplan: „Google-Termine in BeautyTasks anzeigen" (Feed / Overlay)
+# Umsetzungsplan: „Google-Termine in VibeTask anzeigen" (Feed / Overlay)
 
 ## Kontext und Abgrenzung
 Der bestehende Sync (`gcalSync.ts`, siehe [gcal-sync-plan.md](gcal-sync-plan.md)) spiegelt **Aufgaben →
@@ -67,7 +67,7 @@ oder lang wieder bei „Termin abhaken".
 | `snapshot` | letzter Fensterstand für den Kaltstart (siehe unten), gedeckelt |
 
 Beim ersten Aktivieren: **primärer Kalender an**, alle anderen aus — und der eigene
-`BeautyTasks`-Kalender (`gcal.calendarId`) **hart ausgeschlossen**, nicht nur ungehakt. Sonst steht
+`VibeTask`-Kalender (`gcal.calendarId`) **hart ausgeschlossen**, nicht nur ungehakt. Sonst steht
 jede datierte Aufgabe doppelt da: einmal als Aufgabe, einmal als ihr eigenes gepushtes Event. Das ist
 der Fehler, der beim ersten Blick sofort auffällt, wenn man ihn nicht bewusst verhindert.
 
@@ -102,9 +102,9 @@ GET /calendars/{id}/events
 
 ### Wann aktualisiert wird
 - beim Öffnen der View und bei jedem Fensterwechsel (Blättern), sofern nicht im Cache,
-- ruhiges Intervall (5 Min, wie `POLL_MS`) **nur wenn** eine BeautyTasks-Leaf sichtbar ist —
+- ruhiges Intervall (5 Min, wie `POLL_MS`) **nur wenn** eine VibeTask-Leaf sichtbar ist —
   ein Hintergrundtimer für eine Ansicht, die niemand ansieht, ist verschwendete Quota und Akku,
-- bei `active-leaf-change` auf eine BeautyTasks-Leaf, wenn der letzte Lauf älter als 5 Min ist.
+- bei `active-leaf-change` auf eine VibeTask-Leaf, wenn der letzte Lauf älter als 5 Min ist.
 - Kein Timer, wenn `gcalFeed.enabled` aus ist. `window.setInterval`/`setTimeout` (Skill-Regel 30).
 
 ### Filtern
@@ -204,8 +204,8 @@ verbunden:
 ```
 Farbpunkt = Kalenderfarbe aus `calendarList` (dieselbe Farbe wie im Raster — die Verbindung muss ohne
 Erklärung sichtbar sein). Kalenderliste kommt aus `listCalendars()`, das es schon gibt; der eigene
-`BeautyTasks`-Kalender taucht gar nicht erst auf. Imperativer Tab wie bisher
-([[beautytasks-settings-declarative-api]]).
+`VibeTask`-Kalender taucht gar nicht erst auf. Imperativer Tab wie bisher
+([[vibetask-settings-declarative-api]]).
 
 ## Fehler- und Status-UX
 Der Feed ist **still**. Keine Notices — ein fehlgeschlagener Termin-Abruf ist kein Ereignis, das eine
@@ -236,7 +236,7 @@ Meldung wert wäre.
 ## Verifikation
 1. **Anzeige**: Termin in Google anlegen → erscheint in Woche/Tag/Monat sowie als Band in den Listen
    von „Heute" und „Demnächst".
-2. **Kein Doppel**: eigener BeautyTasks-Kalender taucht nirgends als Termin auf.
+2. **Kein Doppel**: eigener VibeTask-Kalender taucht nirgends als Termin auf.
 3. **Mehrtägig**: Ganztags-Termin Mi–Fr steht auf allen drei Tagen; Termin 23:00–01:00 auf beiden.
 4. **Überlappung**: Meeting 10–11 + Aufgabenblock 10:30 → teilen sich die Breite, nichts liegt übereinander.
 5. **Read-only**: Termin lässt sich nicht abhaken, nicht ziehen, nicht in der Größe ändern; Klick öffnet Google.

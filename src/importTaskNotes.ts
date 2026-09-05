@@ -1,9 +1,9 @@
-// Import aus dem TaskNotes-Plugin (callumalpass). TaskNotes speichert wie BeautyTasks eine
+// Import aus dem TaskNotes-Plugin (callumalpass). TaskNotes speichert wie VibeTask eine
 // Markdown-Notiz pro Aufgabe mit Frontmatter → Migration = Frontmatter-Ummappen. Erzeugt
 // ExportTask-Records und nutzt den gemeinsamen, idempotenten importData()-Writer (Dedup über
 // external_id, Auto-Anlage von Projekten/Labels). Nicht-destruktiv: Original-Dateien bleiben.
 import { App, Modal, Notice, Setting, TFile, normalizePath } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Priority } from "./types";
 import { ExportList, ExportTask, makeImportData, importData } from "./importExport";
 import { firstOpenStatus, firstDoneStatus, isDone, isTrashed, isKnownStatus } from "./statuses";
@@ -22,7 +22,7 @@ const DEFAULT_MAPPING: Record<Role, string> = {
   dateModified: "dateModified", id: "id",
 };
 
-// TaskNotes-Status/Priorität → BeautyTasks (semantische Standard-Zuordnung; Unbekanntes fällt auf offen/normal).
+// TaskNotes-Status/Priorität → VibeTask (semantische Standard-Zuordnung; Unbekanntes fällt auf offen/normal).
 const STATUS_MAP: Record<string, string> = {
   open: "todo", todo: "todo", backlog: "todo", "in-progress": "doing", "in progress": "doing",
   doing: "doing", started: "doing", done: "done", completed: "done", complete: "done",
@@ -184,7 +184,7 @@ export class ImportTaskNotesModal extends Modal {
   private tn: TnConfig | null = null;
   private mapping: Record<Role, string> = DEFAULT_MAPPING;
 
-  constructor(private plugin: BeautyTasksPlugin) { super(plugin.app); }
+  constructor(private plugin: VibeTaskPlugin) { super(plugin.app); }
 
   /** Status-/Prioritäts-Übersetzer: mit Katalog, wenn TaskNotes ihn hergibt, sonst Namenstabelle. */
   private toStatus = (raw: string): string => mapStatus(raw);
@@ -253,7 +253,7 @@ export class ImportTaskNotesModal extends Modal {
       new Notice(t("tn_import_done", r.created, r.skipped) + (lossy ? " " + t("tn_import_lossy", lossy) : ""));
       window.setTimeout(() => this.plugin.index.build(), 800);   // Frontmatter der neuen Notizen ist erst kurz später im Cache
     } catch (e) {
-      console.error("BeautyTasks TaskNotes import error", e);
+      console.error("VibeTask TaskNotes import error", e);
       new Notice(t("tn_import_failed"));
     }
   }

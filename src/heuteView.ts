@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, TFile, ViewStateResult } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { PageCtx, PageRef, pageInfo, samePage, manageTitleKey } from "./pageCtx";
 import { dragTask, dragFromCol, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { sectionSig, SigLookup } from "./rowSignature";
@@ -81,7 +81,7 @@ export function resetSubtaskToggles(ctx: PageCtx): void {
   for (const k of [...subtaskToggle.keys()]) if (k.startsWith(prefix)) subtaskToggle.delete(k);
 }
 
-export const VIEW_PREFIX = "beautytasks-";
+export const VIEW_PREFIX = "vibetask-";
 export type ViewId = "heute" | "demnaechst" | "wiederkehrend" | "erledigt";
 export const VIEW_IDS: ViewId[] = ["heute", "demnaechst", "wiederkehrend", "erledigt"];
 export const VIEW_MAIN = VIEW_PREFIX + "main";             // Dashboard-Leaf; beliebig oft offen (je Tab eine Seite)
@@ -389,7 +389,7 @@ function renderRecurring(root: HTMLElement, ctx: PageCtx, today: string): void {
 
 /** Obsidians „Lesbare Zeilenlänge" respektieren (wie Markdown-Ansichten): Breite +
  *  Zentrierung über --file-line-width, wenn die Einstellung aktiv ist. */
-function applyReadableWidth(c: HTMLElement, plugin: BeautyTasksPlugin): void {
+function applyReadableWidth(c: HTMLElement, plugin: VibeTaskPlugin): void {
   const cfg = (plugin.app.vault as unknown as { getConfig?: (k: string) => unknown }).getConfig?.("readableLineLength");
   c.toggleClass("is-readable-line-width", cfg !== false);   // Standard in Obsidian = an
 }
@@ -435,10 +435,10 @@ function filterEmptyState(root: HTMLElement, ctx: PageCtx): void {
 }
 
 /** „+ Add task"-Zeile eines Boards: links der Hinzufügen-Button, rechts ein dezenter
- *  Link zurück ins ListManager (Projekte- bzw. Labels-Tab) – wie im alten BeautyTasks.
+ *  Link zurück ins ListManager (Projekte- bzw. Labels-Tab) – wie im alten VibeTask.
  *  Der Link ist optional: der Eingang ist ein Systemordner (kein normales Projekt) und
  *  bekommt daher KEINEN „Projekte"-Link. */
-function addBar(root: HTMLElement, plugin: BeautyTasksPlugin, onAdd: () => void): void {
+function addBar(root: HTMLElement, plugin: VibeTaskPlugin, onAdd: () => void): void {
   const bar = root.createDiv({ cls: "bt-board-bar" });
   const add = bar.createDiv({ cls: "bt-add" });
   add.createSpan({ cls: "bt-add-icon" });
@@ -522,7 +522,7 @@ export function renderLabelBoardInto(c: HTMLElement, ctx: PageCtx, label: string
  *  und Board dieselbe Ordnung zeigen. Vorher sortierte die Liste stur alphabetisch, das Board
  *  dagegen über plugin.sortLabels – eine manuell sortierte Label-Leiste schlug sich also nur
  *  im Board nieder. Berücksichtigt nur Labels, die in dieser Menge überhaupt vorkommen. */
-function labelOrderOf(plugin: BeautyTasksPlugin, tasks: Task[], group: FilterGroup): string[] | undefined {
+function labelOrderOf(plugin: VibeTaskPlugin, tasks: Task[], group: FilterGroup): string[] | undefined {
   if (group !== "label") return undefined;
   const names = [...new Set(tasks.flatMap((tk) => tk.labels))];
   return plugin.sortLabels(names.map((name) => ({ name }))).map((x) => x.name);
@@ -673,7 +673,7 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
  *  Bereichs- oder Filternotiz. Ist sie leer, steht dort ein blasser Platzhalter, der in denselben
  *  Bearbeiten-Dialog führt, in dem das Feld liegt – so ist das Feld auffindbar, ohne dass man das
  *  Kontextmenü kennt. Ohne Eintrag (Eingang, eingebaute Ansichten) entsteht gar nichts. */
-function pageDesc(root: HTMLElement, plugin: BeautyTasksPlugin, text: string | undefined, item: NavMenuItem | null): void {
+function pageDesc(root: HTMLElement, plugin: VibeTaskPlugin, text: string | undefined, item: NavMenuItem | null): void {
   // Abgeschaltet: gar nichts rendern – und damit auch keine bt-has-desc-Markierung. Die Seite
   // bekommt dann exakt die Abstände der Systemansichten, sodass „+ Aufgabe hinzufügen" beim
   // Wechsel zwischen Eingang und Projekt nicht springt.
@@ -702,7 +702,7 @@ function pageDesc(root: HTMLElement, plugin: BeautyTasksPlugin, text: string | u
 /** Positionsketten-Schlüssel für die Sortierung „Manuell". Liegt im Index, weil er den Elter
  *  braucht – der in der zu sortierenden Liste gar nicht vorkommen muss. Wird an JEDEN
  *  sortTasks-Aufruf gereicht, damit „Manuell" in Liste und Board dieselbe Ordnung ergibt. */
-const orderKey = (plugin: BeautyTasksPlugin) => (t: Task): number[] => plugin.index.orderKey(t);
+const orderKey = (plugin: VibeTaskPlugin) => (t: Task): number[] => plugin.index.orderKey(t);
 
 // ── Kanban-Board (Spalten = Status, Karten per Drag-and-Drop verschiebbar) ──
 /**
@@ -738,7 +738,7 @@ interface BoardColumn {
 const NO_LABEL = "\u0000nolabel";   // Sentinel-ID der „Ohne Label"-Spalte (kein gültiger Label-Name)
 
 /** Status-Spalten (Standard-Kanban): Ziehen setzt den Status. */
-function statusColumns(plugin: BeautyTasksPlugin, add: BoardAdd): BoardColumn[] {
+function statusColumns(plugin: VibeTaskPlugin, add: BoardAdd): BoardColumn[] {
   return boardStatuses().map((col) => ({
     id: col.id, title: statusLabel(col.id), tint: statusTint(col.id), kind: col.kind,
     has: (tk: Task) => tk.status === col.id,
@@ -750,7 +750,7 @@ function statusColumns(plugin: BeautyTasksPlugin, add: BoardAdd): BoardColumn[] 
 /** Label-Spalten (Gruppierung = Label): Ziehen TAUSCHT das Label (Quell-Spalten-Label raus,
  *  Ziel-Label rein) – andere Labels der Aufgabe bleiben. Spalten = die in der Ansicht VORKOMMENDEN
  *  Labels (in Seitenleisten-Reihenfolge), plus „Ohne Label" bei Bedarf. */
-function labelColumns(plugin: BeautyTasksPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
+function labelColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
   const present = tasks.flatMap((t) => t.labels);
   const names = plugin.sortLabels([...new Set(present)].map((name) => ({ name }))).map((x) => x.name);
   const cols: BoardColumn[] = names.map((name) => ({
@@ -773,7 +773,7 @@ function labelColumns(plugin: BeautyTasksPlugin, tasks: Task[], add: BoardAdd): 
 
 /** Prioritäts-Spalten (Gruppierung = Priorität): eine Spalte je Stufe (P1–P4); Ziehen setzt die
  *  Priorität. low/lowest fallen unter „normal" (P4). */
-function priorityColumns(plugin: BeautyTasksPlugin, add: BoardAdd): BoardColumn[] {
+function priorityColumns(plugin: VibeTaskPlugin, add: BoardAdd): BoardColumn[] {
   const eff = (p: Priority): Priority => (p === "low" || p === "lowest") ? "normal" : p;
   return PRIOS.map((p) => ({
     id: p.value, title: t(p.key), tint: p.color, kind: "open",
@@ -785,7 +785,7 @@ function priorityColumns(plugin: BeautyTasksPlugin, add: BoardAdd): BoardColumn[
 
 /** Projekt-Spalten (Gruppierung = Projekt): eine Spalte je vorkommendem Projekt/Bereich (+ „Kein
  *  Projekt"); Ziehen verschiebt die Aufgabe (Label/Status bleiben). */
-function projectColumns(plugin: BeautyTasksPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
+function projectColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
   const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
   const colorOf = new Map(([...bereiche, ...projekte]).map((p) => [p.name, p.color] as const));
   // Nur ECHTE Projekte werden Spalten – „nicht einsortierte" (kein Projekt ODER Inbox-Verweis)
@@ -818,7 +818,7 @@ function projectColumns(plugin: BeautyTasksPlugin, tasks: Task[], add: BoardAdd)
  *  spiegelt die Listen-Datumsgruppierung (dateColumnKeys). „Überfällig" ist ein berechneter Sammel-
  *  Bucket ohne setzbares Datum -> KEIN Drop-/„+"-Ziel (onDrop/onAdd weggelassen). „Ohne Datum" und die
  *  konkreten Datumsspalten sind Drop-Ziele: Ziehen setzt bzw. löscht das Datum (setTaskDate). */
-function dateColumns(plugin: BeautyTasksPlugin, cards: Task[], today: string, field: "due" | "scheduled", add: BoardAdd): BoardColumn[] {
+function dateColumns(plugin: VibeTaskPlugin, cards: Task[], today: string, field: "due" | "scheduled", add: BoardAdd): BoardColumn[] {
   const dateOfTask = (tk: Task): string | null => field === "due" ? tk.due : tk.scheduled;
   return dateColumnKeys(cards, today, field).map((key): BoardColumn => {
     if (key === "overdue") return {
@@ -900,7 +900,7 @@ function applyColumnOrder(cols: BoardColumn[], saved: string[] | undefined): Boa
  *  von selbst über `dragover`; ein Pointer-Drag kennt dieses Ereignis nicht, also fütterte ihn die
  *  Spalte hier direkt – damit sie sich beim Anfahren des linken/rechten Randes genauso verhält. */
 function attachColumnDrag(colEl: HTMLElement, handle: HTMLElement, board: HTMLElement, groupKey: string,
-                          plugin: BeautyTasksPlugin, drive: (clientX: number | null) => void): void {
+                          plugin: VibeTaskPlugin, drive: (clientX: number | null) => void): void {
   const cols = (): HTMLElement[] => Array.from(board.children).filter((el): el is HTMLElement => el.instanceOf(HTMLElement) && el.hasClass("bt-kanban-col"));
   const orderIds = (): string[] => cols().filter((el) => el.dataset.pin !== "1").map((el) => el.dataset.col).filter((c): c is string => !!c);
   handle.addEventListener("pointerdown", (ev) => {
@@ -967,7 +967,7 @@ function clearDropTarget(list: HTMLElement): void {
  * Dieselbe Funktion für Board und Liste. In beiden ist `list` der Container der Zeilen/Karten;
  * berechnen und markieren gehören zusammen, weil beides dieselbe Geschwister-Auswahl braucht.
  */
-function showDropTarget(list: HTMLElement, dragged: Task, plugin: BeautyTasksPlugin, y: number): string | null | undefined {
+function showDropTarget(list: HTMLElement, dragged: Task, plugin: VibeTaskPlugin, y: number): string | null | undefined {
   const rows = Array.from(list.querySelectorAll<HTMLElement>(".bt-task"));
   for (const el of rows) { el.removeClass("is-drop-before"); el.removeClass("is-drop-after"); }
   /** Gehört diese Zeile zur selben Geschwistergruppe? (Die gezogene selbst zählt dazu – sie soll
@@ -996,7 +996,7 @@ function showDropTarget(list: HTMLElement, dragged: Task, plugin: BeautyTasksPlu
  * zurückspränge. Hier bewegt sich stattdessen nur eine Markierung, wie im Board; die Zeile selbst
  * wandert erst beim Neuzeichnen. Damit stellt sich die Frage nach dem Teilbaum gar nicht.
  */
-function attachTaskReorder(row: HTMLElement, grip: HTMLElement, list: HTMLElement, task: Task, plugin: BeautyTasksPlugin): void {
+function attachTaskReorder(row: HTMLElement, grip: HTMLElement, list: HTMLElement, task: Task, plugin: VibeTaskPlugin): void {
   grip.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     ev.stopPropagation();          // nicht die Zeile anklicken (öffnet sonst das Modal)
@@ -1023,7 +1023,7 @@ function attachTaskReorder(row: HTMLElement, grip: HTMLElement, list: HTMLElemen
  * Spalte, sondern auch den Platz darin. Bei jeder anderen Sortierung wäre das sinnlos: die
  * nächste Neuzeichnung würde die Handarbeit sofort wieder überschreiben.
  */
-function setupColumnDnd(colEl: HTMLElement, col: BoardColumn, plugin: BeautyTasksPlugin, manual: boolean, page: BoardAdd): void {
+function setupColumnDnd(colEl: HTMLElement, col: BoardColumn, plugin: VibeTaskPlugin, manual: boolean, page: BoardAdd): void {
   const listEl = (): HTMLElement | null => colEl.querySelector<HTMLElement>(".bt-kanban-list");
   const dragged = (): Task | undefined => { const p = dragTask(); return p ? plugin.index.get(p) : undefined; };
   colEl.addEventListener("dragover", (e) => {
@@ -1220,7 +1220,7 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
  * Wichtig ist die leere Menge statt `undefined`: `undefined` bedeutet in visibleRows das
  * GEGENTEIL (alle Unteraufgaben weglassen, s. Papierkorb).
  */
-function nestingHosts(plugin: BeautyTasksPlugin, anchors: Task[], mode: SubtaskDisplay): Set<string> {
+function nestingHosts(plugin: VibeTaskPlugin, anchors: Task[], mode: SubtaskDisplay): Set<string> {
   return mode === "standalone" ? new Set<string>() : renderedPaths(plugin, anchors);
 }
 
@@ -1230,7 +1230,7 @@ function nestingHosts(plugin: BeautyTasksPlugin, anchors: Task[], mode: SubtaskD
 // stehen. Das ist der Sinn des Aufklappens: die Aufgabe komplett durchgehen. Eine Sperre
 // machte „Eingerückt" in reinen Datums-Agenden (Demnächst: alles datiert) zum toten Schalter.
 
-function renderedPaths(plugin: BeautyTasksPlugin, anchors: Task[]): Set<string> {
+function renderedPaths(plugin: VibeTaskPlugin, anchors: Task[]): Set<string> {
   const present = new Set<string>();
   const walk = (tk: Task): void => {
     if (present.has(tk.path)) return;
@@ -1245,20 +1245,20 @@ function renderedPaths(plugin: BeautyTasksPlugin, anchors: Task[]): Set<string> 
 /** Wie weit „Demnächst" Termine zeigt – einstellbar (`upcomingMonths`, Vorgabe 1 Monat).
  *  Geklemmt auf 1–12: schützt gegen eine von Hand verbogene data.json und hält den Wert
  *  innerhalb dessen, was MAX_MONTHS/MAX_STORE im Feed tatsächlich laden und halten können. */
-function upcomingEventEnd(plugin: BeautyTasksPlugin, today: string): string {
+function upcomingEventEnd(plugin: VibeTaskPlugin, today: string): string {
   const months = Math.min(12, Math.max(1, plugin.settings.gcalFeed?.upcomingMonths ?? 1));
   return addMonths(today, months);
 }
 
 /** Die Termine EINES Tages aus dem Feed, tagegenau zugeschnitten. Leer, wenn der Feed aus/leer ist. */
-function dayEvents(plugin: BeautyTasksPlugin, day: string): DayEvent[] {
+function dayEvents(plugin: VibeTaskPlugin, day: string): DayEvent[] {
   const feed = plugin.gcalFeed;
   if (!feed?.isActive()) return [];
   return bucketEvents(feed.eventsIn(day, day), [day]).get(day) ?? [];
 }
 
 /** Termine eines Zeitraums nach Tag gebündelt (für „Demnächst": auch Tage ohne Aufgabe). */
-function feedEventsByDate(plugin: BeautyTasksPlugin, from: string, to: string): Map<string, DayEvent[]> {
+function feedEventsByDate(plugin: VibeTaskPlugin, from: string, to: string): Map<string, DayEvent[]> {
   const feed = plugin.gcalFeed;
   if (!feed?.isActive()) return new Map();
   const days: string[] = [];
@@ -1482,7 +1482,7 @@ function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[]
  *  verschiedene Daten – ein vorausgewählter Tag müsste eines davon erfinden und würde
  *  suggerieren, es passiere ohnehin gleich. Klick daneben schließt folgenlos (openDatePicker
  *  meldet nur bei ausdrücklicher Auswahl). */
-function rescheduleButton(head: HTMLElement, plugin: BeautyTasksPlugin, tasks: Task[]): void {
+function rescheduleButton(head: HTMLElement, plugin: VibeTaskPlugin, tasks: Task[]): void {
   head.addClass("bt-has-action");
   // Bewusst KEIN <button>: darauf greifen Obsidians App-Styles mit Rahmen, Schatten und
   // eigener Textfarbe zu, die man einzeln wieder abräumen müsste (und die je nach Theme
@@ -1649,7 +1649,7 @@ function frameSig(ctx: PageCtx, opts: ViewOptions, headSig: string): string {
 /** Kopf-Signatur einer Seite, die an einer NOTIZ hängt (Projekt/Bereich): alles, was der
  *  Seitenkopf daraus zeigt. Frisch aus dem Metadaten-Cache gelesen – ein reiner Map-Zugriff,
  *  kein Vault-Scan. `null` = Systemansicht ohne Notiz (Eingang). */
-function noteHeadSig(plugin: BeautyTasksPlugin, path: string | null): string {
+function noteHeadSig(plugin: VibeTaskPlugin, path: string | null): string {
   if (!path) return "";
   const f = plugin.app.vault.getAbstractFileByPath(path);
   const fm = f instanceof TFile ? plugin.app.metadataCache.getFileCache(f)?.frontmatter : null;
@@ -1657,7 +1657,7 @@ function noteHeadSig(plugin: BeautyTasksPlugin, path: string | null): string {
 }
 
 /** Einstellungen, die in JEDER Zeile stecken (und beim Patchen nicht neu gelesen würden). */
-function settingsSig(plugin: BeautyTasksPlugin): string {
+function settingsSig(plugin: VibeTaskPlugin): string {
   const s = plugin.settings;
   return [s.showDescriptionInList, s.metaTheme, s.chipsIconsOnly, s.locale].join(",");
 }
@@ -1996,7 +1996,7 @@ function activate(el: HTMLElement, handler: () => void): void {
 }
 
 /** Ein Nav-Eintrag (Div wie bisher, aber per role=button/tabindex tastaturbedienbar). */
-function navItem(c: HTMLElement, plugin: BeautyTasksPlugin, o: NavItemOpts): void {
+function navItem(c: HTMLElement, plugin: VibeTaskPlugin, o: NavItemOpts): void {
   const item = c.createDiv({ cls: "bt-nav-item" + (o.active ? " is-active" : "") + (o.cls ? " " + o.cls : ""), attr: { role: "button", tabindex: "0" } });
   const ic = item.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, o.icon); if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
   const lbl = item.createSpan({ cls: "bt-nav-lbl", text: o.label });
@@ -2052,7 +2052,7 @@ function navItem(c: HTMLElement, plugin: BeautyTasksPlugin, o: NavItemOpts): voi
  * `dataTransfer` trägt sie zusätzlich, weil ein Zug ohne Nutzlast in manchen Umgebungen gar nicht
  * erst startet. Gelesen wird der Modul-Zustand – er überlebt auch Züge über View-Grenzen hinweg.
  */
-function attachTaskDrop(el: HTMLElement, plugin: BeautyTasksPlugin, onDrop: (task: Task) => void): void {
+function attachTaskDrop(el: HTMLElement, plugin: VibeTaskPlugin, onDrop: (task: Task) => void): void {
   const clear = (): void => el.removeClass("is-drop-task");
   el.addEventListener("dragover", (e) => {
     if (!dragTask()) return;                  // fremder Zug (Datei aus dem Vault o. Ä.) -> nicht anfassen
@@ -2074,7 +2074,7 @@ function attachTaskDrop(el: HTMLElement, plugin: BeautyTasksPlugin, onDrop: (tas
 
 /** Ein-/ausklappbare Abschnittsüberschrift: Chevron-Toggle (Zustand persistent) + „+",
  *  das nur beim Hover/Fokus der Zeile erscheint. Gibt zurück, ob der Abschnitt eingeklappt ist. */
-function navHead(c: HTMLElement, plugin: BeautyTasksPlugin, id: string, title: string,
+function navHead(c: HTMLElement, plugin: VibeTaskPlugin, id: string, title: string,
   addTip: string, placeholder: string, redraw: () => void, submit: (v: string) => Promise<unknown>,
   onAddClick?: () => void): boolean {
   const collapsed = plugin.isNavCollapsed(id);
@@ -2140,7 +2140,7 @@ interface ReorderEntry { key: string; name: string; icon: string; color: string 
 /** Sidebar-Sortiermodus für EINE Sektion: „Fertig"-Leiste + per Griff ziehbare Zeilen.
  *  Bewegt NUR die sichtbaren Einträge; persistiert am Drop über plugin.reorderVisible –
  *  ausgeblendete behalten ihre Position (eigener Mechanismus, getrennt von der Übersicht). */
-function renderReorderList(c: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection, entries: ReorderEntry[]): void {
+function renderReorderList(c: HTMLElement, plugin: VibeTaskPlugin, sec: NavSection, entries: ReorderEntry[]): void {
   const bar = c.createDiv({ cls: "bt-reorder-bar" });
   bar.createSpan({ cls: "bt-reorder-lbl", text: t("reorder_active") });
   const done = bar.createEl("button", { cls: "bt-reorder-done mod-cta", text: t("reorder_done") });
@@ -2185,11 +2185,11 @@ let navBadges: Map<string, HTMLElement> | null = null;   // aktive Sammlung wäh
  *  ohne dieses Überschreiben zählte der Badge bei „Erledigte anzeigen" die Erledigten mit. Filter mit
  *  ausdrücklichem Status-Kriterium zählen weiter ihre Treffer (applyFilter -> byStatus ignoriert
  *  showDone ohnehin, s. filterEngine). */
-function filterBadgeCount(plugin: BeautyTasksPlugin, fl: FilterItem, today: string): number {
+function filterBadgeCount(plugin: VibeTaskPlugin, fl: FilterItem, today: string): number {
   return countFilter(plugin.index, fl.criteria, { ...fl.options, showDone: false }, today);
 }
 
-function navCounts(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): Map<string, number> {
+function navCounts(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): Map<string, number> {
   const m = new Map<string, number>();
   const { bereiche, projekte } = pa;
   m.set("p:" + INBOX_KEY, plugin.index.inboxOpen().length);   // eingebauter Eingang
@@ -2205,7 +2205,7 @@ function navCounts(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjList
 }
 
 /** Struktur-Signatur OHNE Zahlen: gleich = dieselben Einträge in derselben Form. */
-function navSignature(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): string {
+function navSignature(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): string {
   const { bereiche, projekte } = pa;
   const proj = (p: { path: string; name: string; icon: string; color: string | null; hidden: boolean }): string =>
     [p.path, p.name, p.icon, p.color, p.hidden].join("~");
@@ -2249,7 +2249,7 @@ function navSignature(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjL
 }
 
 /** Versucht, nur die Zähler der Seitenleiste nachzuziehen. true = erledigt (kein Neuaufbau nötig). */
-export function tryPatchNav(c: HTMLElement, plugin: BeautyTasksPlugin): boolean {
+export function tryPatchNav(c: HTMLElement, plugin: VibeTaskPlugin): boolean {
   const m = navMounts.get(c);
   if (!m) return false;   // nichts montiert -> gar nicht erst rechnen
   // Die drei Listen EINMAL – Signatur und Zähler bekommen dieselben (s. navSignature).
@@ -2265,7 +2265,7 @@ export function tryPatchNav(c: HTMLElement, plugin: BeautyTasksPlugin): boolean 
   return true;
 }
 
-export function renderNavInto(c: HTMLElement, plugin: BeautyTasksPlugin): void {
+export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
   c.empty();
   c.addClass("bt-nav");
   const redraw = () => renderNavInto(c, plugin);
@@ -2467,7 +2467,7 @@ export function renderNavInto(c: HTMLElement, plugin: BeautyTasksPlugin): void {
   navMounts.set(c, { sig: navSignature(plugin, tpls, pa, flts), badges });
 }
 
-function navCount(plugin: BeautyTasksPlugin, id: ViewId): number {
+function navCount(plugin: VibeTaskPlugin, id: ViewId): number {
   const today = todayStr();
   if (id === "heute") return plugin.index.overdue(today).length + plugin.index.dueToday(today).length;
   if (id === "demnaechst") return plugin.index.upcoming(today).length;
@@ -2552,7 +2552,7 @@ export class MainView extends ItemView {
    *  ihn setzt und mit demselben Kontext neu zeichnet (Verwaltungs-Tabs machen genau das). */
   private tab = { doneTab: "done" as "done" | "trash", manageTab: "active" as "active" | "archive", doneCollapsed: true };
 
-  constructor(leaf: WorkspaceLeaf, private plugin: BeautyTasksPlugin) {
+  constructor(leaf: WorkspaceLeaf, private plugin: VibeTaskPlugin) {
     super(leaf);
     this.page = plugin.newTabStartPage();
   }
@@ -2560,7 +2560,7 @@ export class MainView extends ItemView {
 
   /**
    * Tab- und Pane-Titel = der NAME DER SEITE, nicht der Programmname. Solange es genau eine
-   * Dashboard-Leaf gab, war „BeautyTasks" eine brauchbare Beschriftung; bei drei offenen Tabs
+   * Dashboard-Leaf gab, war „VibeTask" eine brauchbare Beschriftung; bei drei offenen Tabs
    * sähen alle drei gleich aus. Woher die Seite kommt, zeigt das Icon im Tab.
    *
    * Bewusst OHNE Unterzustand: „Erledigt" bleibt „Erledigt", auch wenn gerade der Papierkorb-Tab
@@ -2896,9 +2896,9 @@ export class MainView extends ItemView {
 export class NavView extends ItemView {
   private unsub: (() => void) | null = null;
   private unsubTpl: (() => void) | null = null;
-  constructor(leaf: WorkspaceLeaf, private plugin: BeautyTasksPlugin) { super(leaf); }
+  constructor(leaf: WorkspaceLeaf, private plugin: VibeTaskPlugin) { super(leaf); }
   getViewType(): string { return VIEW_NAV; }
-  getDisplayText(): string { return "BeautyTasks"; }
+  getDisplayText(): string { return "VibeTask"; }
   getIcon(): string { return "check-circle"; }
   async onOpen(): Promise<void> {
     if (!this.unsub) this.unsub = this.plugin.index.subscribe(() => this.draw());

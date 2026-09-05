@@ -24,7 +24,7 @@ const DEVICE_ENDPOINT = "https://oauth2.googleapis.com/device/code";
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 
 /** calendar.events = Events schreiben; calendar.readonly = Kalenderliste/Anzeige;
- *  calendar.app.created = eigenen „BeautyTasks"-Sekundärkalender anlegen/verwalten (schmales Recht,
+ *  calendar.app.created = eigenen „VibeTask"-Sekundärkalender anlegen/verwalten (schmales Recht,
  *  kein Zugriff auf fremde Kalender-Verwaltung). */
 export const GCAL_SCOPE =
   "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.app.created";
@@ -340,10 +340,10 @@ function sleep(ms: number): Promise<void> {
 /** Schlichte Abschluss-Seite im Browser nach dem Loopback-Redirect. */
 function loopbackPage(ok: boolean): string {
   const msg = ok
-    ? "✅ BeautyTasks ist jetzt mit Google Kalender verbunden."
+    ? "✅ VibeTask ist jetzt mit Google Kalender verbunden."
     : "⚠️ Anmeldung fehlgeschlagen. Bitte in Obsidian erneut versuchen.";
   return `<!doctype html><html lang="de"><head><meta charset="utf-8">
-<title>BeautyTasks</title><style>
+<title>VibeTask</title><style>
 body{font-family:system-ui,sans-serif;background:#1e1e1e;color:#eee;display:flex;
 min-height:100vh;align-items:center;justify-content:center;margin:0}
 div{max-width:28rem;text-align:center;line-height:1.5;padding:2rem}

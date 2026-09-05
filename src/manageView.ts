@@ -1,5 +1,5 @@
 import { setIcon, Notice, Menu } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { PageCtx, manageTitleKey } from "./pageCtx";
 import { listManaged, ProjItem } from "./taskService";
 import { listFilters, FilterItem } from "./filterService";
@@ -16,7 +16,7 @@ import { t } from "./i18n";
 import { tip } from "./tooltip";
 
 /** Sortier-Umschalter „Manuell · Name · Anzahl" (leise, aktiv = Akzent) für eine Sektion. */
-function sortControl(parent: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection): void {
+function sortControl(parent: HTMLElement, plugin: VibeTaskPlugin, sec: NavSection): void {
   const wrap = parent.createDiv({ cls: "bt-sort-control" });
   wrap.createSpan({ cls: "bt-sort-lbl", text: t("sort_by") });
   const seg = wrap.createDiv({ cls: "bt-tabs bt-layout-toggle" });
@@ -31,7 +31,7 @@ function sortControl(parent: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSec
 
 /** Zieh-Griff am Zeilenanfang (nur im Manuell-Modus). Ziehen ordnet die ganze Liste um –
  *  inkl. der in der Seitenleiste ausgeblendeten Einträge; ArrowUp/ArrowDown verschieben per Tastatur. */
-function reorderHandle(row: HTMLElement, list: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection, key: string): void {
+function reorderHandle(row: HTMLElement, list: HTMLElement, plugin: VibeTaskPlugin, sec: NavSection, key: string): void {
   row.setAttr("data-key", key);
   const grip = row.createSpan({ cls: "bt-nav-grip", attr: { role: "button", tabindex: "0" } });
   tip(grip, t("menu_reorder"));
@@ -204,7 +204,7 @@ export function addRow(parent: HTMLElement, label: string, placeholder: string, 
 /** Klickbarer Farbpunkt (zeigt die Farbe, öffnet den Picker) – ersetzt das Palette-Icon.
  *  Ohne eigene Farbe wird die Kategorie-Default-Farbe gezeigt (dieselbe wie in der Seitenleiste
  *  bei Anlegen ohne Farbwahl). previewKey = Nav-Schlüssel für die Live-Vorschau. */
-function colorDot(row: HTMLElement, plugin: BeautyTasksPlugin, current: string | null, previewKey: string, defaultColor: string, onPick: (c: string | null) => void): void {
+function colorDot(row: HTMLElement, plugin: VibeTaskPlugin, current: string | null, previewKey: string, defaultColor: string, onPick: (c: string | null) => void): void {
   const dot = row.createDiv({ cls: "bt-mrow-dot" });
   tip(dot, t("status_pick_color"));
   dot.style.setProperty("--c", current ?? defaultColor);
@@ -215,7 +215,7 @@ function colorDot(row: HTMLElement, plugin: BeautyTasksPlugin, current: string |
  *  verbunden. Icon zeigt den Zustand (calendar-sync = an, calendar-off = aus) und schaltet per Klick.
  *  Führt den Zustand LOKAL/optimistisch – NICHT über den metadataCache neu lesen: der ist nach
  *  processFrontMatter noch stale, sonst bräuchte es zwei Klicks. */
-function syncSwitch(row: HTMLElement, plugin: BeautyTasksPlugin, path: string): void {
+function syncSwitch(row: HTMLElement, plugin: VibeTaskPlugin, path: string): void {
   if (!plugin.gcalSync.canSync()) return;   // nur wenn Sync wirklich aktiv (nicht bloß verbunden)
   let excluded = plugin.isListGcalExcluded(path);
   const btn = row.createDiv({ cls: "bt-mrow-sync", attr: { role: "switch", tabindex: "0" } });
@@ -240,7 +240,7 @@ function visSwitch(row: HTMLElement, on: boolean, onToggle: () => void): void {
 }
 
 /** Überlauf-Kebab (Projekte/Bereiche): seltene Aktion „Umwandeln" (Projekt ↔ Bereich). */
-function rowMenu(actions: HTMLElement, plugin: BeautyTasksPlugin, it: ProjItem): void {
+function rowMenu(actions: HTMLElement, plugin: VibeTaskPlugin, it: ProjItem): void {
   const kebab = actions.createEl("button", { cls: "bt-manage-btn" });
   tip(kebab, t("more_actions"));
   setIcon(kebab.createSpan(), "more-horizontal");
@@ -336,7 +336,7 @@ function filterRow(list: HTMLElement, ctx: PageCtx, fl: FilterItem, redraw: () =
   visSwitch(row, !fl.hidden, () => void plugin.setFilterVisible(fl.path, fl.hidden));
 }
 
-function startFilterRename(row: HTMLElement, plugin: BeautyTasksPlugin, fl: FilterItem, redraw: () => void): void {
+function startFilterRename(row: HTMLElement, plugin: VibeTaskPlugin, fl: FilterItem, redraw: () => void): void {
   row.empty();
   row.addClass("is-editing");
   const input = row.createEl("input", { type: "text", cls: "bt-manage-input" });
@@ -358,7 +358,7 @@ function startFilterRename(row: HTMLElement, plugin: BeautyTasksPlugin, fl: Filt
   window.setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-function startLabelRename(row: HTMLElement, plugin: BeautyTasksPlugin, l: { name: string; count: number }, redraw: () => void): void {
+function startLabelRename(row: HTMLElement, plugin: VibeTaskPlugin, l: { name: string; count: number }, redraw: () => void): void {
   row.empty();
   row.addClass("is-editing");
   const input = row.createEl("input", { type: "text", cls: "bt-manage-input" });
@@ -379,7 +379,7 @@ function startLabelRename(row: HTMLElement, plugin: BeautyTasksPlugin, l: { name
 }
 
 /** Inline-Umbenennen: ersetzt die Zeile durch ein Eingabefeld + Speichern/Abbrechen. */
-function startRename(row: HTMLElement, plugin: BeautyTasksPlugin, it: ProjItem, redraw: () => void): void {
+function startRename(row: HTMLElement, plugin: VibeTaskPlugin, it: ProjItem, redraw: () => void): void {
   row.empty();
   row.addClass("is-editing");
   const input = row.createEl("input", { type: "text", cls: "bt-manage-input" });

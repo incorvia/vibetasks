@@ -1,5 +1,5 @@
 import { setIcon } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { Task, CalEvent, agendaDate } from "./types";
@@ -264,7 +264,7 @@ function spanTitle(days: string[]): string {
 // ── Jahr: zwölf Mini-Monate ────────────────────────────────────────────────────
 /** Klick auf den Monatsnamen -> Monatsansicht, Klick auf einen Tag -> Tagesansicht. Tage mit
  *  Aufgaben sind markiert (Punkt), damit das Jahr nicht nur ein Datumsraster ist. */
-function renderYear(root: HTMLElement, plugin: BeautyTasksPlugin,
+function renderYear(root: HTMLElement, plugin: VibeTaskPlugin,
   anchor: string, today: string, zoom: (next: string, m: CalMode) => void): GridFiller {
   const wrap = root.createDiv({ cls: "bt-calview bt-calview-year" });
   const cells: { day: string; el: HTMLElement }[] = [];
@@ -308,7 +308,7 @@ const CHIPS_UNMEASURED: ChipFit = { all: 3, some: 3 };
 
 /** Chip- und „+N"-Höhe am echten DOM messen – Theme, Schriftgröße und Zoom gehen so von selbst ein.
  *  Die Probe hängt kurz im Raster, ist aber per CSS aus dem Layout genommen (.bt-calview-probe). */
-function measureChips(grid: HTMLElement, plugin: BeautyTasksPlugin, sample: Task): ChipMetrics {
+function measureChips(grid: HTMLElement, plugin: VibeTaskPlugin, sample: Task): ChipMetrics {
   const probe = grid.createDiv({ cls: "bt-calview-probe" });
   renderChip(probe, plugin, sample);
   const chip = probe.firstElementChild as HTMLElement | null;
@@ -435,7 +435,7 @@ function sortDay(list: Task[]): Task[] {
 }
 
 // ── Zeitraster: Woche (7 Spalten) und Tag (1 Spalte) ───────────────────────────
-function renderTimeGrid(root: HTMLElement, plugin: BeautyTasksPlugin,
+function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
   days: string[], today: string, add: CalendarAdd): GridFiller {
   const wrap = root.createDiv({ cls: "bt-calview bt-calview-week" + (days.length === 1 ? " bt-calview-day" : "") });
   // Gescrollt wird der GANZE Wochenblock (wrap), nicht nur das Zeitraster: hätte das Raster eine
@@ -563,7 +563,7 @@ function renderTimeGrid(root: HTMLElement, plugin: BeautyTasksPlugin,
 
 /** Seitenleiste „Undatiert": baut das Gerüst und liefert den Füller für die Kartenliste.
  *  Von hier per Drag ins Raster; der Drop setzt `due` – die Aufgabe verschwindet dann aus der Liste. */
-function renderUnscheduled(body: HTMLElement, plugin: BeautyTasksPlugin, add: CalendarAdd): (tasks: Task[]) => void {
+function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: CalendarAdd): (tasks: Task[]) => void {
   const panel = body.createDiv({ cls: "bt-calview-panel" });
   // Rückweg: eine Aufgabe aus dem Raster HIERHIN ziehen entfernt ihr Datum (setTaskDate löscht das
   // Frontmatter-Feld bei leerem Wert). Das Ziel ist der ganze Panel-Rahmen, nicht nur die Liste –
@@ -616,7 +616,7 @@ function yToMin(clientY: number, col: HTMLElement, top?: number): number {
 
 /** Dauer per Maus ziehen. Bewusst Maus-Events (kein HTML5-Drag): das liefert stetige Positionen. */
 function startResize(e: MouseEvent, el: HTMLElement, task: Task, startMin: number,
-  plugin: BeautyTasksPlugin): void {
+  plugin: VibeTaskPlugin): void {
   e.preventDefault(); e.stopPropagation();
   const col = el.parentElement!;
   const doc = el.ownerDocument;
@@ -643,7 +643,7 @@ function startResize(e: MouseEvent, el: HTMLElement, task: Task, startMin: numbe
 
 // ── Chips, Drag & Drop ─────────────────────────────────────────────────────────
 /** Kompakter Aufgaben-Chip (Monatszelle, Ganztägig-Zeile, „+N“-Popover). */
-function renderChip(parent: HTMLElement, plugin: BeautyTasksPlugin, task: Task): void {
+function renderChip(parent: HTMLElement, plugin: VibeTaskPlugin, task: Task): void {
   const chip = parent.createDiv({ cls: "bt-calview-chip" });
   decorate(chip, plugin, task);
   renderCheck(chip, plugin, task, { compact: true });   // Klick = erledigt, Rechtsklick = Status-Menü
@@ -700,7 +700,7 @@ function renderEventChip(parent: HTMLElement, de: DayEvent): void {
 }
 
 /** Gemeinsames Verhalten von Chip und Zeitblock: Farbe, Erledigt-Zustand, Klick. */
-function decorate(el: HTMLElement, plugin: BeautyTasksPlugin, task: Task): void {
+function decorate(el: HTMLElement, plugin: VibeTaskPlugin, task: Task): void {
   el.dataset.path = task.path;
   if (task.path === menuHoldPath()) el.addClass("bt-menu-hold");   // offenes Kontextmenü hält das Hover
   if (isDone(task.status)) el.addClass("is-done");
@@ -732,7 +732,7 @@ function dragSource(el: HTMLElement, task: Task): void {
  * dragover feuert bei jeder Mausbewegung – deshalb wird der Geist nur bewegt, nicht neu gebaut,
  * und nur dann angefasst, wenn sich die gerastete Minute tatsächlich geändert hat.
  */
-function attachGhost(col: HTMLElement, plugin: BeautyTasksPlugin): void {
+function attachGhost(col: HTMLElement, plugin: VibeTaskPlugin): void {
   let ghost: HTMLElement | null = null;
   let lastMin = -1;
   let colTop = 0;                                     // Spalten-Oberkante, EINMAL je Drag gemessen
@@ -768,7 +768,7 @@ function attachGhost(col: HTMLElement, plugin: BeautyTasksPlugin): void {
 }
 
 /** Drop-Ziel: `dueOf` liefert den neuen due-Wert („YYYY-MM-DD“ oder mit „THH:mm“). */
-function dropTarget(el: HTMLElement, plugin: BeautyTasksPlugin,
+function dropTarget(el: HTMLElement, plugin: VibeTaskPlugin,
   dueOf: (task: Task, ev: DragEvent) => string, page: CalendarAdd = {}): void {
   el.addEventListener("dragover", (e) => {
     if (!dragTask()) return;                               // nur unsere Aufgaben – aus Kalender, Liste ODER Board

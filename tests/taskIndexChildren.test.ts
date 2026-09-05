@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { TFile } from "obsidian";
 import { TaskIndex } from "../src/taskIndex";
-import { DEFAULT_SETTINGS, BeautyTasksSettings } from "../src/types";
+import { DEFAULT_SETTINGS, VibeTaskSettings } from "../src/types";
 
 /**
  * `children()` / `descendants()` – die Eltern-Beziehung des Index.
@@ -61,7 +61,7 @@ function fakeApp(dateien: Datei[]) {
 
 const neuerIndex = (dateien: Datei[]) => {
   const w = fakeApp(dateien);
-  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as BeautyTasksSettings;
+  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as VibeTaskSettings;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const index = new TaskIndex(w.app as any, () => settings);
   index.build();

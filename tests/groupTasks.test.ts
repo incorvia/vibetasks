@@ -318,8 +318,8 @@ describe("groupTasks – unverändertes Verhalten", () => {
   it("Projekt: ohne Projekt und Inbox-Verweis landen im selben Eingang-Bucket, ganz unten", () => {
     const list = [
       mk({ id: "ohne", project: null }),
-      mk({ id: "inbox", project: "BeautyTasks/Projects/Inbox.md" }),
-      mk({ id: "echt", project: "BeautyTasks/Projects/Garten.md" }),
+      mk({ id: "inbox", project: "VibeTask/Projects/Inbox.md" }),
+      mk({ id: "echt", project: "VibeTask/Projects/Garten.md" }),
     ];
     const g = groupTasks(list, "project", TODAY);
     expect(titles(g)).toEqual(["@Garten", t("nav_inbox")]);

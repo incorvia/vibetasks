@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { TFile } from "obsidian";
 import { TaskIndex } from "../src/taskIndex";
-import { DEFAULT_SETTINGS, BeautyTasksSettings, Task } from "../src/types";
+import { DEFAULT_SETTINGS, VibeTaskSettings, Task } from "../src/types";
 
 /**
  * Differenzprüfung des Index unter zufälligen Änderungsfolgen.
@@ -46,7 +46,7 @@ function welt(dateien: Datei[]) {
       offref: () => { /* s. o. */ },
     },
   };
-  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as BeautyTasksSettings;
+  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as VibeTaskSettings;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const index = new TaskIndex(app as any, () => settings);
   index.build();

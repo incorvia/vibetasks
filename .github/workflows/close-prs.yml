@@ -1,6 +1,6 @@
 name: Close external PRs
 
-# BeautyTasks accepts feature requests and bug reports through GitHub issues,
+# VibeTask accepts feature requests and bug reports through GitHub issues,
 # not pull requests. This workflow politely closes any PR that gets opened.
 on:
   pull_request_target:
@@ -21,13 +21,13 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: [
-                "Thanks for your interest in BeautyTasks! 🙏",
+                "Thanks for your interest in VibeTask! 🙏",
                 "",
                 "This project doesn't accept pull requests. Ideas are very welcome as",
-                "**feature requests through [GitHub issues](https://github.com/avnibilgin/BeautyTasks/issues)** —",
+                "**feature requests through [GitHub issues](https://github.com/incorvia/vibetasks/issues)** —",
                 "please open one there and describe the problem you'd like to solve.",
                 "",
-                "Closing this PR automatically. See [CONTRIBUTING.md](https://github.com/avnibilgin/BeautyTasks/blob/main/CONTRIBUTING.md) for details."
+                "Closing this PR automatically. See [CONTRIBUTING.md](https://github.com/incorvia/vibetasks/blob/main/CONTRIBUTING.md) for details."
               ].join("\n")
             });
             await github.rest.pulls.update({

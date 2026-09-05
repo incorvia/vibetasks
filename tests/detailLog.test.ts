@@ -109,7 +109,7 @@ describe("splitContent / composeContent (Beschreibung ↔ Log)", () => {
     const r = splitContent(content);
     expect(r.description).toBe("Inhalt");           // Überschrift NICHT in der Beschreibung
     expect(r.log).toBe("> [!log] x\n> K");          // Überschrift NICHT im zurückgegebenen Log
-    expect(r.log).not.toContain("BeautyTasks");
+    expect(r.log).not.toContain("VibeTask");
   });
 
   it("ohne Log keine Log-Überschrift", () => {

@@ -1,13 +1,13 @@
-/* BeautyTasks – Plugin-Styles. Eigene .bt-*-Klassen, optisch 1:1 zum bisherigen
-   BeautyTasks (Werte/Icon-Masken aus Tasks-Style.css übernommen). */
+/* VibeTask – Plugin-Styles. Eigene .bt-*-Klassen, optisch 1:1 zum bisherigen
+   VibeTask (Werte/Icon-Masken aus Tasks-Style.css übernommen). */
 
 /* Style-Settings-Integration (optional): Wer das „Style Settings"-Plugin hat, bekommt
    Farbwähler für die Semantik-Farben. Ohne das Plugin gelten einfach die Defaults unten.
    Die IDs entsprechen den --bt-*-Variablen. */
 /* @settings
 
-name: BeautyTasks
-id: beautytasks
+name: VibeTask
+id: vibetask
 settings:
   - id: bt-monochrome
     title: Monochrome (no colors)
@@ -16,7 +16,7 @@ settings:
     default: false
   - id: bt-colors-heading
     title: Colors
-    description: Semantic colors used across BeautyTasks (these also drive icon colors).
+    description: Semantic colors used across VibeTask (these also drive icon colors).
     type: heading
     level: 2
     collapsed: true
@@ -239,7 +239,7 @@ body {
 
 /* Kompletten Pane-Header-Balken ausblenden (nur diese View; der Tab bleibt).
    Die Seite hat eine eigene Überschrift, der Header-Balken wäre redundant. */
-.workspace-leaf-content[data-type="beautytasks-main"] .view-header { display: none; }
+.workspace-leaf-content[data-type="vibetask-main"] .view-header { display: none; }
 
 /* Aufgaben-Suche (FuzzySuggestModal, außerhalb der View – eigene bt-search-*-Klassen). */
 .bt-search-item { display: flex; flex-direction: column; gap: 2px; }
@@ -266,7 +266,7 @@ body {
      ohnehin breiten Leerrand der Lesebreite, kostet also nichts. */
   scrollbar-gutter: stable both-edges;
 }
-/* Inhalt zentriert auf Lesebreite (wie das alte BeautyTasks). WICHTIG: der seitliche
+/* Inhalt zentriert auf Lesebreite (wie das alte VibeTask). WICHTIG: der seitliche
    Abstand wird über die SIZER-BREITE geregelt, nicht über Padding – denn bei einem
    zentrierten Sizer heben sich Padding und Auto-Margin gegenseitig auf (= kein Effekt).
    min(Lesebreite, 100% − 2·40px) garantiert auch bei schmalem Fenster ≥ 40px Rand. */
@@ -300,7 +300,7 @@ body {
   gap: 6px;
   margin: 20px 0 14px;
   color: var(--text-muted);
-  /* Textgröße 1:1 zum alten BeautyTasks (Meta-Bind-Button erbte den Obsidian-
+  /* Textgröße 1:1 zum alten VibeTask (Meta-Bind-Button erbte den Obsidian-
      Button-Default). Das Plus bleibt unberührt, da .bt-add-icon fix 16px ist. */
   font-size: var(--font-ui-small);
   cursor: pointer;
@@ -1153,7 +1153,7 @@ body {
 /* Das `contrast`-Icon füllt standardmäßig die RECHTE Hälfte – spiegeln, damit die gefüllte
    Seite überall (Checkbox, Chip, Menü, Editor) LINKS liegt. */
 .lucide-contrast { transform: scaleX(-1); }
-/* Priorität: farbiger Checkbox-Ring (wie altes BeautyTasks). */
+/* Priorität: farbiger Checkbox-Ring (wie altes VibeTask). */
 .bt-check[data-prio="highest"] { border-color: var(--bt-prio-1); box-shadow: 0 0 0 1px var(--bt-prio-1); }
 .bt-check[data-prio="high"]    { border-color: var(--bt-prio-2); box-shadow: 0 0 0 1px var(--bt-prio-2); }
 .bt-check[data-prio="medium"]  { border-color: var(--bt-prio-3); box-shadow: 0 0 0 1px var(--bt-prio-3); }
@@ -1236,7 +1236,7 @@ body {
 .bt-check.bt-check-x .svg-icon { width: 11px; height: 11px; color: var(--text-muted); }
 .bt-check.bt-check-x:hover { border-color: var(--text-faint); }   /* kein Hover-Effekt */
 .bt-check.bt-check-x:hover::after { display: none; }              /* kein Häkchen-Hover */
-/* Konfigurierbare BeautyTasks-Meta-Farben. Defaults auf `body` (niedrige Spezifität) – der Nutzer
+/* Konfigurierbare VibeTask-Meta-Farben. Defaults auf `body` (niedrige Spezifität) – der Nutzer
    überschreibt sie per Einstellung (applyColors setzt Inline-Vars auf body, gewinnen dann). --bt-meta-
    gray auf body, damit ihn auch der @Projekt-Backlink (in .bt-extras) erbt. --bt-dist-far = Icon-Grau. */
 body {
@@ -1485,7 +1485,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 
 /* Projekt→Bereich-Umschalter im Board-Header (Häkchen links). */
 /* ── Verwaltung (ListManager): Kopf + Tabs + Zeilen ── */
-/* Kategorie-Buttons rechts, auf gleicher Höhe wie die Überschrift (wie altes BeautyTasks). */
+/* Kategorie-Buttons rechts, auf gleicher Höhe wie die Überschrift (wie altes VibeTask). */
 .bt-view .bt-manage-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .bt-view .bt-manage-header h1 { margin: 6px 0 2px; }   /* identisch zu .bt-view h1 (Board/Inbox) */
 .bt-view .bt-manage-header .bt-tabs { margin: 0; }
@@ -1500,7 +1500,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-view .bt-tab:hover { color: var(--text-normal); }
 .bt-view .bt-tab.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
 
-/* Aktiv/Archiv unter „Projekte" – Pill-Buttons wie die Kategorie-Tabs (altes BeautyTasks). */
+/* Aktiv/Archiv unter „Projekte" – Pill-Buttons wie die Kategorie-Tabs (altes VibeTask). */
 .bt-view .bt-subtabs { display: flex; gap: 8px; margin: 0 0 18px; }
 .bt-view .bt-subtab {
   cursor: pointer; padding: 4px 14px; border-radius: 6px; font-size: var(--font-ui-small);

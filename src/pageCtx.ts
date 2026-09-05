@@ -1,5 +1,5 @@
 import type { Component } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import type { Task } from "./types";
 import type { ViewOptions, PageLayout, FilterCriteria, FacetId } from "./filterEngine";
 import { INBOX_KEY } from "./taskService";
@@ -95,7 +95,7 @@ export function facetsFor(page: PageRef): FacetId[] {
  * Wird von MainView.draw() frisch gebaut und nach unten gereicht.
  */
 export interface PageCtx {
-  readonly plugin: BeautyTasksPlugin;
+  readonly plugin: VibeTaskPlugin;
   /** Stabile Kennung DIESES Tabs. Gehört in jeden Schlüssel für transienten Zustand
    *  (Scrollposition, aufgeklappte Badges, Kalender-Anker) – sonst teilen sich zwei Tabs
    *  derselben Seite einen Eintrag und ziehen sich gegenseitig an die falsche Stelle. */

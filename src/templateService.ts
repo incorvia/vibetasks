@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Task } from "./types";
 import { AnchorMode, planTemplateDates } from "./templatePlan";
 import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, setTaskTitle, slugify } from "./taskService";
@@ -40,7 +40,7 @@ export interface TemplateInfo {
 /** Ordner einer Vorlage: `<templatesFolder>/<Name>`. Je Vorlage einer – siehe templates-plan.md,
  *  Abschnitt „Vault-Layout": flach in einem Topf verwechselten sich gleichnamige Schritte zweier
  *  Vorlagen über den Basenamen. */
-function templateFolder(plugin: BeautyTasksPlugin, name: string): string {
+function templateFolder(plugin: VibeTaskPlugin, name: string): string {
   return normalizePath(plugin.settings.templatesFolder + "/" + slugify(name));
 }
 
@@ -61,7 +61,7 @@ const isRoot = (t: Task): boolean => !t.parent && !isTrashed(t.status);
  * Alle Vorlagen mit ihrer Grösse, alphabetisch. Liest ausschliesslich aus dem Vorlagen-Index –
  * der Aufgaben-Index weiss von Vorlagen nichts und soll es auch nicht.
  */
-export function listTemplates(plugin: BeautyTasksPlugin): TemplateInfo[] {
+export function listTemplates(plugin: VibeTaskPlugin): TemplateInfo[] {
   return plugin.templates.all()
     .filter(isRoot)
     .map((root) => {
@@ -111,7 +111,7 @@ export async function setTemplateHidden(app: App, path: string, hidden: boolean)
  * Die Vorlage übernimmt die Daten UNVERÄNDERT – sie sind der Rhythmus, den sie sich merkt. Erst
  * beim Anwenden werden sie auf einen neuen Anker gerechnet (templatePlan.ts).
  */
-export async function saveAsTemplate(plugin: BeautyTasksPlugin, task: Task, kind: TemplateKind = "task"): Promise<string> {
+export async function saveAsTemplate(plugin: VibeTaskPlugin, task: Task, kind: TemplateKind = "task"): Promise<string> {
   const folder = freeFolder(plugin.app, templateFolder(plugin, task.title));
   await ensureFolder(plugin.app, folder);
   const target: NoteTarget = { folder, type: TEMPLATE_TYPE };
@@ -157,7 +157,7 @@ export async function saveAsTemplate(plugin: BeautyTasksPlugin, task: Task, kind
  * der Vorlage bilden sie deshalb einen Baum unter der Wurzel – und beim Anwenden löst
  * `detachTop` sie wieder von ihr (s. applyTemplate).
  */
-export async function saveProjectAsTemplate(plugin: BeautyTasksPlugin, projectPath: string, name: string, description = ""): Promise<string> {
+export async function saveProjectAsTemplate(plugin: VibeTaskPlugin, projectPath: string, name: string, description = ""): Promise<string> {
   const folder = freeFolder(plugin.app, templateFolder(plugin, name));
   await ensureFolder(plugin.app, folder);
   const target: NoteTarget = { folder, type: TEMPLATE_TYPE };
@@ -183,7 +183,7 @@ export async function saveProjectAsTemplate(plugin: BeautyTasksPlugin, projectPa
  * Der Ordner kommt aus dem Pfad der Wurzel und nicht aus dem Namen: Bei einer Namenskollision
  * heisst der Ordner „Urlaub 2", und eine neue Unteraufgabe muss dort landen, nicht in „Urlaub".
  */
-export function templateEditScope(plugin: BeautyTasksPlugin, rootPath: string): EditScope {
+export function templateEditScope(plugin: VibeTaskPlugin, rootPath: string): EditScope {
   return {
     index: plugin.templates,
     target: { folder: rootPath.split("/").slice(0, -1).join("/"), type: TEMPLATE_TYPE },
@@ -212,7 +212,7 @@ export interface ApplyOptions {
  * Projektvorlage zu einem Projekt mit seinen Aufgaben. Der Unterschied steckt allein darin, was
  * aus der WURZEL wird – der Datums-Plan und die Rekursion sind für beide dieselben.
  */
-export async function applyTemplate(plugin: BeautyTasksPlugin, rootPath: string, opts: ApplyOptions): Promise<number> {
+export async function applyTemplate(plugin: VibeTaskPlugin, rootPath: string, opts: ApplyOptions): Promise<number> {
   const root = plugin.templates.get(rootPath);
   if (!root) return 0;
   const items = [root, ...plugin.templates.descendants(rootPath)];
@@ -261,7 +261,7 @@ export async function applyTemplate(plugin: BeautyTasksPlugin, rootPath: string,
  * schon einmal gemacht. Von Null anzufangen bleibt trotzdem nötig, sonst müsste man erst eine
  * Wegwerf-Aufgabe bauen, um sie sofort wieder zu löschen.
  */
-export async function createEmptyTemplate(plugin: BeautyTasksPlugin, name: string, kind: TemplateKind = "task"): Promise<string> {
+export async function createEmptyTemplate(plugin: VibeTaskPlugin, name: string, kind: TemplateKind = "task"): Promise<string> {
   const folder = freeFolder(plugin.app, templateFolder(plugin, name));
   await ensureFolder(plugin.app, folder);
   const root = await createTaskNote(plugin.app, plugin.settings, {
@@ -279,7 +279,7 @@ export async function createEmptyTemplate(plugin: BeautyTasksPlugin, name: strin
  * und ein Umbenennen zöge das Umschreiben jedes Kindes nach sich – für etwas, das niemand sieht.
  * Dieselbe Trennung wie bei Projekten (Name = Referenz, Anzeige = Wert).
  */
-export async function renameTemplate(plugin: BeautyTasksPlugin, rootPath: string, newName: string): Promise<void> {
+export async function renameTemplate(plugin: VibeTaskPlugin, rootPath: string, newName: string): Promise<void> {
   const file = plugin.app.vault.getAbstractFileByPath(rootPath);
   if (!(file instanceof TFile)) return;
   await setTaskTitle(plugin.app, file, newName);
@@ -290,7 +290,7 @@ export async function renameTemplate(plugin: BeautyTasksPlugin, rootPath: string
 }
 
 /** Eine Vorlage samt ihres Ordners in den Obsidian-Papierkorb (reversibel, wie bei Projekten). */
-export async function deleteTemplate(plugin: BeautyTasksPlugin, rootPath: string): Promise<void> {
+export async function deleteTemplate(plugin: VibeTaskPlugin, rootPath: string): Promise<void> {
   const folder = plugin.app.vault.getAbstractFileByPath(rootPath.split("/").slice(0, -1).join("/"));
   // Der Ordner gehört der Vorlage allein – ihn als Ganzes zu entfernen nimmt auch die Kinder mit,
   // ohne sie einzeln aufsammeln zu müssen. Fehlt er wider Erwarten, bleibt die Wurzel-Notiz.
@@ -314,7 +314,7 @@ export const templateNameOf = (path: string): string => baseName(path.split("/")
  * Der kurze Verzug wartet auf den Metadaten-Cache; `build()` meldet anschliessend von selbst,
  * und die NavView zeichnet über ihr Abo neu.
  */
-export function refreshTemplates(plugin: BeautyTasksPlugin): void {
+export function refreshTemplates(plugin: VibeTaskPlugin): void {
   window.setTimeout(() => plugin.templates.build(), 150);
 }
 

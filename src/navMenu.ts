@@ -2,7 +2,7 @@
 // EINE Quelle der Wahrheit – genutzt vom Sidebar-Rechtsklick (heuteView) UND vom ListManager-Kebab
 // (manageView). Alle Aktionen rufen bestehende Plugin-Methoden; das Menü ist reine Verdrahtung.
 import { Menu, TFile, Platform } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { PageRef, pageInfo } from "./pageCtx";
 import { NavSection } from "./types";
 import { EditFocus, NewItemModal } from "./newItemModal";
@@ -40,7 +40,7 @@ export interface NavMenuItem {
  *
  * Auf Mobile gibt es keine Fenster; der dritte Eintrag entfällt dort.
  */
-export function addOpenItems(menu: Menu, plugin: BeautyTasksPlugin, page: PageRef): void {
+export function addOpenItems(menu: Menu, plugin: VibeTaskPlugin, page: PageRef): void {
   menu.addItem((m) => m.setSection("bt-newtab").setTitle(t("menu_open_new_tab")).setIcon("file-plus")
     .onClick(() => void plugin.openPage(page, "tab")));
   menu.addItem((m) => m.setSection("bt-newtab").setTitle(t("menu_open_right")).setIcon("separator-vertical")
@@ -79,7 +79,7 @@ export function pageOf(item: NavMenuItem): PageRef {
 /** Fügt genau den Kalender-Sync-Ein/Ausschalt-Eintrag hinzu – nur wenn mit Google verbunden.
  *  Wiederverwendet vom Projekt/Bereich-Menü UND vom Eingang (der NUR diesen Eintrag bekommt).
  *  Liefert, ob etwas hinzugefügt wurde (der Aufrufer zeigt das Menü nur dann). */
-export function addGcalSyncItem(menu: Menu, plugin: BeautyTasksPlugin, path: string): boolean {
+export function addGcalSyncItem(menu: Menu, plugin: VibeTaskPlugin, path: string): boolean {
   if (!plugin.gcalSync.canSync()) return false;   // nur wenn Sync wirklich aktiv (nicht bloß verbunden)
   const excluded = plugin.isListGcalExcluded(path);
   menu.addItem((m) => m.setSection("bt-gcal")
@@ -91,21 +91,21 @@ export function addGcalSyncItem(menu: Menu, plugin: BeautyTasksPlugin, path: str
 
 /** Bearbeiten-Dialog des Eintrags – Filter bekommen ihren eigenen. Exportiert, weil auch der
  *  Beschreibungs-Platzhalter auf der Seite dorthin führt (das Feld liegt in diesem Dialog). */
-export function openEdit(plugin: BeautyTasksPlugin, item: NavMenuItem, focus: EditFocus = "name"): void {
+export function openEdit(plugin: VibeTaskPlugin, item: NavMenuItem, focus: EditFocus = "name"): void {
   if (item.sec === "filters") { new FilterModal(plugin, item.key, undefined, focus).open(); return; }
   const kind = item.sec === "labels" ? "label" : (item.type ?? "project");
   const desc = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived).find((p) => p.path === item.key)?.description ?? "";
   new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: desc }, focus).open();
 }
 
-function setVisible(plugin: BeautyTasksPlugin, sec: NavSection, key: string, visible: boolean): Promise<void> {
+function setVisible(plugin: VibeTaskPlugin, sec: NavSection, key: string, visible: boolean): Promise<void> {
   if (sec === "filters") return plugin.setFilterVisible(key, visible);
   if (sec === "labels") return plugin.setLabelVisible(key, visible);
   if (sec === "templates") return plugin.setTemplateVisible(key, visible);
   return plugin.setProjectVisible(key, visible);
 }
 
-function deleteItem(plugin: BeautyTasksPlugin, item: NavMenuItem): Promise<void> {
+function deleteItem(plugin: VibeTaskPlugin, item: NavMenuItem): Promise<void> {
   if (item.sec === "filters") return plugin.deleteFilter(item.key);
   if (item.sec === "labels") return plugin.deleteLabel(item.key);
   if (item.sec === "templates") return deleteTemplate(plugin, item.key);
@@ -113,7 +113,7 @@ function deleteItem(plugin: BeautyTasksPlugin, item: NavMenuItem): Promise<void>
 }
 
 /** Schnelles Umbenennen (nur der Name) je Typ – Schlüssel ist Pfad bzw. Label-Name. */
-function renameItem(plugin: BeautyTasksPlugin, item: NavMenuItem, v: string): void {
+function renameItem(plugin: VibeTaskPlugin, item: NavMenuItem, v: string): void {
   if (item.sec === "filters") { void plugin.renameFilter(item.key, v); return; }
   if (item.sec === "labels") { void plugin.renameLabel(item.key, v); return; }
   if (item.sec === "templates") { void renameTemplate(plugin, item.key, v); return; }
@@ -133,7 +133,7 @@ const GOTO_KEY: Partial<Record<NavSection, string>> = {
  *   - "sidebar": Umsortieren bewegt nur die SICHTBARE Reihenfolge (Drag-Modus / visible-only).
  *   - "manage":  Umsortieren bewegt die VOLLE Liste; „Reihenfolge ändern" entfällt (Zieh-Griff vorhanden).
  *   - "board":   Kebab auf einer Einzelseite – ohne alle Sortier-Optionen, dafür mit „Zur …übersicht". */
-export function buildItemMenu(menu: Menu, plugin: BeautyTasksPlugin, item: NavMenuItem, source: "sidebar" | "manage" | "board" = "sidebar"): void {
+export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuItem, source: "sidebar" | "manage" | "board" = "sidebar"): void {
   const isProjLike = item.sec === "projects" || item.sec === "areas";
   const fromSidebar = source === "sidebar";
   const onBoard = source === "board";
@@ -238,7 +238,7 @@ export function buildItemMenu(menu: Menu, plugin: BeautyTasksPlugin, item: NavMe
 }
 
 /** Ausgeblendete Einträge einer Sektion (Schlüssel + Anzeigename). */
-function hiddenOf(plugin: BeautyTasksPlugin, sec: NavSection): { key: string; name: string }[] {
+function hiddenOf(plugin: VibeTaskPlugin, sec: NavSection): { key: string; name: string }[] {
   if (sec === "filters") return listFilters(plugin.app).filter((f) => f.hidden).map((f) => ({ key: f.path, name: f.name }));
   if (sec === "templates") return listTemplates(plugin).filter((x) => x.hidden).map((x) => ({ key: x.root.path, name: x.name }));
   if (sec === "labels") return plugin.getLabels().filter((l) => !plugin.isLabelVisible(l.name)).map((l) => ({ key: l.name, name: l.name }));
@@ -262,7 +262,7 @@ function hiddenOf(plugin: BeautyTasksPlugin, sec: NavSection): { key: string; na
  * am leeren Bereich der Seitenleiste – ein Menü, das nur an Einträgen hinge, wäre auf einem
  * frischen Vault nicht erreichbar.
  */
-export function buildCreateSubmenu(menu: Menu, plugin: BeautyTasksPlugin, section?: string): void {
+export function buildCreateSubmenu(menu: Menu, plugin: VibeTaskPlugin, section?: string): void {
   menu.addItem((parent) => {
     if (section) parent.setSection(section);
     parent.setTitle(t("menu_create_new")).setIcon("plus");
@@ -282,7 +282,7 @@ export function buildCreateSubmenu(menu: Menu, plugin: BeautyTasksPlugin, sectio
   });
 }
 
-export function showHiddenSubmenu(menu: Menu, plugin: BeautyTasksPlugin, sec: NavSection): boolean {
+export function showHiddenSubmenu(menu: Menu, plugin: VibeTaskPlugin, sec: NavSection): boolean {
   const hidden = hiddenOf(plugin, sec);
   if (!hidden.length) return false;
   menu.addItem((parent) => {
@@ -298,7 +298,7 @@ export function showHiddenSubmenu(menu: Menu, plugin: BeautyTasksPlugin, sec: Na
 
 /** Rechtsklick auf eine Vorlage. Anwenden steht zusätzlich hier, obwohl der Klick es schon tut –
  *  wer das Menü öffnet, soll nicht raten müssen, welche Handlung die Zeile ausführt. */
-export function buildTemplateMenu(plugin: BeautyTasksPlugin, tpl: TemplateInfo): Menu {
+export function buildTemplateMenu(plugin: VibeTaskPlugin, tpl: TemplateInfo): Menu {
   const m = new Menu();
   m.addItem((i) => i.setTitle(t("tpl_apply_title")).setIcon("wand-sparkles")
     .onClick(() => new ApplyTemplateModal(plugin, tpl, plugin.addContext().project ?? null).open()));

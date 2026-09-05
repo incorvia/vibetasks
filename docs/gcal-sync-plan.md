@@ -1,7 +1,7 @@
 Ist# Umsetzungsplan: „Google Kalender – Zwei-Wege-Sync" (Alternative B)
 
 ## Kontext
-BeautyTasks ist **eine Markdown-Notiz pro Aufgabe mit Frontmatter** (`type: task`, gelesen über
+VibeTask ist **eine Markdown-Notiz pro Aufgabe mit Frontmatter** (`type: task`, gelesen über
 `TaskIndex`/`metadataCache`) — dasselbe Modell wie TaskNotes. Die Event-Identität gehört daher in
 die **Notiz** (Frontmatter), nicht ins Google-Event. Ziel: nativer, plattformübergreifender
 Zwei-Wege-Sync **ohne** externe Python/systemd-Abhängigkeit (ersetzt das alte Sidecar-Script).
@@ -27,7 +27,7 @@ Plugin-weiter State in `data.json` (nicht pro Notiz):
 - `gcalLastSynced: Record<taskId, {due, status}>` — letzter Stand je Aufgabe (3-Wege-Basis).
 
 ## Task ↔ Event-Mapping
-| BeautyTasks | Google-Event | Hinweis |
+| VibeTask | Google-Event | Hinweis |
 |---|---|---|
 | `# Titel` (H1) | `summary` | via `TaskIndex` (`cache.headings[0]`) |
 | `due` + `dueTime` (+ `duration`) | `start`/`end` | mit `dueTime` → `dateTime` (Zeitblock, `duration` Min., Default 60); ohne → `date` (Ganztags) |
@@ -100,7 +100,7 @@ Google Kalender
  ● Verbunden als avni.bilgin@gmail.com            [ Abmelden ]
  Zuletzt synchronisiert: vor 2 Min                [ Jetzt synchronisieren ]
  ──────────────────────────────────────────────────────────────
- Ziel-Kalender                    [ BeautyTasks ▾ ]
+ Ziel-Kalender                    [ VibeTask ▾ ]
  Aufgaben mit Datum synchronisieren                      [✔]
  Automatisch synchronisieren                             [✔]
  ▸ Erweitert
@@ -112,12 +112,12 @@ Google Kalender
 ```
 Die **Standardfläche = 3 Zeilen** (Kalender, ein Toggle, Auto-Sync). Alles Feinkörnige unter
 „Erweitert" (zugeklappt). Imperativer Settings-Tab (minAppVersion, siehe
-[[beautytasks-settings-declarative-api]]).
+[[vibetask-settings-declarative-api]]).
 
-### 3. Ziel-Kalender — eigener „BeautyTasks"-Kalender (kleiner Blast-Radius)
-Beim ersten Verbinden Default = eigener Kalender „BeautyTasks" (anlegen falls fehlt), nicht der
+### 3. Ziel-Kalender — eigener „VibeTask"-Kalender (kleiner Blast-Radius)
+Beim ersten Verbinden Default = eigener Kalender „VibeTask" (anlegen falls fehlt), nicht der
 Hauptkalender — ein Bug kann so nie den privaten Kalender beschädigen. Dropdown aus
-`calendarList.list` erlaubt jeden anderen + „＋ Kalender ‚BeautyTasks' anlegen".
+`calendarList.list` erlaubt jeden anderen + „＋ Kalender ‚VibeTask' anlegen".
 
 ### 4. Sync-Umfang — global an, pro Liste ausschließbar (Entscheidung)
 - Globaler Toggle „Aufgaben mit Datum synchronisieren" = **an**.

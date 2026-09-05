@@ -6,7 +6,7 @@ const CAL = "230e5579d262f3aa0e0f43fd5c87a57e@group.calendar.google.com";
 const OTHER = "zweiter@group.calendar.google.com";
 
 const task = (over: Partial<Task> = {}): Task => ({
-  id: "t-1", path: "BeautyTasks/Items/t-1.md", title: "Zahnarzt",
+  id: "t-1", path: "VibeTask/Items/t-1.md", title: "Zahnarzt",
   status: "todo", priority: "none", labels: [], due: "2026-10-03",
   ...over,
 } as Task);

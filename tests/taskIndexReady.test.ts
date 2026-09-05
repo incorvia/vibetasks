@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TaskIndex } from "../src/taskIndex";
-import { DEFAULT_SETTINGS, BeautyTasksSettings } from "../src/types";
+import { DEFAULT_SETTINGS, VibeTaskSettings } from "../src/types";
 
 /**
  * Der Startzustand des Index – die Ursache dafür, dass die Seitenleiste beim Start „+ Label
@@ -59,7 +59,7 @@ function fakeApp(dateien: Datei[]) {
 const aufgabe = (labels: string[]) => ({ type: "task", status: "todo", labels });
 const neuerIndex = (dateien: Datei[]) => {
   const w = fakeApp(dateien);
-  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as BeautyTasksSettings;
+  const settings = { ...DEFAULT_SETTINGS, excludeFolders: [] } as VibeTaskSettings;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { ...w, index: new TaskIndex(w.app as any, () => settings) };
 };

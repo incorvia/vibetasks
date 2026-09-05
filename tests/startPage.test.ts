@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { forcedStartPage, newTabPage, fromLegacyStartView, HOME } from "../src/startPage";
 import { PageRef } from "../src/pageCtx";
 
-const PROJEKT: PageRef = { kind: "project", key: "BeautyTasks/Projects/Reisen.md" };
+const PROJEKT: PageRef = { kind: "project", key: "VibeTask/Projects/Reisen.md" };
 const alles = (): boolean => true;
 const nichts = (): boolean => false;
 const ANSICHTEN = ["heute", "demnaechst", "wiederkehrend", "erledigt"];

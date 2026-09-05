@@ -3,14 +3,14 @@ import { resolveProjectPath, isProjectType } from "../src/taskService";
 
 // Karte echter Projekt-/Bereichs-Notizen: lowercase Basename -> Pfad. GENAU wie sie der Index baut.
 const map = new Map<string, string>([
-  ["beautytasks", "BeautyTasks/Projects/BeautyTasks.md"],
-  ["abos", "BeautyTasks/Projects/Abos.md"],
-  ["smart home2", "BeautyTasks/Projects/Smart Home2.md"],
+  ["vibetask", "VibeTask/Projects/VibeTask.md"],
+  ["abos", "VibeTask/Projects/Abos.md"],
+  ["smart home2", "VibeTask/Projects/Smart Home2.md"],
 ]);
 
 describe("resolveProjectPath – Projekt-Verweis über Basename gegen echte Projekte", () => {
   it("löst einen gültigen Projekt-Verweis auf seinen Pfad auf", () => {
-    expect(resolveProjectPath("[[BeautyTasks]]", map)).toBe("BeautyTasks/Projects/BeautyTasks.md");
+    expect(resolveProjectPath("[[VibeTask]]", map)).toBe("VibeTask/Projects/VibeTask.md");
   });
 
   it("ignoriert gleichnamige Fremd-Notizen: kein echtes Projekt mit dem Basenamen -> null (Eingang)", () => {
@@ -20,16 +20,16 @@ describe("resolveProjectPath – Projekt-Verweis über Basename gegen echte Proj
   });
 
   it("ist case-insensitiv", () => {
-    expect(resolveProjectPath("[[beautyTASKS]]", map)).toBe("BeautyTasks/Projects/BeautyTasks.md");
+    expect(resolveProjectPath("[[vibeTASK]]", map)).toBe("VibeTask/Projects/VibeTask.md");
   });
 
   it("nimmt bei [[Ordner/Name]] den Basenamen", () => {
-    expect(resolveProjectPath("[[Irgendwo/Abos]]", map)).toBe("BeautyTasks/Projects/Abos.md");
+    expect(resolveProjectPath("[[Irgendwo/Abos]]", map)).toBe("VibeTask/Projects/Abos.md");
   });
 
   it("ignoriert Alias und Heading-Anker", () => {
-    expect(resolveProjectPath("[[BeautyTasks|Anzeigename]]", map)).toBe("BeautyTasks/Projects/BeautyTasks.md");
-    expect(resolveProjectPath("[[BeautyTasks#Abschnitt]]", map)).toBe("BeautyTasks/Projects/BeautyTasks.md");
+    expect(resolveProjectPath("[[VibeTask|Anzeigename]]", map)).toBe("VibeTask/Projects/VibeTask.md");
+    expect(resolveProjectPath("[[VibeTask#Abschnitt]]", map)).toBe("VibeTask/Projects/VibeTask.md");
   });
 
   it("leer / kein Wikilink / kein String -> null", () => {

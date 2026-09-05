@@ -1,5 +1,5 @@
 import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon } from "obsidian";
-import { BeautyTasksSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE } from "./types";
+import { VibeTaskSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
 import { applyDefaults, toDelta } from "./settingsDelta";
@@ -35,7 +35,7 @@ import { nextInstance, legacyToRRule } from "./recurrence";
 import { todayStr, localStamp, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
 import { tip } from "./tooltip";
-import { BeautyTasksSettingTab } from "./settingsTab";
+import { VibeTaskSettingTab } from "./settingsTab";
 import { TaskSearchModal } from "./searchModal";
 import { writeExportFile, parseExport, importData, JsonFilePickerModal, pickOsJsonFile } from "./importExport";
 import { ImportTaskNotesModal } from "./importTaskNotes";
@@ -61,14 +61,14 @@ function registerIcons(): void {
 // Der Refresh-Token ist ein Dauerzugriff auf den Google-Kalender und würde sonst über jeden
 // Sync-Dienst, jedes Backup und jede Versionshistorie mitwandern. Obsidian trennt den Speicher
 // bereits pro Vault, deshalb reicht ein Präfix je Zweck.
-const GCAL_TOKEN_KEY = "beautytasks-gcal-tokens";
-const GCAL_RECONNECT_KEY = "beautytasks-gcal-reconnect-notified";
-const GCAL_CACHE_KEY = "beautytasks-gcal-cache";        // Abgleich-Stand (war gcal.lastSynced/syncTokens)
-const GCAL_SNAPSHOT_KEY = "beautytasks-gcal-snapshot";  // Kaltstart-Termine (war gcalFeed.snapshot)
-const DEVICE_STATE_KEY = "beautytasks-device";          // Geräte-Zustand (s. DeviceState in types.ts)
+const GCAL_TOKEN_KEY = "vibetask-gcal-tokens";
+const GCAL_RECONNECT_KEY = "vibetask-gcal-reconnect-notified";
+const GCAL_CACHE_KEY = "vibetask-gcal-cache";        // Abgleich-Stand (war gcal.lastSynced/syncTokens)
+const GCAL_SNAPSHOT_KEY = "vibetask-gcal-snapshot";  // Kaltstart-Termine (war gcalFeed.snapshot)
+const DEVICE_STATE_KEY = "vibetask-device";          // Geräte-Zustand (s. DeviceState in types.ts)
 
-export default class BeautyTasksPlugin extends Plugin {
-  settings!: BeautyTasksSettings;
+export default class VibeTaskPlugin extends Plugin {
+  settings!: VibeTaskSettings;
   index!: TaskIndex;
   /** Zweiter Index derselben Klasse über den Vorlagen-Ordner (s. IndexScope in taskIndex.ts).
    *  Getrennt zu halten ist der ganze Trick: Vorlagen sind für Ansichten, Zähler, Google-Sync
@@ -171,10 +171,10 @@ export default class BeautyTasksPlugin extends Plugin {
     // Bei „Seitenvorschau" als Quelle anmelden: erscheint dort in den Einstellungen und folgt der
     // Strg-Vorgabe des Nutzers. defaultMod:false, weil das Icon der ausdrückliche Auslöser ist –
     // ein Strg-Zwang wäre hier unnötige Reibung (auf einem Wikilink im Text gilt weiter die Vorgabe).
-    this.registerHoverLinkSource("beautytasks", { display: "BeautyTasks", defaultMod: false });
+    this.registerHoverLinkSource("vibetask", { display: "VibeTask", defaultMod: false });
 
-    this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openBeautyTasks());
-    this.addSettingTab(new BeautyTasksSettingTab(this.app, this));
+    this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openVibeTask());
+    this.addSettingTab(new VibeTaskSettingTab(this.app, this));
 
     // Layout-/Tab-Wechsel: u. a. wenn Obsidian eine aufgeschobene View endlich anhängt.
     // Bewusst KEIN active-leaf-change-Redraw: der feuert auf dem fokusverschiebenden
@@ -208,7 +208,7 @@ export default class BeautyTasksPlugin extends Plugin {
     // Filtern ohnehin nie anfasst). Deckt Projekt/Bereich/Filter/Aufgabe ab.
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => void this.onNoteRenamed(file, oldPath)));
 
-    this.addCommand({ id: "open", name: t("ribbon_open"), callback: () => void this.openBeautyTasks() });
+    this.addCommand({ id: "open", name: t("ribbon_open"), callback: () => void this.openVibeTask() });
     for (const id of VIEW_IDS) {
       this.addCommand({ id: "open-" + id, name: t("cmd_open_view", viewTitle(id)), callback: () => void this.activateView(id) });
     }
@@ -223,7 +223,7 @@ export default class BeautyTasksPlugin extends Plugin {
       checkCallback: (checking: boolean) => {
         const f = this.app.workspace.getActiveFile();
         if (!f || f.extension !== "md") return false;
-        // Nur „normale" Notizen: bereits eine Aufgabe ODER eine BeautyTasks-Entität
+        // Nur „normale" Notizen: bereits eine Aufgabe ODER eine VibeTask-Entität
         // (Projekt/Bereich/Filter) NICHT anbieten – sonst würde der Typ überschrieben.
         const type: unknown = this.app.metadataCache.getFileCache(f)?.frontmatter?.[fieldKey("type")];
         if (type === "task" || type === "project" || type === "area" || type === "filter") return false;
@@ -265,7 +265,7 @@ export default class BeautyTasksPlugin extends Plugin {
           new Notice(t("notice_imported", n));
           window.setTimeout(() => this.index.build(), 800);
         } catch (e) {
-          console.error("BeautyTasks import error", e);
+          console.error("VibeTask import error", e);
           new Notice(t("notice_import_failed"));
         }
       },
@@ -363,7 +363,7 @@ export default class BeautyTasksPlugin extends Plugin {
   }
 
   // ── Öffnen / Navigieren ──
-  async openBeautyTasks(): Promise<void> {
+  async openVibeTask(): Promise<void> {
     await this.activateNav();
     await this.openPage(this.newTabStartPage());
   }
@@ -395,7 +395,7 @@ export default class BeautyTasksPlugin extends Plugin {
     return newTabPage(this.settings.startPage, this.device.lastView, (p) => this.pageExists(p));
   }
 
-  /** Beim Start: den aktiven BeautyTasks-Tab auf die eingestellte Seite schicken. Andere Tabs
+  /** Beim Start: den aktiven VibeTask-Tab auf die eingestellte Seite schicken. Andere Tabs
    *  bleiben stehen – wer sich mehrere Seiten eingerichtet hat, soll sie behalten. Bei „zuletzt
    *  benutzte" passiert gar nichts, dann gilt die wiederhergestellte Seite des Tabs. */
   private applyStartPage(): void {
@@ -1254,7 +1254,7 @@ export default class BeautyTasksPlugin extends Plugin {
       const path = await writeExportFile(this);
       new Notice(t("notice_export_done", path));
     } catch (e) {
-      console.error("BeautyTasks export error", e);
+      console.error("VibeTask export error", e);
       new Notice(t("notice_export_failed"));
     }
   }
@@ -1270,7 +1270,7 @@ export default class BeautyTasksPlugin extends Plugin {
       if (r.unknownStatusTasks) new Notice(t("notice_import_unknown_status", r.unknownStatusTasks, r.unknownStatuses.join(", ")), 0);
       window.setTimeout(() => this.index.build(), 800);   // Frontmatter der neuen Notizen ist erst kurz später im Cache
     } catch (e) {
-      console.error("BeautyTasks JSON import error", e);
+      console.error("VibeTask JSON import error", e);
       new Notice(t("notice_import_failed"));
     }
   }
@@ -1913,7 +1913,7 @@ export default class BeautyTasksPlugin extends Plugin {
    *
    *  Notizen, die `title:` schon führen, werden gar nicht erst angefasst. Damit ist die Migration
    *  idempotent: ein zweiter Lauf findet nichts mehr. */
-  /** Liegt die Notiz im Aufgaben-Ordner? Dann hat BeautyTasks sie selbst angelegt (createTaskNote
+  /** Liegt die Notiz im Aufgaben-Ordner? Dann hat VibeTask sie selbst angelegt (createTaskNote
    *  schreibt ausschließlich dorthin) – nur solche Notizen räumt die Titel-Migration im Body auf. */
   private isOwnTaskNote(path: string): boolean {
     return isUnderFolder(path, this.settings.itemsFolder);
@@ -1967,7 +1967,7 @@ export default class BeautyTasksPlugin extends Plugin {
       // aktuellen Inhalt gesucht, kann also nicht durch verschobene Zeilennummern danebengehen.
       //
       // Entfernt wird eine Titel-Überschrift nur in EIGENEN Notizen – die liegen im Aufgaben-Ordner,
-      // dort hat BeautyTasks sie samt „# Titel" angelegt und bis 1.30.0 auch gepflegt. Alles
+      // dort hat VibeTask sie samt „# Titel" angelegt und bis 1.30.0 auch gepflegt. Alles
       // außerhalb kam von woanders (umgewandelt, von Hand geschrieben, importiert); dessen
       // Überschrift gehört dem Nutzer und bleibt stehen. Der Ordner ist ein Herkunftsnachweis,
       // die Textlänge wäre nur eine Schätzung. `hasOwnContent` bleibt als zweites Netz: auch in
@@ -1988,7 +1988,7 @@ export default class BeautyTasksPlugin extends Plugin {
    *  halb umgeschriebene Notizen unsichtbar werden.
    *
    *  Zwei Felder, zwei Regeln (deshalb parametrisiert statt zweimal geschrieben):
-   *  - `type` entscheidet, ob eine Notiz überhaupt zu BeautyTasks gehört. Betroffen ist der ganze
+   *  - `type` entscheidet, ob eine Notiz überhaupt zu VibeTask gehört. Betroffen ist der ganze
    *    Vault (Projekte, Bereiche und Filter stehen nicht im Aufgaben-Index), und der Wert wird
    *    VERSCHOBEN – `task` gehört uns, ihn stehen zu lassen konservierte die Kollision.
    *  - `title` betrifft nur Aufgaben, und der Wert wird KOPIERT: Wer das Feld wechselt, tut das in
@@ -2023,7 +2023,7 @@ export default class BeautyTasksPlugin extends Plugin {
               if (remove) delete fm[prev];
             });
             done_++;
-          } catch (err) { failed++; console.error("BeautyTasks: field rename failed", path, err); }
+          } catch (err) { failed++; console.error("VibeTask: field rename failed", path, err); }
         }
         // Erst jetzt die Einstellung – s. Kommentar oben.
         this.settings.fieldNames = { ...allFieldNames(), [id]: next };
@@ -2041,7 +2041,7 @@ export default class BeautyTasksPlugin extends Plugin {
   }
 
   /** Pfade der Notizen, die ein Feldnamen-Wechsel anfassen würde. `type` geht vault-weit über die
-   *  vier BeautyTasks-Werte; `title` nur über Aufgaben mit einem brauchbaren Wert. Notizen, die den
+   *  vier VibeTask-Werte; `title` nur über Aufgaben mit einem brauchbaren Wert. Notizen, die den
    *  neuen Schlüssel schon führen, bleiben außen vor – das macht den Lauf wiederholbar. Notizen in
    *  Ausschluss-Ordnern werden nie angefasst: Dort hat der Nutzer erklärt, dass sie uns nicht
    *  gehören. */
@@ -2199,7 +2199,7 @@ export default class BeautyTasksPlugin extends Plugin {
     const body = task.title;
     try {
       if (typeof Notification !== "undefined" && !Platform.isMobile) {
-        const n = new Notification("BeautyTasks", { body });
+        const n = new Notification("VibeTask", { body });
         n.onclick = () => { window.focus(); this.openEditTask(task); };
       }
     } catch { /* Notification je nach Umgebung nicht verfügbar -> Notice reicht */ }
@@ -2429,7 +2429,7 @@ export default class BeautyTasksPlugin extends Plugin {
     let order = ORDER_GAP;
     for (const kid of kids) {
       // Verschobene Daten der Vorlage, falls vorhanden – sonst die des Originals (Duplizieren
-      // bleibt bewusst datumsgetreu, s. beautytasks-templates-plan „Kontext").
+      // bleibt bewusst datumsgetreu, s. vibetask-templates-plan „Kontext").
       const d = opts.dates?.get(kid.path);
       const copy = await createTaskNote(this.app, this.settings, {
         title: kid.title,
@@ -2531,7 +2531,7 @@ export default class BeautyTasksPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const saved = (await this.loadData()) as Partial<BeautyTasksSettings> | null;
+    const saved = (await this.loadData()) as Partial<VibeTaskSettings> | null;
     this.settings = applyDefaults(saved);
     // Stand der Einmal-Migrationen bestimmen, solange `saved` noch vorliegt: Nur hier ist
     // unterscheidbar, ob es GAR KEINE data.json gab (frische Installation → nichts zu migrieren)
@@ -2592,7 +2592,7 @@ export default class BeautyTasksPlugin extends Plugin {
   /** Einmalige Umstellung (ab 1.37.0): `navCollapsed`, `lastView` und `reminderLastScan` lagen in
    *  data.json und wanderten damit über den Sync auf jedes Gerät. Ein Handy und ein Desktop teilen
    *  sich aber weder ihre Bildschirmaufteilung noch ihren letzten Standort (s. die Regel an
-   *  BeautyTasksSettings).
+   *  VibeTaskSettings).
    *
    *  Der vorhandene Stand wird übernommen, damit auf DIESEM Gerät nichts springt. Andere Geräte
    *  starten mit aufgeklappter Seitenleiste – nichts davon ist Nutzerinhalt. Das `delete` ist
@@ -2845,7 +2845,7 @@ export default class BeautyTasksPlugin extends Plugin {
   }
 
   /** Mit Google verbinden: Login (Desktop-Loopback bzw. Mobile-Device-Flow), danach Anzeige-
-   *  E-Mail holen, bei Bedarf eigenen „BeautyTasks"-Kalender anlegen, aktivieren, initial pushen.
+   *  E-Mail holen, bei Bedarf eigenen „VibeTask"-Kalender anlegen, aktivieren, initial pushen.
    *  Wirft bei Fehler (die UI zeigt die Meldung). */
   async gcalConnect(onDevicePrompt?: (p: DevicePrompt) => void): Promise<void> {
     const g = this.settings.gcal!;
@@ -2855,7 +2855,7 @@ export default class BeautyTasksPlugin extends Plugin {
     try { await this.gcalAuth.setAccount(await fetchAccountEmail(this.gcalAuth)); } catch { /* optional */ }
     this.app.saveLocalStorage(GCAL_RECONNECT_KEY, null);   // Hinweis darf später wieder greifen
     // Ziel-Kalender sicherstellen: leer ODER zeigt auf einen nicht (mehr) existierenden Kalender
-    // (z. B. in Google gelöscht) -> eigenen „BeautyTasks"-Kalender finden/anlegen. Eine bewusst
+    // (z. B. in Google gelöscht) -> eigenen „VibeTask"-Kalender finden/anlegen. Eine bewusst
     // gewählte, noch existierende Wahl bleibt unangetastet. Schlägt es fehl (z. B. Recht nicht
     // bestätigt), bleibt calendarId leer -> die Settings zeigen einen deutlichen Hinweis.
     try {
@@ -2863,7 +2863,7 @@ export default class BeautyTasksPlugin extends Plugin {
       if (!g.calendarId || !cals.some((c) => c.id === g.calendarId)) {
         g.calendarId = await ensureDefaultCalendar(this.gcalAuth, g.timezone);
       }
-    } catch (e) { console.warn("BeautyTasks: Ziel-Kalender konnte nicht sichergestellt werden", e); }
+    } catch (e) { console.warn("VibeTask: Ziel-Kalender konnte nicht sichergestellt werden", e); }
     g.enabled = true;
     // Termine anzeigen bei der ERSTEN Einrichtung gleich mit einschalten: Wer Google verbindet,
     // erwartet seine Termine zu sehen – sie hinter einem zweiten Schalter zu verstecken, sah nach
@@ -2878,7 +2878,7 @@ export default class BeautyTasksPlugin extends Plugin {
     const erstmalig = !Object.keys(gf.calendars).length;
     if (erstmalig) {
       gf.enabled = true;
-      try { await this.gcalFeed.initDefaults(); } catch (e) { console.warn("BeautyTasks: Kalenderliste nicht erreichbar", e); }
+      try { await this.gcalFeed.initDefaults(); } catch (e) { console.warn("VibeTask: Kalenderliste nicht erreichbar", e); }
     }
     await this.saveSettings();
     this.refreshGCalStatusBar();
@@ -2904,7 +2904,7 @@ export default class BeautyTasksPlugin extends Plugin {
   /** Kalenderliste für den Ziel-Kalender-Picker. */
   gcalCalendars(): Promise<CalendarInfo[]> { return listCalendars(this.gcalAuth); }
 
-  /** Eigenen „BeautyTasks"-Kalender anlegen (oder vorhandenen finden) und als Ziel setzen.
+  /** Eigenen „VibeTask"-Kalender anlegen (oder vorhandenen finden) und als Ziel setzen.
    *  Bestehende Events ziehen beim nächsten Sync via move nach. Braucht den calendar.app.created-
    *  Scope → nach Scope-Erweiterung ggf. einmal neu verbinden. Wirft bei Fehler (UI zeigt Meldung). */
   async gcalCreateDefaultCalendar(): Promise<void> {

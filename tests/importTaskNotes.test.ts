@@ -48,13 +48,13 @@ describe("splitDT", () => {
 });
 
 describe("mapStatus", () => {
-  it("maps TaskNotes statuses to BeautyTasks kinds", () => {
+  it("maps TaskNotes statuses to VibeTask kinds", () => {
     expect(mapStatus("open")).toBe("todo");
     expect(mapStatus("in-progress")).toBe("doing");
     expect(mapStatus("done")).toBe("done");
     expect(mapStatus("cancelled")).toBe("cancelled");
   });
-  it("keeps a matching BeautyTasks status id and falls back to open", () => {
+  it("keeps a matching VibeTask status id and falls back to open", () => {
     expect(mapStatus("doing")).toBe("doing");
     expect(mapStatus("something-unknown")).toBe("todo");
   });

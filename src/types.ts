@@ -133,7 +133,7 @@ export type MetaColorKey =
  * Geschmacksfrage.
  * ═════════════════════════════════════════════════════════════════════════════
  */
-export interface BeautyTasksSettings {
+export interface VibeTaskSettings {
   itemsFolder: string;
   projectsFolder: string;   // Projekte UND Bereiche liegen hier (Bereich = type:area)
   filtersFolder: string;    // gespeicherte Filter (type: filter) liegen hier
@@ -203,12 +203,12 @@ export interface BeautyTasksSettings {
  * `statuses` und `fieldNames` gehören ebenfalls zu den Standardwerten, stehen aber in
  * settingsDelta.ts: types.ts darf statuses.ts nicht importieren (Zirkelbezug).
  */
-export const DEFAULT_SETTINGS: BeautyTasksSettings = {
-  itemsFolder: "BeautyTasks/Items",
-  projectsFolder: "BeautyTasks/Projects",
-  filtersFolder: "BeautyTasks/Filters",
-  templatesFolder: "BeautyTasks/Templates",
-  attachmentsFolder: "BeautyTasks/Attachments",
+export const DEFAULT_SETTINGS: VibeTaskSettings = {
+  itemsFolder: "VibeTask/Items",
+  projectsFolder: "VibeTask/Projects",
+  filtersFolder: "VibeTask/Filters",
+  templatesFolder: "VibeTask/Templates",
+  attachmentsFolder: "VibeTask/Attachments",
   knownLabels: [],
   visibleLabels: [],
   labelColors: {},
@@ -231,7 +231,7 @@ export const DEFAULT_SETTINGS: BeautyTasksSettings = {
 
 /**
  * Geräte-Zustand. Liegt im lokalen Speicher (app.saveLocalStorage), NICHT in data.json –
- * siehe die Regel an BeautyTasksSettings. Ein Objekt unter EINEM Schlüssel, damit nicht für
+ * siehe die Regel an VibeTaskSettings. Ein Objekt unter EINEM Schlüssel, damit nicht für
  * jeden Wert ein eigener Eintrag entsteht.
  *
  * Alles hier ist entbehrlich: Geht es verloren, startet das Gerät mit aufgeklappter

@@ -2,7 +2,7 @@
 // Listen-Inhalt). Rendert in einen Container; lokaler Redraw, weil im Settings-Fenster kein
 // renderAll()-Kaskaden-Redraw greift (plugin.setStatusX() zeichnet nur die Haupt-Boards neu).
 import { Notice, setIcon } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { statusLabel, statusIcon, statusTint, firstOpenStatus, firstDoneStatus, checkStatusId, StatusKind, StoredStatus } from "./statuses";
 import { openPopover } from "./popover";
 import { iconBtn, addRow, openColorPicker, confirmInline, attachRowDrag } from "./manageView";
@@ -26,7 +26,7 @@ const GROUP_TITLE: Record<StatusKind, string> = { open: "status_kind_open", done
 
 /** Status-Editor in einen Container rendern (Einstellungen-Abschnitt). Nach Kategorie gruppiert:
  *  Offen · Erledigt · Papierkorb – so sind die drei Pflicht-Zustände sichtbar. */
-export function renderStatusEditor(container: HTMLElement, plugin: BeautyTasksPlugin): void {
+export function renderStatusEditor(container: HTMLElement, plugin: VibeTaskPlugin): void {
   container.empty();
   // bt-view aktiviert die (unter `.bt-view` gescopten) Manage-/Status-Zeilen-Styles auch im
   // Settings-Fenster; `.bt-view` selbst bringt nur Icon-Variablen, kein Layout.
@@ -69,7 +69,7 @@ export function renderStatusEditor(container: HTMLElement, plugin: BeautyTasksPl
 /** Mutation + lokaler Redraw (die Status-Liste im Settings-Fenster aktualisiert sich sonst nicht). */
 function then(p: Promise<unknown>, redraw: () => void): void { void p.then(redraw); }
 
-function statusRow(list: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus, groupCount: number, roles: StatusRoles, persist: () => void, redraw: () => void): void {
+function statusRow(list: HTMLElement, plugin: VibeTaskPlugin, s: StoredStatus, groupCount: number, roles: StatusRoles, persist: () => void, redraw: () => void): void {
   const row = list.createDiv({ cls: "bt-manage-row bt-status-row", attr: { "data-key": s.id } });
 
   // Sortier-Griff: Drag&Drop (dasselbe System wie Chip-/Nav-Sortierung) + Pfeiltasten (a11y/mobil).
@@ -109,7 +109,7 @@ function statusRow(list: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus
   if (groupCount <= 1) delB.disabled = true;
 }
 
-function startStatusRename(row: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus, redraw: () => void): void {
+function startStatusRename(row: HTMLElement, plugin: VibeTaskPlugin, s: StoredStatus, redraw: () => void): void {
   row.empty();
   row.addClass("is-editing");
   const input = row.createEl("input", { type: "text", cls: "bt-manage-input" });
@@ -130,7 +130,7 @@ function startStatusRename(row: HTMLElement, plugin: BeautyTasksPlugin, s: Store
  * Textfeld aussieht: Umbenennen ändert nur die Anzeige, das hier schreibt jede Aufgabe um.
  * Deshalb dieselbe Bedienung, aber mit Prüfung, Zahl und Bestätigung davor.
  */
-function startStatusIdEdit(row: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus, redraw: () => void): void {
+function startStatusIdEdit(row: HTMLElement, plugin: VibeTaskPlugin, s: StoredStatus, redraw: () => void): void {
   row.empty();
   row.addClass("is-editing", "is-editing-id");   // eigene Klasse: nur hier bricht die Zeile um
   const input = row.createEl("input", { type: "text", cls: "bt-manage-input" });
@@ -164,7 +164,7 @@ function startStatusIdEdit(row: HTMLElement, plugin: BeautyTasksPlugin, s: Store
   window.setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-function openKindPicker(anchor: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus, redraw: () => void): void {
+function openKindPicker(anchor: HTMLElement, plugin: VibeTaskPlugin, s: StoredStatus, redraw: () => void): void {
   openPopover(anchor, (pop, close) => {
     (["open", "done", "cancelled"] as StatusKind[]).forEach((k) => {
       const row = pop.createDiv({ cls: "bt-row" + (s.kind === k ? " is-active" : "") });
@@ -175,7 +175,7 @@ function openKindPicker(anchor: HTMLElement, plugin: BeautyTasksPlugin, s: Store
   });
 }
 
-function openIconPicker(anchor: HTMLElement, plugin: BeautyTasksPlugin, s: StoredStatus, redraw: () => void): void {
+function openIconPicker(anchor: HTMLElement, plugin: VibeTaskPlugin, s: StoredStatus, redraw: () => void): void {
   openPopover(anchor, (pop, close) => {
     pop.addClass("bt-icon-grid");
     for (const ic of ICON_PRESETS) {

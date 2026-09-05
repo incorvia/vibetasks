@@ -1,5 +1,5 @@
 import { App, Component, TFile } from "obsidian";
-import { Task, Priority, BeautyTasksSettings } from "./types";
+import { Task, Priority, VibeTaskSettings } from "./types";
 import { archivedProjectNames, isInboxName, isProjectType, resolveProjectPath, baseName, isUnderFolder, folderPrefix, isUnderPrefix } from "./taskService";
 import { isKnownStatus, isOpen, isDone, isTrashed, firstOpenStatus } from "./statuses";
 import { titleKey, fmTitle, firstH1, resolveTitle } from "./taskTitle";
@@ -33,7 +33,7 @@ export interface IndexScope {
   /** Frontmatter-`type`-Wert, an dem dieser Index seine Notizen erkennt. */
   typeValue: string;
   /** Ordner, auf den sich dieser Index beschränkt. Fehlt er, gilt der ganze Vault. */
-  restrictTo?: (s: BeautyTasksSettings) => string;
+  restrictTo?: (s: VibeTaskSettings) => string;
 }
 
 export const TASK_SCOPE: IndexScope = { typeValue: "task" };
@@ -87,7 +87,7 @@ export class TaskIndex extends Component {
     this.childCache = null;
   }
 
-  constructor(private app: App, private getSettings: () => BeautyTasksSettings,
+  constructor(private app: App, private getSettings: () => VibeTaskSettings,
               private scope: IndexScope = TASK_SCOPE) { super(); }
 
   /**
@@ -127,7 +127,7 @@ export class TaskIndex extends Component {
    *
    * Der Sentinel `\u0000` kann als Ordnername nicht vorkommen und erzwingt den ersten Lauf.
    */
-  private syncPrefixes(s: BeautyTasksSettings): void {
+  private syncPrefixes(s: VibeTaskSettings): void {
     const own = this.scope.restrictTo ? this.scope.restrictTo(s) : "";
     if (own !== this.ownRaw) { this.ownRaw = own; this.ownPrefix = folderPrefix(own); }
     const tpl = s.templatesFolder ?? "";

@@ -1,4 +1,4 @@
-// Namen der Frontmatter-Felder, die BeautyTasks benutzt.
+// Namen der Frontmatter-Felder, die VibeTask benutzt.
 //
 // `type`, `title` und `labels` sind beliebte Eigenschaftsnamen – wer sie schon für etwas Eigenes
 // belegt, stellt hier andere ein. Konfigurierbar ist nur der NAME, nicht der Wert: Wer `bt_type`
@@ -30,7 +30,7 @@ export const DEFAULT_FIELD_NAMES: Record<FieldId, string> = { type: "type", titl
  */
 const FIELD_EXCEPTION: Partial<Record<FieldId, string>> = { labels: "tags" };
 
-/** Feste Feldnamen, die BeautyTasks selbst führt, plus die von Obsidian belegten. Als Ziel eines
+/** Feste Feldnamen, die VibeTask selbst führt, plus die von Obsidian belegten. Als Ziel eines
  *  Wechsels gesperrt – sonst schriebe die App beim nächsten Speichern über ihre eigenen Daten
  *  (oder über die Tags des Nutzers). Die KONFIGURIERBAREN Felder stehen hier NICHT drin; die
  *  kommen dynamisch dazu, siehe normalizeFieldName. */
@@ -84,7 +84,7 @@ export function fieldKey(id: FieldId): string { return CURRENT[id]; }
 export const labelKey = (): string => fieldKey("labels");
 export function allFieldNames(): Record<FieldId, string> { return { ...CURRENT }; }
 
-/** Frontmatter-Werte, an denen BeautyTasks seine eigenen Notizen erkennt. Die EINE Liste – sie
+/** Frontmatter-Werte, an denen VibeTask seine eigenen Notizen erkennt. Die EINE Liste – sie
  *  entscheidet auch, welche Notizen ein Feldnamen-Wechsel umschreibt. */
 export const ENTITY_VALUES = ["task", "project", "area", "filter", "template"] as const;
 export type EntityValue = (typeof ENTITY_VALUES)[number];

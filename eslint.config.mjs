@@ -21,7 +21,7 @@ export default [
     },
     rules: {
       // v0.3.0: laut Plugin-Doku standardmäßig AUS („not working as intended"); zudem
-      // ist „BeautyTasks" ein Eigenname/Markenname und kein UI-Satz.
+      // ist „VibeTask" ein Eigenname/Markenname und kein UI-Satz.
       "obsidianmd/ui/sentence-case": "off",
       // Underscore-präfixierte ungenutzte Variablen erlauben (catch (_e)).
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],

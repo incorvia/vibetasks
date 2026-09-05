@@ -1,5 +1,5 @@
 import { setIcon, Menu } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Task } from "./types";
 import { t } from "./i18n";
 import { allStatuses, isDone, statusColor, statusIcon, statusLabel, statusTint, firstOpenStatus } from "./statuses";
@@ -15,7 +15,7 @@ import { allStatuses, isDone, statusColor, statusIcon, statusLabel, statusTint, 
 
 /** Checkbox zeichnen (Zustand, Status-Icon, Prioritäts-Ring) und verdrahten.
  *  `compact` = kleinere Variante für Kalender-Chips und flache Zeitblöcke. */
-export function renderCheck(parent: HTMLElement, _plugin: BeautyTasksPlugin, task: Task,
+export function renderCheck(parent: HTMLElement, _plugin: VibeTaskPlugin, task: Task,
   opts: { trash?: boolean; compact?: boolean } = {}): HTMLElement {
   const check = parent.createDiv({ cls: "bt-check" + (opts.compact ? " bt-check-sm" : "") });
   if (opts.trash) {
@@ -58,7 +58,7 @@ export function renderCheck(parent: HTMLElement, _plugin: BeautyTasksPlugin, tas
  * der Klick dort abgefangen und käme hier nie an. In der Capture-Phase läuft dieser Handler zuerst;
  * sein stopPropagation() verhindert dann, dass zusätzlich das Modal aufgeht.
  */
-export function installCheckDelegation(root: HTMLElement, plugin: BeautyTasksPlugin): void {
+export function installCheckDelegation(root: HTMLElement, plugin: VibeTaskPlugin): void {
   const taskOf = (e: Event): Task | null => {
     const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".bt-check[data-check]");
     if (!el) return null;
@@ -98,7 +98,7 @@ export function installCheckDelegation(root: HTMLElement, plugin: BeautyTasksPlu
 
 /** Status-Kontextmenü der Checkbox: To-Do · In Arbeit · Erledigt · (Abbrechen → Papierkorb).
  *  Setzt den Status live (setTaskStatus kümmert sich um Zeitstempel/Wiederholung). */
-export function showStatusMenu(plugin: BeautyTasksPlugin, task: Task, x: number, y: number): void {
+export function showStatusMenu(plugin: VibeTaskPlugin, task: Task, x: number, y: number): void {
   const menu = new Menu();
   for (const s of allStatuses()) {
     if (s.kind === "cancelled") menu.addSeparator();   // Abbrechen von den Arbeits-Status trennen

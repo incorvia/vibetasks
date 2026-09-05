@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import { getLocale } from "./i18n";
 import { findH1LineInBody } from "./taskTitle";
 
-// Kommentar-Log (Details) – 1:1 zum alten BeautyTasks (tasks-utils.js). Einträge stehen
+// Kommentar-Log (Details) – 1:1 zum alten VibeTask (tasks-utils.js). Einträge stehen
 // als [!log]-Callouts; im neuen Modell leben sie im BODY der Aufgaben-Notiz (statt in
 // einer separaten Detail-Notiz), unterhalb der „# Titel"-Überschrift.
 
@@ -83,8 +83,8 @@ export function formatLogTime(ts: string, now?: Date): string {
 // Die (einklappbare) Log-Überschrift gruppiert die Kommentare, damit sie in umgewandelten
 // Inhaltsnotizen nicht stören. Sie ist ein fester Marker (nicht lokalisiert), damit splitContent
 // die Log-Region zuverlässig erkennt und die Überschrift beim Lesen wieder wegtrennt.
-export const LOG_HEADING = "###### BeautyTasks Details-Logbuch";
-const isLogHead = (l: string): boolean => /^#{1,6}\s+BeautyTasks Details-Logbuch\s*$/.test(l);
+export const LOG_HEADING = "###### VibeTask Details-Logbuch";
+const isLogHead = (l: string): boolean => /^#{1,6}\s+VibeTask Details-Logbuch\s*$/.test(l);
 
 export function splitContent(content: string): { fm: string; title: string; description: string; log: string } {
   const fmMatch = content.match(/^(---\n[\s\S]*?\n---\n)/);

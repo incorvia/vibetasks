@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, FuzzyMatch, TFile } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Task } from "./types";
 import { formatDate, todayStr } from "./format";
 import { isDone, isTrashed } from "./statuses";
@@ -41,7 +41,7 @@ export class TaskSearchModal extends FuzzySuggestModal<Task> {
    *  Suche beginnt wieder ohne Altlasten. */
   private excludeArchived = true;
 
-  constructor(private plugin: BeautyTasksPlugin) {
+  constructor(private plugin: VibeTaskPlugin) {
     super(plugin.app);
     this.setPlaceholder(t("search_placeholder"));
   }

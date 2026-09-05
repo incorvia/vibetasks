@@ -1,4 +1,4 @@
-import { BeautyTasksSettings, DEFAULT_SETTINGS } from "./types";
+import { VibeTaskSettings, DEFAULT_SETTINGS } from "./types";
 import { DEFAULT_STATUSES } from "./statuses";
 import { DEFAULT_FIELD_NAMES } from "./fieldNames";
 
@@ -30,7 +30,7 @@ import { DEFAULT_FIELD_NAMES } from "./fieldNames";
  * erlaubt sind. Ohne sie brächte die Umstellung ihren wichtigsten Fall nicht: Die Statusliste ist
  * der größte Block, den heute jede data.json wörtlich mitschleppt.
  */
-export const EFFECTIVE_DEFAULTS: BeautyTasksSettings = {
+export const EFFECTIVE_DEFAULTS: VibeTaskSettings = {
   ...DEFAULT_SETTINGS,
   statuses: DEFAULT_STATUSES,
   fieldNames: DEFAULT_FIELD_NAMES,
@@ -86,7 +86,7 @@ export function deepEqual(a: unknown, b: unknown): boolean {
  * `undefined` wird nicht geschrieben: In JSON gäbe es das ohnehin nicht, und ein Feld, das der
  * Nutzer nie gesetzt hat, soll auch keinen Platz bekommen.
  */
-export function toDelta(settings: BeautyTasksSettings): Record<string, unknown> {
+export function toDelta(settings: VibeTaskSettings): Record<string, unknown> {
   const defaults = EFFECTIVE_DEFAULTS as unknown as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings as unknown as Record<string, unknown>)) {
@@ -119,7 +119,7 @@ function frisch(v: unknown): unknown {
   return v;
 }
 
-export function applyDefaults(saved: Partial<BeautyTasksSettings> | null | undefined): BeautyTasksSettings {
+export function applyDefaults(saved: Partial<VibeTaskSettings> | null | undefined): VibeTaskSettings {
   // JEDER veränderliche Standardwert wird KOPIERT herausgegeben – nicht nur die drei, die mir
   // beim ersten Mal einfielen.
   //
@@ -134,8 +134,8 @@ export function applyDefaults(saved: Partial<BeautyTasksSettings> | null | undef
   // automatisch mit abgesichert.
   const base = Object.fromEntries(
     Object.entries(EFFECTIVE_DEFAULTS as unknown as Record<string, unknown>).map(([k, v]) => [k, frisch(v)]),
-  ) as unknown as BeautyTasksSettings;
+  ) as unknown as VibeTaskSettings;
   const merged = Object.assign(base, saved ?? {}) as unknown as Record<string, unknown>;
   for (const key of OBSOLETE_KEYS) delete merged[key];
-  return merged as unknown as BeautyTasksSettings;
+  return merged as unknown as VibeTaskSettings;
 }

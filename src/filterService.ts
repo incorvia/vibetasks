@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath } from "obsidian";
-import { BeautyTasksSettings } from "./types";
+import { VibeTaskSettings } from "./types";
 import { buildFrontmatter, ensureFolder, newId, todayIso, slugify, retitleHeading } from "./taskService";
 import { fieldKey } from "./fieldNames";
 import { ScanCache } from "./scanCache";
@@ -64,7 +64,7 @@ function applyToFrontmatter(fm: Record<string, unknown>, c: FilterCriteria, o: V
 
 /** Neue Filter-Notiz anlegen; gibt den Basenamen zurück. */
 export async function createFilterNote(
-  app: App, settings: BeautyTasksSettings, name: string, criteria: FilterCriteria, options: ViewOptions, color: string | null = null, hidden = false, description = "",
+  app: App, settings: VibeTaskSettings, name: string, criteria: FilterCriteria, options: ViewOptions, color: string | null = null, hidden = false, description = "",
 ): Promise<string> {
   const folder = settings.filtersFolder;
   await ensureFolder(app, folder);

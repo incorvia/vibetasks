@@ -181,27 +181,27 @@ describe("applyQuickEntry – Labels", () => {
 
 describe("applyQuickEntry – @Projekt", () => {
   it("übernimmt ein erkanntes Projekt", () => {
-    const r = run("Readme @BeautyTasks", { o: { projects: ["BeautyTasks"] } });
-    expect(r.fields.project).toBe("BeautyTasks");
-    expect(r.state.project).toBe("BeautyTasks");
+    const r = run("Readme @VibeTask", { o: { projects: ["VibeTask"] } });
+    expect(r.fields.project).toBe("VibeTask");
+    expect(r.state.project).toBe("VibeTask");
   });
 
   it("fällt auf den Default zurück, wenn das @Projekt wieder gelöscht wird", () => {
-    const o = { projects: ["BeautyTasks"], defaultProject: "Eingang" };
-    const first = run("Readme @BeautyTasks", { o });
+    const o = { projects: ["VibeTask"], defaultProject: "Eingang" };
+    const first = run("Readme @VibeTask", { o });
     const second = applyQuickEntry("Readme", first.fields, first.state, opts(o));
     expect(second.fields.project).toBe("Eingang");
     expect(second.state.project).toBeNull();
   });
 
   it("lässt ein manuell gewähltes Projekt in Ruhe", () => {
-    const r = run("Readme", { f: { project: "Manuell" }, o: { projects: ["BeautyTasks"] } });
+    const r = run("Readme", { f: { project: "Manuell" }, o: { projects: ["VibeTask"] } });
     expect(r.fields.project).toBe("Manuell");
   });
 
   // Der volle Editor reicht keine Projektliste herein – dort wählt man das Projekt per Picker.
   it("erkennt ohne Projektliste kein @Projekt", () => {
-    const r = run("Readme @BeautyTasks");
+    const r = run("Readme @VibeTask");
     expect(r.fields.project).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ButtonComponent, ColorComponent, ExtraButtonComponent, TextComponent } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { ChipId, ChipTier, ChipSurface, MetaColorKey, DEFAULT_SETTINGS } from "./types";
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
 import { StartPageModal, listStartPages, startPageLabel } from "./startPagePicker";
@@ -13,7 +13,7 @@ import { tip } from "./tooltip";
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
 /** README-Abschnitt mit der Google-Kalender-Einrichtung (statt nur zur Console zu verlinken). */
-const GCAL_GUIDE_URL = "https://github.com/avnibilgin/BeautyTasks#google-calendar-sync";
+const GCAL_GUIDE_URL = "https://github.com/incorvia/vibetasks#google-calendar-sync";
 
 /** Pointer-basiertes Ziehen einer Chip-Zeile ZWISCHEN den drei Tier-Zonen (Maus + Touch,
  *  Popout-sicher über row.ownerDocument). Beim Loslassen ruft onDrop() – der Aufrufer liest
@@ -66,8 +66,8 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
 }
 
 /** Einstellungen (imperativ; funktioniert auch auf App-Versionen < 1.13.0). */
-export class BeautyTasksSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: BeautyTasksPlugin) {
+export class VibeTaskSettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: VibeTaskPlugin) {
     super(app, plugin);
   }
 
@@ -246,7 +246,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
 
     // Akzentfarbe – eigenständige Design-Einstellung ÜBER der Meta-Theme-Sektion (thematisch getrennt: der
     // Akzent wirkt auf das ganze Plugin – Buttons/Links/Auswahl –, nicht nur auf die Meta-Zeile). Überschreibt
-    // die Obsidian-Akzentfarbe NUR innerhalb von BeautyTasks; Default/Reset = Obsidian-Akzent. Immer editierbar.
+    // die Obsidian-Akzentfarbe NUR innerhalb von VibeTask; Default/Reset = Obsidian-Akzent. Immer editierbar.
     {
       let accentPicker!: ColorComponent;
       const s = new Setting(containerEl).setName(t("set_color_accent")).setDesc(t("set_color_accent_desc"))
@@ -404,7 +404,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
       });
 
     // ── Feldnamen ──
-    // Welche Frontmatter-Felder BeautyTasks benutzt. `type` und `title` sind beliebte Namen; wer
+    // Welche Frontmatter-Felder VibeTask benutzt. `type` und `title` sind beliebte Namen; wer
     // sie schon für Eigenes belegt, stellt hier um. Die Änderung greift erst beim Verlassen des
     // Feldes und geht über eine Rückfrage – die entscheidet, was mit den vorhandenen Notizen
     // passiert (bei `type` umschreiben, bei `title` optional übernehmen).
@@ -526,7 +526,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
     };
     this.gcalStatusUnsub = p.gcalSync.onStatus(renderStatus);   // ruft cb sofort mit aktuellem Stand
 
-    // Ziel-Kalender + (nur wenn in Google noch KEIN „BeautyTasks"-Kalender existiert) eine Tipp-Zeile
+    // Ziel-Kalender + (nur wenn in Google noch KEIN „VibeTask"-Kalender existiert) eine Tipp-Zeile
     // zum Anlegen. Kalenderliste EINMAL laden und den ganzen Abschnitt daraus aufbauen.
     const calHost = containerEl.createDiv();
     void (async () => {
@@ -540,7 +540,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
           dd.setValue(g.calendarId);
           dd.onChange((v) => { g.calendarId = v; void p.saveSettings(); void p.gcalSync.syncNow(); });
         });
-      // Tipp/Anlegen nur, wenn geprüft UND noch kein eigener BeautyTasks-Kalender existiert.
+      // Tipp/Anlegen nur, wenn geprüft UND noch kein eigener VibeTask-Kalender existiert.
       if (ok && !cals.some((c) => c.summary === DEFAULT_CALENDAR_NAME)) {
         new Setting(calHost).setName(t("gcal_tip_create")).setDesc(t("gcal_tip_create_desc"))
           .addButton((b) => b.setButtonText(t("gcal_create_calendar_btn")).setCta()
@@ -585,7 +585,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
   /**
    * „Termine anzeigen" (read-only). Getrennt vom Sync-Schalter: „nur anzeigen, nichts schreiben" ist
    * ein vollwertiger Zustand. Kalenderliste – Farbpunkt links, Auge rechts (statt
-   * Häkchen). Der eigene BeautyTasks-Sync-Kalender taucht gar nicht erst auf (gcalFeed filtert ihn).
+   * Häkchen). Der eigene VibeTask-Sync-Kalender taucht gar nicht erst auf (gcalFeed filtert ihn).
    */
   private renderGCalFeed(containerEl: HTMLElement, redraw: () => void): void {
     const p = this.plugin;

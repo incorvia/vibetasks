@@ -10,18 +10,18 @@ import { ProjItem } from "../src/taskService";
  */
 
 const AUFGABE: Task = {
-  id: "t-abc", path: "BeautyTasks/Items/Test.md", title: "Test", titleInFm: true,
+  id: "t-abc", path: "VibeTask/Items/Test.md", title: "Test", titleInFm: true,
   status: "doing", priority: "high",
   due: "2026-08-20", dueTime: "09:30", scheduled: "2026-08-18", scheduledTime: null,
   duration: 45, start: "2026-08-01", sortOrder: 2110,
-  project: "BeautyTasks/Projects/Haus.md", parent: "BeautyTasks/Items/Eltern.md",
+  project: "VibeTask/Projects/Haus.md", parent: "VibeTask/Items/Eltern.md",
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
   created: "2026-07-01T08:00:00", completed: null, cancelled: null, externalId: "ext-1",
 };
 
 const LISTE: ProjItem = {
-  name: "Haus", path: "BeautyTasks/Projects/Haus.md", icon: "home", color: "#e05c4a",
+  name: "Haus", path: "VibeTask/Projects/Haus.md", icon: "home", color: "#e05c4a",
   type: "project", hidden: true, archived: true, description: "Alles rund ums Haus",
 };
 
@@ -110,7 +110,7 @@ describe("Liste → Export → Frontmatter", () => {
 
 describe("Alte Exporte bleiben lesbar", () => {
   const alt = JSON.stringify({
-    format: "beautytasks", version: 2, exportedAt: "2026-01-01", taskCount: 1,
+    format: "vibetask", version: 2, exportedAt: "2026-01-01", taskCount: 1,
     lists: [{ name: "Alt", type: "project", color: null, archived: false }],
     labels: [],
     tasks: [{ id: "t-1", title: "Alt", status: "todo", priority: "normal", labels: [], created: "2026-01-01" }],
@@ -179,7 +179,7 @@ describe("Body über die Rundreise", () => {
 
 describe("Filter über die Rundreise", () => {
   const filter = {
-    name: "Diese Woche", path: "BeautyTasks/Filters/Diese Woche.md", icon: "tag",
+    name: "Diese Woche", path: "VibeTask/Filters/Diese Woche.md", icon: "tag",
     color: "#39a", hidden: true, description: "Alles bis Sonntag",
     criteria: { labels: ["ui"] } as never, options: { layout: "list" } as never,
   };

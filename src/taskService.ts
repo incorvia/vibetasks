@@ -1,5 +1,5 @@
 import { App, Notice, TFile, normalizePath, stringifyYaml } from "obsidian";
-import { BeautyTasksSettings, Priority, Task, TaskStatus } from "./types";
+import { VibeTaskSettings, Priority, Task, TaskStatus } from "./types";
 import type { ShiftedDates } from "./templatePlan";
 import { combineDT, localStamp } from "./format";
 import { firstOpenStatus, isDone, isTrashed } from "./statuses";
@@ -226,7 +226,7 @@ export interface DuplicateOpts {
 }
 
 /** Neue Aufgaben-Notiz anlegen (kollisionssicherer Dateiname). */
-export async function createTaskNote(app: App, settings: BeautyTasksSettings, f: TaskFields, target?: NoteTarget): Promise<TFile> {
+export async function createTaskNote(app: App, settings: VibeTaskSettings, f: TaskFields, target?: NoteTarget): Promise<TFile> {
   const folder = target?.folder ?? settings.itemsFolder;
   await ensureFolder(app, folder);
   const slug = slugify(f.title);
@@ -311,7 +311,7 @@ export function copyTaskLink(app: App, path: string): void {
   const file = encodeURIComponent(path.replace(/\.md$/, ""));
   navigator.clipboard.writeText(`obsidian://open?vault=${vault}&file=${file}`)
     .then(() => new Notice(t("msg_link_copied")))
-    .catch((err) => { console.error("BeautyTasks: copy link failed", err); new Notice(t("msg_link_copy_failed")); });
+    .catch((err) => { console.error("VibeTask: copy link failed", err); new Notice(t("msg_link_copy_failed")); });
 }
 
 /**
@@ -448,7 +448,7 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
  *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
-export async function createProjectNote(app: App, settings: BeautyTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<string> {
+export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);

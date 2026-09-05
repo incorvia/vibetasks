@@ -1,5 +1,5 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Task, TaskStatus } from "./types";
 import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
@@ -57,7 +57,7 @@ export class TaskModal extends Modal {
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
-  constructor(private plugin: BeautyTasksPlugin, private existing?: Task, private defaultProject?: string,
+  constructor(private plugin: VibeTaskPlugin, private existing?: Task, private defaultProject?: string,
               private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope } = {}) {
     super(plugin.app);
     const seed = opts.seed;
@@ -273,7 +273,7 @@ export class TaskModal extends Modal {
     // (das Ruckeln). mouseenter feuert genau EINMAL beim Betreten und ignoriert die Kinder.
     btn.addEventListener("mouseenter", (e) => {
       this.app.workspace.trigger("hover-link", {
-        event: e, source: "beautytasks", hoverParent: this, targetEl: btn, linktext: file.path, sourcePath: file.path,
+        event: e, source: "vibetask", hoverParent: this, targetEl: btn, linktext: file.path, sourcePath: file.path,
       });
     });
     const open = (): void => { void this.app.workspace.getLeaf("tab").openFile(file); this.close(); };

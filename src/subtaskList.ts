@@ -7,7 +7,7 @@
 // des Modals. Genau wie das Status-Chip, das ebenfalls live schreibt. Sie hängt am Index
 // (subscribe) statt selbst zu zählen, damit Änderungen aus Listen/Kalender sofort ankommen.
 import { Notice, setIcon } from "obsidian";
-import type BeautyTasksPlugin from "./main";
+import type VibeTaskPlugin from "./main";
 import { Task } from "./types";
 import { createTaskNote, EditScope, todayIso } from "./taskService";
 import { formatDateTime, formatDeadline, combineDT, dueWhen, dueDist, todayStr } from "./format";
@@ -45,7 +45,7 @@ export class SubtaskList {
   private busy = false;         // Anlegen läuft – schützt vor Doppel-Anlage bei schnellem Enter
   private revealed = false;     // Erfassungszeile per „+"-Menü angefordert (auch ohne Unteraufgaben)
 
-  constructor(private plugin: BeautyTasksPlugin, private host: SubtaskHost) {}
+  constructor(private plugin: VibeTaskPlugin, private host: SubtaskHost) {}
 
   mount(wrap: HTMLElement): void {
     this.wrap = wrap;
@@ -266,7 +266,7 @@ export class SubtaskList {
         parent: parent.path.split("/").pop()!.replace(/\.md$/, ""),
       }, this.host.scope().target);
     } catch (err) {
-      console.error("BeautyTasks: create subtask failed", err);
+      console.error("VibeTask: create subtask failed", err);
       new Notice(t("err_subtask_create"));
       if (inp) inp.value = raw;
     } finally {
