@@ -8,11 +8,10 @@ import { NavSection } from "./types";
 import { EditFocus, NewItemModal } from "./newItemModal";
 import { FilterModal } from "./filterModal";
 import { ConfirmModal, PromptModal } from "./confirmModal";
-import { listManaged } from "./taskService";
+import { baseName, listManaged, openTaskNote } from "./taskService";
 import { listFilters } from "./filterService";
 import { ApplyTemplateModal, promptNewTemplate } from "./templateModal";
 import { TaskModal } from "./taskModal";
-import { openTaskNote } from "./taskService";
 import { deleteTemplate, listTemplates, refreshTemplates, renameTemplate, templateEditScope, TemplateInfo } from "./templateService";
 import { t } from "./i18n";
 
@@ -178,19 +177,12 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
     .onClick(() => new PromptModal(plugin.app, { title: t("btn_rename"), value: item.name },
       (v) => renameItem(plugin, item, v)).open()));
 
-  // — Als Vorlage speichern — (nur Projekte/Bereiche; Labels und Filter haben keine Aufgaben,
-  // die man mitnehmen könnte). Nimmt das Projekt samt aller Aufgabenbäume auf.
-  if (isProjLike) {
+  // — Als Vorlage speichern — nur für Projekte. Der Vorlagen-Workflow erzeugt beim Anwenden ein
+  // Projekt und bildet die Kindprojekte eines Bereichs nicht ab; für Bereiche wäre der Eintrag
+  // deshalb irreführend statt hilfreich.
+  if (item.type === "project") {
     menu.addItem((m) => m.setSection("bt-edit").setTitle(t("menu_save_project_as_template")).setIcon("bookmark-plus")
       .onClick(() => void plugin.saveProjectAsTemplate(item.key, item.name)));
-  }
-
-  if (isProjLike) {
-    const toArea = item.type !== "area";
-    menu.addItem((m) => m.setSection("bt-edit")
-      .setTitle(toArea ? t("tip_mark_area") : t("tip_unmark_area"))
-      .setIcon(toArea ? "circle-small" : "list-checks")   // Ziel-Icons: Bereich = circle-small, Projekt = list-checks
-      .onClick(() => void plugin.setProjectArea(item.key, toArea)));
   }
 
   // — Anordnen —
@@ -212,9 +204,17 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
       .onClick(() => void (fromSidebar ? plugin.moveNavItemVisible(item.sec, item.key, 1) : plugin.moveNavItem(item.sec, item.key, 1))));
   }
 
-  // — Neu erstellen — ist global und gehört deshalb nicht in das Menü einer Einzelseite.
-  // In der Seitenleiste und der Verwaltung bleibt der bequeme Kontext-Einstieg erhalten.
-  if (!onBoard) buildCreateSubmenu(menu, plugin, "bt-new");
+  // — Neu erstellen — gehört nicht in das Menü einer Einzelseite. In der Seitenleiste und der
+  // Verwaltung bleibt der bequeme Kontext-Einstieg erhalten. An einem Bereich ist nur ein neues
+  // untergeordnetes Projekt kontextuell sinnvoll; globale Typen gehören dort nicht ins Menü.
+  if (!onBoard) {
+    if (item.type === "area") {
+      menu.addItem((m) => m.setSection("bt-new").setTitle(t("create_project")).setIcon("list-checks")
+        .onClick(() => new NewItemModal(plugin, "project", undefined, "name", { area: baseName(item.key) }).open()));
+    } else {
+      buildCreateSubmenu(menu, plugin, "bt-new");
+    }
+  }
 
   // — Kalender-Sync (nur Projekt/Bereich; Helfer prüft die Verbindung selbst) —
   if (isProjLike) addGcalSyncItem(menu, plugin, item.key);

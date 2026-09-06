@@ -619,7 +619,19 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     }
     openHeaderNewTask(ctx, root, add, isInbox ? undefined : name, undefined, false, addDue(ctx), meta?.workflowStatus, meta?.priority);
   };
-  pageHeader(top, ctx, top.createEl("h1", { text: isInbox ? t("nav_inbox") : projectDisplayName(name) }),
+  const heading = top.createEl("h1", { cls: !isInbox && !ctx.embedded ? "bt-record-heading" : "" });
+  if (!isInbox && !ctx.embedded) {
+    const recordLabel = `VibeTask · ${t(meta?.type === "area" ? "context_area_record" : "context_project_record")}`;
+    const recordIcon = heading.createSpan({
+      cls: "bt-record-icon",
+      attr: { "aria-label": recordLabel, title: recordLabel },
+    });
+    setIcon(recordIcon, "check-circle");
+    heading.createSpan({ cls: "bt-record-title", text: projectDisplayName(name) });
+  } else {
+    heading.setText(isInbox ? t("nav_inbox") : projectDisplayName(name));
+  }
+  pageHeader(top, ctx, heading,
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
 
@@ -3319,6 +3331,18 @@ export class MainView extends ItemView {
     // zweiten Projekt schickte den verdeckten Kalender-Tab auf die neue Seite, beschriftet
     // blieb er mit der alten. Kostet zwei setText – kein Grund, es aufzuschieben.
     this.syncTitle();
+    // Mirror the linked-note card's project colour at the very top of the whole VibeTask pane.
+    // This runs before the fast-patch returns as well, so recolouring updates the rail without
+    // requiring a full page rebuild. Inbox and non-project pages deliberately have no rail.
+    const contextRecord = this.page.kind === "project" && this.page.key !== INBOX_KEY
+      ? (() => {
+          const { active, archived } = listManaged(this.plugin.app);
+          return [...active, ...archived].find((item) => item.path === this.page.key) ?? null;
+        })()
+      : null;
+    this.contentEl.toggleClass("bt-project-record", contextRecord !== null);
+    if (contextRecord) this.contentEl.style.setProperty("--bt-project-context", contextRecord.color || "var(--text-faint)");
+    else this.contentEl.style.removeProperty("--bt-project-context");
     // Ein Inline-Editor ist selbst die aktuelle Arbeitsfläche. Index-Meldungen (etwa ein im
     // Editor geänderter Status) dürfen seinen DOM nicht unter dem Cursor wegzeichnen.
     if (inlineTaskEditorOpen(this.id)) return;

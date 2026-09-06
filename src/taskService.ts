@@ -481,8 +481,7 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
   return { active, archived };
 }
 
-/** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
- *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
+/** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen zurück. */
 export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
@@ -497,18 +496,6 @@ export async function createProjectNote(app: App, settings: VibeTaskSettings, na
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
   return base;
-}
-
-/** Projekt ↔ Bereich umschalten – ändert NUR den Frontmatter-type (kein Verschieben,
- *  keine sonstigen Änderungen). Bereich = type:area, Projekt = type:project. */
-export async function setProjectType(app: App, path: string, toArea: boolean): Promise<void> {
-  const file = app.vault.getAbstractFileByPath(path);
-  if (!(file instanceof TFile)) return;
-  await updateRecord(app, file, (fm) => {
-    fm.type = toArea ? "area" : "project";
-    if (toArea) { delete fm.area; delete fm.workflow_status; delete fm.priority; }
-    else if (typeof fm.workflow_status !== "string") fm.workflow_status = firstOpenStatus();
-  });
 }
 
 export async function setProjectArea(app: App, path: string, area: string | null): Promise<void> {

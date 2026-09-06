@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderChild } from "obsidian";
+import { Component, MarkdownRenderChild, setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import type { PageCtx, PageRef } from "./pageCtx";
 import { filterTasks, hasCriteria } from "./filterEngine";
@@ -6,6 +6,10 @@ import { todayStr } from "./format";
 import { closeInlineTaskEditor, dropViewState, inlineTaskEditorOpen, renderProjectBoardInto } from "./heuteView";
 import { installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation } from "./taskMenu";
+import { listManaged, priorityBucket, projectAreaName } from "./taskService";
+import { boardStatuses, isDone, isTrashed, statusIcon, statusLabel } from "./statuses";
+import { projectDisplayName, t } from "./i18n";
+import { PRIO_KEY } from "./chips";
 
 let nextEmbedId = 1;
 
@@ -73,5 +77,80 @@ export class ProjectEmbed extends MarkdownRenderChild {
     if (this.renderComponent) this.removeChild(this.renderComponent);
     this.renderComponent = this.addChild(new Component());
     renderProjectBoardInto(this.containerEl, this.context(), this.projectPath);
+  }
+}
+
+/** Compact project identity for the top of a linked note; the task embed can remain at its footer. */
+export class ProjectHeaderEmbed extends MarkdownRenderChild {
+  private unsubscribe: (() => void) | null = null;
+
+  constructor(containerEl: HTMLElement, private plugin: VibeTaskPlugin, private projectPath: string) {
+    super(containerEl);
+  }
+
+  onload(): void {
+    this.unsubscribe = this.plugin.index.subscribe(() => this.draw());
+    this.draw();
+  }
+
+  onunload(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+  }
+
+  private draw(): void {
+    const { active, archived } = listManaged(this.plugin.app);
+    const project = [...active, ...archived].find((candidate) => candidate.path === this.projectPath);
+    this.containerEl.empty();
+    this.containerEl.addClass("bt-project-note-header");
+    if (!project) return;
+
+    const card = this.containerEl.createDiv({ cls: "bt-project-note-card" });
+    card.style.setProperty("--bt-project-context", project.color || "var(--text-faint)");
+    const icon = card.createSpan({ cls: "bt-project-note-icon" });
+    setIcon(icon, project.icon);
+    if (project.color) icon.style.color = project.color;
+
+    const identity = card.createDiv({ cls: "bt-project-note-identity" });
+    identity.createDiv({ cls: "bt-project-note-eyebrow", text: `VibeTask · ${t("context_linked_note")}` });
+    const title = identity.createSpan({
+      cls: "bt-project-note-title",
+      text: projectDisplayName(project.name),
+      attr: {
+        role: "button",
+        tabindex: "0",
+        "aria-label": t(project.type === "area" ? "menu_open_area_note" : "menu_open_project_note"),
+        title: t(project.type === "area" ? "menu_open_area_note" : "menu_open_project_note"),
+      },
+    });
+    title.onclick = () => void this.plugin.openPage({ kind: "project", key: project.path });
+    title.onkeydown = (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      void this.plugin.openPage({ kind: "project", key: project.path });
+    };
+    const description = project.description.trim();
+    if (description) identity.createDiv({ cls: "bt-project-note-description", text: description });
+    const detail = identity.createDiv({ cls: "bt-project-note-detail" });
+    const area = projectAreaName(project.area);
+    if (area) detail.createSpan({ text: `@${projectDisplayName(area)}` });
+    const tasks = this.plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
+    if (tasks.length) detail.createSpan({ text: t("subtasks_progress", tasks.filter((task) => isDone(task.status)).length, tasks.length) });
+
+    if (project.type === "project") {
+      const controls = card.createDiv({ cls: "bt-project-note-controls" });
+      const select = controls.createEl("select", { cls: "bt-project-note-status" });
+      for (const status of boardStatuses()) {
+        const option = select.createEl("option", { value: status.id, text: statusLabel(status.id) });
+        if (status.id === project.workflowStatus) option.selected = true;
+      }
+      select.onchange = () => void this.plugin.updateProjectWorkflow(project.path, select.value, project.priority);
+      setIcon(controls.createSpan({ cls: "bt-project-note-status-icon" }), statusIcon(project.workflowStatus));
+
+      const priority = priorityBucket(project.priority);
+      if (priority !== "normal") {
+        controls.createSpan({ cls: "bt-project-note-priority", text: t(PRIO_KEY[priority]) });
+      }
+    }
   }
 }

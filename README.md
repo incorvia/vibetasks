@@ -57,9 +57,9 @@ A single dashboard with a left sidebar:
 - **Search** — fast fuzzy search across all tasks; jump straight to a task and highlight it in place.
 - **Manage** — a ListManager with separate **Projects**, **Areas**, **Labels** and **Filters** tabs: create, rename, recolor, hide, archive or delete each, and restore or permanently remove trashed items.
 
-Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, convert, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**.
+Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**.
 
-**Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. You can convert one into the other at any time.
+**Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. Projects can belong to an area; areas do not nest.
 
 ### Saved filters & smart views
 Build custom queries — by project/area, label, priority, status, date range and more — and **save them to the sidebar** as reusable smart views, each with its own color. Per-view display options (layout, grouping, sorting, show completed) are remembered.
@@ -165,7 +165,7 @@ Every task row — in lists, on the board and in the calendar — has a **contex
 Drag a task onto a **project, area or the inbox** in the sidebar to move it there, or onto a **label** to add that label. On the board, drag between columns; in the calendar, drag onto a day.
 
 ### Everyday conveniences
-- **Recolor & organize** projects, areas, labels and filters — set a color, convert a project ↔ area, hide, reorder or archive, all from the right-click menu or the Manage screen.
+- **Recolor & organize** projects, areas, labels and filters — set a color, hide, reorder or archive them from the right-click menu or the Manage screen.
 - **Duplicate** a task, **copy a deep link** (`obsidian://`) to it, or **print** a clean copy.
 - **Soft delete** to Trash, then restore or empty it — nothing is lost by accident (Trash and Done are ordered newest-first).
 - **Export & import all tasks as JSON** — a lossless backup of your task data (fields and description) that you can restore or move to another vault. Import from within the vault or from a file on disk; re-importing is **idempotent** (existing tasks are matched by id and skipped), and missing projects, areas and labels are recreated. Attachments and the comment log stay as separate files in your vault (back them up with the folder).
@@ -298,9 +298,11 @@ Projects and areas are the same kind of note (`type: project` / `type: area`), s
 To associate an existing vault note without turning it into a database record, focus the note and run
 **VibeTask: Create linked project from current note**. VibeTask silently creates the canonical record
 under `_vibetasks/projects/`, stores a `linked_note` wikilink on that record, and appends a live
-`vibetask` project embed to the original note. The embed refers to the stable project ID, so renaming
-either file does not disconnect the view. Running the command again reuses the linked project instead
-of creating a duplicate. The project menu also offers **Open project record** and **Open linked note**.
+`vibetask` task-list embed to the original note. It also inserts a compact project card below the note
+title, where the project's own workflow status can be changed without confusing it with one of its
+tasks. Both embeds refer to the stable project ID, so renaming either file does not disconnect the
+view. Running the command again reuses the linked project and fills in a missing header instead of
+creating a duplicate. The project menu also offers **Open project record** and **Open linked note**.
 
 Projects and areas created inside VibeTask have the reverse action in their page overflow menu. **Create
 linked note** creates a regular companion note in Obsidian's configured new-note location, inserts the

@@ -366,16 +366,37 @@ body {
 .bt-project-embed .bt-sizer {
   max-width: 100%;
 }
-.bt-project-embed .bt-page-top {
+.bt-view.bt-project-embed .bt-page-top {
   position: relative;
   padding: 4px 0 0;
 }
-.bt-project-embed .bt-page-top .bt-head-actions {
-  top: 0;
-  right: 0;
+.bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions {
+  position: static;
+  margin-left: auto;
+}
+/* The note already supplies the title and surrounding navigation. Keep the embedded controls
+   icon-only and at desktop density, including on touch devices, so this reads as an inline
+   toolbar rather than a second page header. The extra selector depth also keeps the full-page
+   mobile rules below from winning the cascade. */
+.bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions button.bt-page-add,
+.bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions .bt-anzeige,
+.bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions .bt-manage-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 0;
+  justify-content: center;
+}
+.bt-project-embed .bt-page-add-lbl,
+.bt-project-embed .bt-anzeige-lbl {
+  display: none;
 }
 .bt-project-embed .bt-board-bar {
   margin: 8px 0;
+}
+.bt-project-embed .bt-project-root > .bt-section:first-child {
+  margin-top: 14px;
 }
 .bt-project-embed .bt-sizer.is-empty {
   min-height: 0;
@@ -395,6 +416,163 @@ body {
   .bt-project-embed {
     padding: 10px 12px 12px;
   }
+}
+
+/* The companion note keeps project identity separate from its task list: this compact card sits
+   below the note title, while `.bt-project-embed` remains wherever the footer block was placed. */
+.bt-project-note-header {
+  display: block;
+  min-height: 0 !important;
+  margin: 14px 0 22px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  white-space: normal;
+}
+/* Obsidian treats a processor as an editable code block in Live Preview. The source affordance is
+   useful for generic blocks, but here it reads as a stray icon inside the project card. */
+.bt-project-note-header > .edit-block-button,
+.bt-project-note-header > .code-block-flair,
+.bt-project-note-header .edit-block-button,
+.bt-project-note-header .code-block-flair {
+  display: none !important;
+}
+/* In Live Preview the processor is wrapped by a second, hoverable code-block shell. Reset that
+   shell too; its edit button is a sibling of our render target and cannot be hidden from above. */
+.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header),
+.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header) > .edit-block-button,
+.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) > .edit-block-button,
+.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header) > .code-block-flair,
+.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) > .code-block-flair {
+  display: none !important;
+}
+.bt-project-note-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary-alt);
+  overflow: hidden;
+}
+.bt-project-note-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--bt-project-context, var(--text-faint));
+}
+.bt-project-note-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--interactive-accent);
+}
+.bt-project-note-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.bt-project-note-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.bt-project-note-eyebrow {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.bt-project-note-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bt-project-note-title:hover {
+  color: var(--text-accent);
+}
+.bt-project-note-description {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.bt-project-note-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.bt-project-note-controls {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+.bt-project-note-controls select.bt-project-note-status {
+  flex: 0 0 auto;
+  width: auto !important;
+  min-width: 112px;
+  max-width: 160px;
+  height: 32px;
+  min-height: 32px !important;
+  margin: 0;
+  padding-top: 0;
+  padding-right: 26px;
+  padding-bottom: 0;
+  padding-left: 30px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-modifier-hover);
+  box-shadow: none !important;
+  font-size: var(--font-ui-small);
+  line-height: 30px;
+}
+.bt-project-note-status-icon {
+  position: absolute;
+  left: 8px;
+  display: inline-flex;
+  pointer-events: none;
+  color: var(--text-muted);
+}
+.bt-project-note-status-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.bt-project-note-priority {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+@media (max-width: 500px) {
+  .bt-project-note-card { align-items: flex-start; flex-wrap: wrap; }
+  .bt-project-note-controls { width: 100%; padding-left: 36px; }
 }
 
 /* ── Aufgaben-Modal ── */
@@ -2956,26 +3134,65 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Seiten ohne Kopfblock (z. B. „Wiederkehrend": nur ein Titel) hätten sonst keinen Abstand nach
    oben – bei ihnen ist der Sizer das erste Kind, nicht der sticky Kopf. Gleicher Wert wie dessen
    padding-top, damit alle Titel auf derselben Höhe stehen. */
-.bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
+.bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 40px; }
 
 .bt-view .bt-page-top {
   position: sticky; top: 0; z-index: 20;
   background: var(--background-primary);
   margin-top: 0;
-  padding: 14px 0 6px;
+  /* Give a full page the same calm entrance as a note. The task list is still compact internally,
+     but the page title no longer feels pinned to the tab bar and the first section gets a real
+     pause after the description. Embedded and compact/mobile views override this below. */
+  padding: 40px 0 14px;
   /* Volle Pane-Breite: nur so kann die Aktionsgruppe („Anzeige") rechts an der Pane-Kante sitzen,
      bündig mit Kalender und Board. Titel und „+ Aufgabe" bleiben im inneren Sizer auf Lesebreite. */
+}
+.view-content.bt-view.bt-project-record::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: block;
+  height: 3px;
+  margin-bottom: -3px;
+  background: var(--bt-project-context, var(--text-faint));
+  pointer-events: none;
+}
+.bt-view .bt-record-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bt-view .bt-record-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--bt-project-context, var(--text-muted));
+}
+.bt-view .bt-record-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.bt-view .bt-record-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bt-view .bt-page-top h1 { margin-top: 0; }
 /* Aktionsgruppe rechts an der Pane-Kante – NICHT am rechten Rand der Lesebreite. Absolut zum
    sticky Kopf (der ist ein positionierter Vorfahre), damit sie beim Scrollen mit oben bleibt. */
 .bt-view .bt-page-top .bt-head-actions {
-  position: absolute; top: 14px; right: 24px;
+  position: absolute; top: 40px; right: 24px;
   display: inline-flex; align-items: center; gap: 6px;
 }
 @media (max-width: 700px) {
   /* Narrow desktop panes use the same compact header grammar as mobile. */
   .bt-view .bt-sizer { max-width: calc(100% - 24px); }
+  .bt-view .bt-page-top { padding: 14px 0 6px; }
+  .bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
   .bt-view .bt-page-top .bt-board-head {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
   }
@@ -3012,6 +3229,8 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Obsidian Mobile may expose a desktop-sized CSS viewport and desktop pointer capabilities.
    JavaScript therefore marks our view explicitly with Platform.isMobile. */
 .bt-view.bt-mobile .bt-sizer { width: calc(100% - 24px); max-width: calc(100% - 24px); }
+.bt-view.bt-mobile .bt-page-top { padding: 14px 0 6px; }
+.bt-view.bt-mobile > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
 .bt-view.bt-mobile .bt-page-top .bt-board-head {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
 }

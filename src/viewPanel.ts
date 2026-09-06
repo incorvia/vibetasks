@@ -114,7 +114,7 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
       if (o.layout === "board" && ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY) {
         const area = isAreaPath(ctx.plugin.app, ctx.page.key);
         const laneRow = pop.createDiv({ cls: "bt-panel-row" });
-        laneRow.createSpan({ cls: "bt-panel-k", text: t("filter_group_priority") });
+        laneRow.createSpan({ cls: "bt-panel-k", text: t("panel_priority_swimlanes") });
         const enabled = area ? o.prioritySwimlanes !== false : o.prioritySwimlanes === true;
         const sw = laneRow.createDiv({ cls: "bt-panel-switch" + (enabled ? " is-on" : "") });
         sw.onclick = () => apply({ prioritySwimlanes: area

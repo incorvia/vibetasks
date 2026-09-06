@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, projectAreaName, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, projectAreaName, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -43,7 +43,8 @@ import { GCalSync, GCalSyncHost, GCalCache, LegacyGCalLink, emptyGCalCache, calI
 import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
 import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
-import { ProjectEmbed } from "./projectEmbed";
+import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
+import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent } from "./linkedProjectNote";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -127,7 +128,8 @@ export default class VibeTaskPlugin extends Plugin {
         el.createDiv({ text: `VibeTask: project or area ${input.id} was not found` });
         return;
       }
-      context.addChild(new ProjectEmbed(el, this, record.path));
+      if (input.section === "header") context.addChild(new ProjectHeaderEmbed(el, this, record.path));
+      else context.addChild(new ProjectEmbed(el, this, record.path));
     });
     if (collection.ready) {
       this.repository.applyDomainConfiguration(this.settings);
@@ -1175,7 +1177,7 @@ export default class VibeTaskPlugin extends Plugin {
     window.setTimeout(() => row.scrollIntoView({ block: "center", behavior: "smooth" }), 0);   // nach Layout
   }
 
-  // ── Projektverwaltung (Umwandeln/Archiv/Sichtbarkeit/Umbenennen/Löschen) ──
+  // ── Projektverwaltung (Archiv/Sichtbarkeit/Umbenennen/Löschen) ──
   /** Nav/Board/Verwaltung hängen am metadataCache, der nach processFrontMatter erst kurz
    *  später aktualisiert wird -> einmaliger „changed"-Listener zeichnet dann neu
    *  (flackerfrei, ohne festes Timeout). Listener VOR der Änderung registrieren. */
@@ -1228,12 +1230,7 @@ export default class VibeTaskPlugin extends Plugin {
         body: "\n",
       });
     }
-    const block = `\`\`\`vibetask\nview: project\nid: ${id}\n\`\`\``;
-    await this.app.vault.process(note, (content) => {
-      if (content.includes(block)) return content;
-      const gap = content.length === 0 || content.endsWith("\n\n") ? "" : content.endsWith("\n") ? "\n" : "\n\n";
-      return `${content}${gap}${block}\n`;
-    });
+    await this.app.vault.process(note, (content) => ensureLinkedProjectEmbeds(content, id));
     new Notice(t("notice_project_from_note"));
   }
 
@@ -1248,17 +1245,19 @@ export default class VibeTaskPlugin extends Plugin {
 
   /** Open a project/area companion note, creating and linking one when it does not exist yet. */
   async openOrCreateCollectionNote(collectionPath: string): Promise<void> {
-    const linked = this.linkedCollectionNote(collectionPath);
-    if (linked) {
-      await this.app.workspace.getLeaf("tab").openFile(linked);
-      return;
-    }
-
     const record = await this.repository.read(collectionPath);
     if (!record || (record.type !== "project" && record.type !== "area")) return;
     const title = fmTitle(record.frontmatter[titleKey()]) ?? baseName(collectionPath);
     const id = typeof record.frontmatter.id === "string" ? record.frontmatter.id : "";
     if (!id) return;
+
+    const linked = this.linkedCollectionNote(collectionPath);
+    if (linked) {
+      // This also upgrades companion notes made before the separate header embed existed.
+      await this.app.vault.process(linked, (content) => ensureLinkedProjectEmbeds(content, id));
+      await this.app.workspace.getLeaf("tab").openFile(linked);
+      return;
+    }
 
     // An empty source path makes Obsidian use its configured default new-note location. If that
     // points into VibeTask's private collection, fall back to the vault root: this is the user's
@@ -1272,8 +1271,7 @@ export default class VibeTaskPlugin extends Plugin {
       path = normalizePath(`${folder ? folder + "/" : ""}${base} ${suffix++}.md`);
     }
 
-    const block = `\`\`\`vibetask\nview: project\nid: ${id}\n\`\`\``;
-    const note = await this.app.vault.create(path, `# ${title}\n\n${block}\n`);
+    const note = await this.app.vault.create(path, newLinkedProjectNoteContent(id));
     await this.repository.update(collectionPath, { linked_note: `[[${note.path.replace(/\.md$/i, "")}]]` });
     this.renderAll();
     await this.app.workspace.getLeaf("tab").openFile(note);
@@ -1288,10 +1286,6 @@ export default class VibeTaskPlugin extends Plugin {
     await this.saveSettings();
   }
 
-  async setProjectArea(path: string, toArea: boolean): Promise<void> {
-    this.refreshOnChange(path);
-    await setProjectType(this.app, path, toArea);
-  }
   async assignProjectArea(path: string, area: string | null): Promise<void> {
     this.refreshOnChange(path);
     await setProjectParentArea(this.app, path, area);

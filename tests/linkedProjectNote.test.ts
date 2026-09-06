@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent } from "../src/linkedProjectNote";
+
+describe("ensureLinkedProjectEmbeds", () => {
+  it("creates linked-note content without repeating the filename as an H1", () => {
+    const out = newLinkedProjectNoteContent("p-1");
+    expect(out).not.toMatch(/^#\s/m);
+    expect(out).toContain("section: header");
+    expect(out).toContain("section: tasks");
+  });
+
+  it("puts the project header after the note title and tasks at the footer", () => {
+    const out = ensureLinkedProjectEmbeds("# Launch\n\n## Overview\nBrief\n", "p-1");
+    expect(out.indexOf("section: header")).toBeGreaterThan(out.indexOf("# Launch"));
+    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("## Overview"));
+    expect(out.trimEnd().endsWith("section: tasks\nid: p-1\n```")).toBe(true);
+  });
+
+  it("places the header after YAML and H1", () => {
+    const out = ensureLinkedProjectEmbeds("---\ntags: [work]\n---\n# Launch\n\nText", "p-1");
+    expect(out.indexOf("section: header")).toBeGreaterThan(out.indexOf("# Launch"));
+    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("Text"));
+  });
+
+  it("is idempotent and recognizes the old project block as the task list", () => {
+    const old = "# Launch\n\nText\n\n```vibetask\nview: project\nid: p-1\n```\n";
+    const once = ensureLinkedProjectEmbeds(old, "p-1");
+    expect((once.match(/section: header/g) ?? [])).toHaveLength(1);
+    expect((once.match(/section: tasks/g) ?? [])).toHaveLength(0);
+    expect(ensureLinkedProjectEmbeds(once, "p-1")).toBe(once);
+  });
+});

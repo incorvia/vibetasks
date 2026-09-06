@@ -239,7 +239,7 @@ function visSwitch(row: HTMLElement, on: boolean, onToggle: () => void): void {
   sw.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } };
 }
 
-/** Überlauf-Kebab (Projekte/Bereiche): seltene Aktion „Umwandeln" (Projekt ↔ Bereich). */
+/** Überlauf-Kebab für die weiteren Projekt-/Bereichsaktionen. */
 function rowMenu(actions: HTMLElement, plugin: VibeTaskPlugin, it: ProjItem): void {
   const kebab = actions.createEl("button", { cls: "bt-manage-btn" });
   tip(kebab, t("more_actions"));
@@ -262,7 +262,7 @@ function activeRow(list: HTMLElement, ctx: PageCtx, it: ProjItem, redraw: () => 
   const name = row.createSpan({ cls: "bt-manage-name", text: it.name });
   name.onclick = () => ctx.open({ kind: "project", key: it.path });
 
-  // Hover-Aktionen LINKS neben Zähler + Schalter; „Umwandeln" im Kebab; Schalter ganz rechts.
+  // Hover-Aktionen LINKS neben Zähler + Schalter; weitere Aktionen im Kebab; Schalter ganz rechts.
   const actions = row.createDiv({ cls: "bt-manage-actions bt-hover-acts" });
   iconBtn(actions, "pencil", t("btn_rename"), () => startRename(row, plugin, it, redraw));
   iconBtn(actions, "archive", t("btn_archive"), () => void plugin.archiveProject(it.path, true));
