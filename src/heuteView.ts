@@ -176,7 +176,7 @@ function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement,
   const empty = root.querySelector<HTMLElement>(":scope > .bt-empty");
   root.removeClass("is-empty");
   empty?.addClass("bt-hidden");
-  const sec = root.createDiv({ cls: "bt-section bt-task-compose-section" });
+  const sec = root.createDiv({ cls: "bt-section bt-content-group bt-task-compose-section" });
   root.prepend(sec);
   const head = sec.createEl("h6", { cls: "bt-section-title" });
   head.createSpan({ cls: "bt-section-lbl", text: t("sec_tasks") });
@@ -304,17 +304,15 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
   const today = todayStr();
   c.empty();
   c.addClass("bt-view");
-  c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
-  const root = c.createDiv({ cls: "bt-sizer" });
-  // Heute/Demnächst: Kopf mit „Anzeige"-Knopf (leichtes Panel). Wiederkehrend: nur Titel.
-  if (view === "heute" || view === "demnaechst") {
-    const top = pageTop(c, ctx.opts.layout);
-    pageHeader(top, ctx, top.createEl("h1", { text: viewTitle(view) }), {
+  const root = c.createDiv({ cls: "bt-sizer bt-page-body" });
+  // Every task page uses the same shell. Pages whose PageInfo tier is "none" simply omit the
+  // display control; pageHeader decides that centrally instead of requiring a second header DOM.
+  if (view !== "erledigt") {
+    const top = pageTop(c, view === "wiederkehrend" ? "list" : ctx.opts.layout);
+    pageHeader(top, ctx, top.createEl("h1", { text: viewTitle(view) }), view === "heute" || view === "demnaechst" ? {
       onAdd: (add) => openHeaderNewTask(ctx, root, add, undefined, undefined, view === "heute", addDue(ctx)),
-    });
-  } else if (view !== "erledigt") {
-    root.createEl("h1", { text: viewTitle(view) });   // „Erledigt" bekommt einen Kopf mit Tabs (unten)
+    } : {});
   }
 
   const idx = plugin.index;
@@ -451,35 +449,34 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
   } else if (view === "wiederkehrend") {
     renderRecurring(root, ctx, today);
   } else {
-    // „Erledigt" wie Manage: Kopf mit Titel links, Tabs (Erledigt | Papierkorb) rechts.
+    // „Erledigt" uses the normal page shell, with its tabs supplied as header actions.
     const redraw = () => ctx.redraw();
-    const header = root.createDiv({ cls: "bt-manage-header" });
-    header.createEl("h1", { text: ctx.doneTab === "trash" ? t("nav_trash") : viewTitle(view) });
-    // Kebab + Tabs rechts gruppieren: der Kebab sitzt (wie die Projekt-/Bereichs-Kebabs) links neben
-    // den Tabs und trägt dieselbe Button-/Menü-CSS (bt-manage-btn + natives Obsidian-Menü).
-    const headActions = header.createDiv({ cls: "bt-head-actions" });
-    // Papierkorb-Aktionen im Kebab (nur im Papierkorb-Tab und nur wenn etwas drin ist):
-    // Alle wiederherstellen (reversibel) · Papierkorb leeren (destruktiv -> Bestätigung).
-    if (ctx.doneTab === "trash" && idx.cancelled().length) {
-      const kebab = headActions.createEl("button", { cls: "bt-manage-btn" });
-      tip(kebab, t("more_actions"));
-      setIcon(kebab.createSpan(), "more-horizontal");
-      kebab.onclick = (e) => {
-        e.stopPropagation();
-        const m = new Menu();
-        m.addItem((mi) => mi.setTitle(t("trash_restore_all")).setIcon("archive-restore").onClick(() => void plugin.restoreAllCancelled()));
-        m.addItem((mi) => mi.setTitle(t("trash_empty")).setIcon("trash-2").setWarning(true).onClick(() =>
-          new ConfirmModal(plugin.app, { title: t("confirm_empty_trash_q"), confirmText: t("trash_empty") }, () => void plugin.emptyTrash()).open()));
-        m.showAtMouseEvent(e);
-      };
-    }
-    const tabs = headActions.createDiv({ cls: "bt-tabs" });
-    const mkTab = (id: "done" | "trash", label: string) => {
-      const b = tabs.createEl("button", { cls: "bt-tab" + (ctx.doneTab === id ? " is-active" : ""), text: label });
-      b.onclick = () => { ctx.setDoneTab(id); redraw(); };
-    };
-    mkTab("done", t("view_done"));
-    mkTab("trash", t("nav_trash"));
+    const top = pageTop(c, "list");
+    pageHeader(top, ctx, top.createEl("h1", { text: ctx.doneTab === "trash" ? t("nav_trash") : viewTitle(view) }), {
+      actions: (headActions) => {
+        // Papierkorb-Aktionen im Kebab (nur im Papierkorb-Tab und nur wenn etwas drin ist).
+        if (ctx.doneTab === "trash" && idx.cancelled().length) {
+          const kebab = headActions.createEl("button", { cls: "bt-manage-btn" });
+          tip(kebab, t("more_actions"));
+          setIcon(kebab.createSpan(), "more-horizontal");
+          kebab.onclick = (e) => {
+            e.stopPropagation();
+            const m = new Menu();
+            m.addItem((mi) => mi.setTitle(t("trash_restore_all")).setIcon("archive-restore").onClick(() => void plugin.restoreAllCancelled()));
+            m.addItem((mi) => mi.setTitle(t("trash_empty")).setIcon("trash-2").setWarning(true).onClick(() =>
+              new ConfirmModal(plugin.app, { title: t("confirm_empty_trash_q"), confirmText: t("trash_empty") }, () => void plugin.emptyTrash()).open()));
+            m.showAtMouseEvent(e);
+          };
+        }
+        const tabs = headActions.createDiv({ cls: "bt-tabs" });
+        const mkTab = (id: "done" | "trash", label: string): void => {
+          const b = tabs.createEl("button", { cls: "bt-tab" + (ctx.doneTab === id ? " is-active" : ""), text: label });
+          b.onclick = () => { ctx.setDoneTab(id); redraw(); };
+        };
+        mkTab("done", t("view_done"));
+        mkTab("trash", t("nav_trash"));
+      },
+    });
 
     if (ctx.doneTab === "trash") {
       const items = idx.cancelled();
@@ -591,9 +588,8 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   c.empty();
   c.addClass("bt-view");
   if (ctx.embedded) c.addClass("bt-project-embed"); else c.removeClass("bt-project-embed");
-  c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
-  const root = c.createDiv({ cls: "bt-sizer bt-project-root" });
+  const root = c.createDiv({ cls: "bt-sizer bt-page-body bt-project-root" });
   const isInbox = projectPath === INBOX_KEY;   // eingebaute Eingang-Ansicht (keine Notiz)
   const name = isInbox ? "" : baseName(projectPath);
   // Kopf: Kebab-Menü (wie Sidebar-Rechtsklick); Eingang ist eine Systemansicht → kein Menü.
@@ -649,7 +645,8 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
       ? tasksInArea(plugin.index.all(), meta, childProjects)
       : plugin.index.all().filter((t) => t.project != null && baseName(t.project) === name));
   const tasks = source();
-  if (!tasks.length && !(meta?.type === "area" && childProjects.length)) {
+  const visibleTasks = tasks.filter((task) => isOpen(task.status) || (ctx.opts.showDone && isDone(task.status)));
+  if (!visibleTasks.length && !(meta?.type === "area" && childProjects.length)) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
     else if (isArea) emptyState(root, entityIcon("area"), "empty_no_area_tasks");
@@ -669,6 +666,15 @@ let draggedAreaProject: string | null = null;
 
 function shownAreaTasks(tasks: Task[], showDone: boolean): Task[] {
   return tasks.filter((task) => isOpen(task.status) || (showDone && isDone(task.status)));
+}
+
+/** Area containers keep their project context, but task history should retain the same reading
+ *  order as ordinary pages: actionable work first, then most recently completed work. */
+function sortAreaTasks(tasks: Task[], ctx: PageCtx): Task[] {
+  const open = sortTasks(tasks.filter((task) => isOpen(task.status)), ctx.opts.sort, ctx.opts.sortDir, orderKey(ctx.plugin));
+  const done = tasks.filter((task) => isDone(task.status))
+    .sort((a, b) => (b.completed ?? "").localeCompare(a.completed ?? ""));
+  return [...open, ...done];
 }
 
 function projectMatchesAreaFilter(project: ProjItem, ctx: PageCtx): boolean {
@@ -733,21 +739,22 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
       invisibleProjectTasks.push(...tasks);
       continue;
     }
-    const sec = root.createDiv({ cls: "bt-area-project-section" });
+    const sec = root.createDiv({ cls: "bt-area-project-section bt-content-group" });
     const list = sec.createDiv({ cls: "bt-list bt-area-project-tasks" });
     renderAreaProjectHead(sec, ctx, project, plugin.index.all(), list);
     const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
-    for (const task of sortTasks(visibleRows(tasks, hosts), ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin))) {
+    for (const task of sortAreaTasks(visibleRows(tasks, hosts), ctx)) {
       // The containing project section supplies the hierarchy. Keep task depth at zero so project
       // membership never masquerades as a task parent link; genuine subtasks still recurse below.
       renderTask(list, ctx, task, today, 0, false, {
         subs: effectiveSubtasks(ctx.opts), manual: ctx.opts.sort === "manual", showDone: ctx.opts.showDone,
+        hideProject: project.name,
       });
     }
     annotateSubtaskTree(list);
   }
   const loose = [...direct, ...invisibleProjectTasks, ...visible.filter((task) => task.project && !projectPaths.has(task.project) && task.project !== area.path)];
-  if (loose.length) section(root, ctx, t("sec_tasks"), sortTasks(loose, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin)), today,
+  if (loose.length) section(root, ctx, t("sec_tasks"), sortAreaTasks(loose, ctx), today,
     false, false, nestingHosts(plugin, loose, effectiveSubtasks(ctx.opts)));
 }
 
@@ -903,9 +910,8 @@ export function renderLabelBoardInto(c: HTMLElement, ctx: PageCtx, label: string
   const today = todayStr();
   c.empty();
   c.addClass("bt-view");
-  c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
-  const root = c.createDiv({ cls: "bt-sizer" });
+  const root = c.createDiv({ cls: "bt-sizer bt-page-body" });
   const top = pageTop(c, ctx.opts.layout);
   pageHeader(top, ctx, top.createEl("h1", { cls: "bt-label-title", text: "#" + label }), {
     menu: { sec: "labels", key: label, name: label, hidden: !plugin.isLabelVisible(label), color: plugin.getLabelColor(label) },
@@ -915,7 +921,7 @@ export function renderLabelBoardInto(c: HTMLElement, ctx: PageCtx, label: string
   const source = (): Task[] => ctx.filter(
     plugin.index.all().filter((tk) => tk.labels.includes(label) && !plugin.index.isProjectArchived(tk.project)));
   const tasks = source();
-  if (!tasks.length) {
+  if (!tasks.some((task) => isOpen(task.status) || (ctx.opts.showDone && isDone(task.status)))) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else emptyState(root, "hash", "empty_no_label_tasks");
     return;
@@ -994,7 +1000,8 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
   const outer = recording;
   recording = rec;
   try {
-    for (const s of plan()) section(root, ctx, s.title, s.tasks, today, s.collapsible, false, s.hosts, [], "", s.ownRow);
+    for (const s of plan()) section(root, ctx, s.title, s.tasks, today, s.collapsible, false, s.hosts, [], "", s.ownRow,
+      opts.group === "none" && !s.collapsible);
   } finally {
     recording = outer;
   }
@@ -1030,9 +1037,8 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
   const today = todayStr();
   c.empty();
   c.addClass("bt-view");
-  c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
-  const root = c.createDiv({ cls: "bt-sizer" });
+  const root = c.createDiv({ cls: "bt-sizer bt-page-body" });
   const filter = readFilter(plugin.app, filterPath);
   if (!filter) { emptyState(root, "tag", "empty_no_filter"); return; }
 
@@ -1050,7 +1056,9 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
 
   // Kriterien filtern die Menge; renderPageBody übernimmt Layout/Sortieren/Gruppieren/Erledigte.
   const tasks = applyFilter(plugin.index, filter.criteria, opts, today);
-  if (!tasks.length) { emptyState(root, filter.icon, "empty_no_filter_tasks"); return; }
+  if (!tasks.some((task) => isOpen(task.status) || (opts.showDone && isDone(task.status)))) {
+    emptyState(root, filter.icon, "empty_no_filter_tasks"); return;
+  }
   renderPageBody(root, ctx, () => applyFilter(plugin.index, filter.criteria, opts, today), opts, today, {},
     () => JSON.stringify(readFilter(plugin.app, filterPath) ?? ""));
 }
@@ -1060,6 +1068,7 @@ interface HeaderOpts {
   menu?: NavMenuItem;     // Kebab: Item-Kontextmenü (Board-Variante); fehlt → kein Kebab (z. B. Eingang)
   hideTitle?: boolean;
   onAdd?: (anchor: HTMLElement) => void;
+  actions?: (root: HTMLElement) => void;
 }
 /** Shared page header: primary action, view options, then entity-specific overflow. Linked-note
  *  actions deliberately live in that overflow instead of claiming another permanent button. */
@@ -1077,7 +1086,7 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
     add.createSpan({ cls: "bt-page-add-lbl", text: t("btn_add_task") });
     add.onclick = (e) => { e.stopPropagation(); opts.onAdd?.(add); };
   }
-  anzeigeButton(actions, ctx);
+  if (pageInfo(ctx.page).tier !== "none") anzeigeButton(actions, ctx);
   if (opts.menu) {
     const it = opts.menu;
     const kebab = actions.createEl("button", { cls: "bt-manage-btn" });
@@ -1085,6 +1094,7 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
     setIcon(kebab.createSpan(), "more-horizontal");
     kebab.onclick = (e) => { e.stopPropagation(); const m = new Menu(); buildItemMenu(m, plugin, it, "board"); m.showAtMouseEvent(e); };
   }
+  opts.actions?.(actions);
 }
 
 /** Kurzbeschreibung unter dem Seitentitel – die eine Zeile aus dem Frontmatter der Projekt-,
@@ -1092,16 +1102,12 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
  *  Bearbeiten-Dialog führt, in dem das Feld liegt – so ist das Feld auffindbar, ohne dass man das
  *  Kontextmenü kennt. Ohne Eintrag (Eingang, eingebaute Ansichten) entsteht gar nichts. */
 function pageDesc(root: HTMLElement, plugin: VibeTaskPlugin, text: string | undefined, item: NavMenuItem | null): void {
-  // Abgeschaltet: gar nichts rendern – und damit auch keine bt-has-desc-Markierung. Die Seite
-  // bekommt dann exakt die Abstände der Systemansichten, sodass „+ Aufgabe hinzufügen" beim
-  // Wechsel zwischen Eingang und Projekt nicht springt.
+  // When disabled, render no placeholder either: the page shell then naturally closes around the
+  // title. Content spacing is independent of this decision and lives on bt-content-group.
   if (!plugin.settings.showProjectDescription) return;
   const t2 = (text ?? "").trim();
   if (!t2 && !item) return;
   const el = root.createDiv({ cls: "bt-page-desc" + (t2 ? "" : " is-empty"), text: t2 || t("desc_add") });
-  // Nur Seiten MIT Beschreibungszeile rücken Bar und erste Sektion enger zusammen – die
-  // Systemansichten (Heute, Demnächst, Eingang, Labels …) behalten ihre Abstände.
-  root.closest<HTMLElement>(".bt-view")?.addClass("bt-has-desc");
   if (!item) return;   // ohne Eintrag kein Ziel – dann bleibt es reiner Text
   // Auch die gefüllte Beschreibung führt in den Dialog: Wer sie ändern will, klickt sie an,
   // statt den Umweg über das Kontextmenü zu suchen.
@@ -1737,9 +1743,9 @@ function renderEventBands(list: HTMLElement, ctx: PageCtx, events: DayEvent[], d
 /** Zeichnet eine Sektion und gibt ihren Überschriften-Kopf zurück – daran hängen Aufrufer
  *  optionale Kopf-Aktionen (z. B. „Verschieben" bei „Überfällig"), ohne dass section() sie
  *  kennen muss. Wer den Rückgabewert nicht braucht, ignoriert ihn wie bisher. */
-function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[], today: string, collapsible = false, trash = false, present?: Set<string>, events: DayEvent[] = [], eventKey = "", ownRow?: (t: Task) => boolean): HTMLElement {
+function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[], today: string, collapsible = false, trash = false, present?: Set<string>, events: DayEvent[] = [], eventKey = "", ownRow?: (t: Task) => boolean, bare = false): HTMLElement {
   const top = trash ? tasks : visibleRows(tasks, present, ownRow);
-  const sec = parent.createDiv({ cls: "bt-section" });
+  const sec = parent.createDiv({ cls: "bt-section bt-content-group" + (bare ? " bt-section-bare" : "") });
   const head = sec.createEl("h6", { cls: "bt-section-title" });
   head.createSpan({ cls: "bt-section-lbl", text: title });
   const countEl = head.createSpan({ cls: "bt-section-count", text: String(top.length) });   // Anzahl direkt neben dem Titel
@@ -2206,7 +2212,10 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
   const kids = plugin.index.children(task.path).filter((k) => !isTrashed(k.status));
   const plan = rowPlan({
     task, today, depth, trash, flat: opts.flat,
-    onProjectPage: ctx.page.kind === "project",
+    // An Area page can contain several projects. Suppress the backlink only when the page itself
+    // identifies one concrete project/inbox; Area groups pass hideProject for their own context.
+    onProjectPage: ctx.page.kind === "project"
+      && (ctx.page.key === INBOX_KEY || !isAreaPath(plugin.app, ctx.page.key)),
     showDescription: plugin.settings.showDescriptionInList,
     impliedDate: opts.impliedDate, deadlineImplied: opts.deadlineImplied, hideProject: opts.hideProject,
     parentTitle: task.parent ? plugin.index.get(task.parent)?.title : undefined,

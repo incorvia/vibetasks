@@ -281,9 +281,7 @@ body {
   color: var(--text-normal);
 }
 
-/* Board-Kopfzeile: „+ Add task" links, dezenter ListManager-Link rechts. */
-.bt-board-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 14px; }
-.bt-board-bar .bt-add { margin: 0; }   /* Abstand kommt von der Bar */
+/* Legacy board-link presentation; the page action itself now lives in the shared page header. */
 .bt-board-link {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
   color: var(--text-muted); font-size: var(--font-ui-small); cursor: pointer;
@@ -406,10 +404,7 @@ body {
 .bt-project-embed .bt-anzeige-lbl {
   display: none;
 }
-.bt-project-embed .bt-board-bar {
-  margin: 8px 0;
-}
-.bt-project-embed .bt-project-root > .bt-section:first-child {
+.bt-project-embed .bt-project-root > .bt-content-group:first-child {
   margin-top: 14px;
 }
 .bt-project-embed .bt-sizer.is-empty {
@@ -1366,20 +1361,16 @@ body {
 /* klickbare Datums-Chips in der Liste */
 .bt-view .bt-due, .bt-view .bt-sched { cursor: pointer; }
 
-/* Sektionen */
-.bt-section { margin-top: 2.2em; }
-/* Seiten MIT Beschreibungszeile (Projekt, Bereich, Filter) gleichen deren Höhe an EINER Stelle
-   wieder aus. Die Rechnung, und die beiden Zahlen unten MÜSSEN zusammenpassen:
-     6px Rand + 20px Zeilenhöhe − 1px (engerer Abstand zur Bar) = 25px Zuwachs
-   also verliert die erste Sektion genau 25px. Beide Zustände ergeben damit dieselbe Summe – ohne
-   Beschreibung 2.2em, mit Beschreibung 25px + (2.2em − 25px). Die erste Sektionsüberschrift sitzt
-   in Systemansichten und auf Projektseiten auf derselben Höhe, unabhängig von Theme und Zoom.
-   Zwischen zwei Sektionen bleibt es überall bei 2.2em, das gliedert die Liste. */
-.bt-has-desc .bt-board-bar { margin-top: 19px; }   /* 1px enger an die Beschreibung */
-.bt-has-desc .bt-section:first-child { margin-top: calc(2.2em - 25px); }
-/* Project lists no longer have the old add row between description and first section. Restore
-   that lost vertical rhythm instead of pulling Tasks up into the description. */
-.bt-has-desc .bt-project-root > .bt-section:first-child { margin-top: 2.2em; }
+/* Task content groups. Plain task sections and contained Area projects are peers, so their outer
+   rhythm comes from one primitive rather than from page type or the presence of a description.
+   A description therefore consumes its natural height and every page keeps the same calm pause
+   before content. Embedded project blocks override only the first-gap token above. */
+.bt-view {
+  --bt-page-content-gap: 2.2em;
+  --bt-content-group-gap: 2.2em;
+}
+.bt-content-group { margin-top: var(--bt-content-group-gap); }
+.bt-page-body > .bt-content-group:first-child { margin-top: var(--bt-page-content-gap); }
 .bt-section-title {
   font-size: calc(0.9em * var(--bt-section-scale, 1)); font-weight: 700; margin: 8px 0 0;   /* Basis = Faktor der Seitenleisten-Einträge; über Einstellungen skalierbar */
   color: var(--text-normal);
@@ -1437,6 +1428,10 @@ body {
   color: var(--text-accent-hover); background: var(--background-modifier-hover); outline: none;
 }
 .bt-list { border-top: 1px solid var(--bt-line); margin-top: 6px; padding-top: 0.9em; }
+/* A single ungrouped page already gets its context from the page title. Keep the section in the
+   DOM for composition/insertion, but remove the redundant “Tasks” label and divider. */
+.bt-section-bare > .bt-section-title { display: none; }
+.bt-section-bare > .bt-list { border-top: 0; margin-top: 0; padding-top: 0; }
 /* Platzhalter für noch nicht gezeichnete Zeilen: hält die Höhe, damit der Rollbalken stimmt und
    nur das nachlädt, was wirklich in die Nähe kommt (s. section/observeSentinel in heuteView).
    Die Höhe kommt als Variable von dort – hier steht, WIE sie wirkt. */
@@ -2283,18 +2278,16 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Facette enthält ein Kriterium, dessen Ziel es nicht mehr gibt (gelöschtes Label/Projekt/Status).
    Gestrichelt statt durchgezogen, weil durchgezogenes Rot oben schon den AUSSCHLUSS markiert –
    beides muss auf einen Blick unterscheidbar bleiben. Steht nach is-exclude/is-all, gewinnt also. */
-/* Kurzbeschreibung unter dem Seitentitel (Projekt/Bereich/Filter). Zwei Zeilen, dann Ellipse –
-   der Kopf soll die Aufgabenliste nicht nach unten drücken. */
+/* Kurzbeschreibung unter dem Seitentitel (Projekt/Bereich/Filter). One line, then ellipsis –
+   the header stays compact while the content below keeps its own independent spacing. */
 .bt-page-desc {
   /* Bewusst blass: Die Beschreibung ist Beiwerk und soll dem Aufgabentext nicht die Aufmerksamkeit
      nehmen. Platzhalter und echter Text tragen dieselbe Farbe – der Unterschied liegt im Inhalt. */
   color: var(--text-faint); font-size: var(--font-ui-medium);
-  /* Feste Zeilenhöhe statt eines Faktors: 1.45 mal Schriftgröße ergibt einen gebrochenen Wert,
-     den kein ganzzahliger Ausgleich unten trifft. So ist der Block exakt 6 + 20 = 26px hoch.
-     Kein unterer Rand – er würde ohnehin mit den 20px über der Bar kollabieren und nichts tun. */
+  /* A fixed line height keeps the compact header predictable across themes and zoom levels.
+     Spacing after the header belongs to bt-content-group and is not calculated from this height. */
   line-height: 20px; margin: 6px 0 0; max-width: 70ch;
-  /* EINE Zeile: Nur so ist der Block immer 26px hoch und der Ausgleich unten stimmt in jedem Fall.
-     Bei zwei erlaubten Zeilen verschöbe eine lange Beschreibung die Liste um 20px. */
+  /* One line keeps long descriptions from turning the sticky header into a large content block. */
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
 /* Beschreibung UND Platzhalter führen in den Bearbeiten-Dialog – im Ruhezustand sieht man das
@@ -2659,7 +2652,10 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
    Subtasks use ::after for their elbow connector, so only suppress their separate bottom border. */
 .bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { display: none; }
 .bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom: 0; }
-.bt-area-project-section { margin: 10px 0; border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px; }
+.bt-area-project-section {
+  margin: var(--bt-content-group-gap) 0 0;
+  border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px;
+}
 @media (max-width: 700px) {
   .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
   .bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(220px, 1fr)); }
@@ -3229,9 +3225,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Der Kalender hat ebenfalls einen Kopfblock – sein Abstand kommt von dort. Ein zusätzliches
    padding-top am Container käme obendrauf (22 statt 14px) und der Titel stünde tiefer als in der Liste. */
 .bt-view.bt-view-calendar { padding-top: 0; }
-/* Seiten ohne Kopfblock (z. B. „Wiederkehrend": nur ein Titel) hätten sonst keinen Abstand nach
-   oben – bei ihnen ist der Sizer das erste Kind, nicht der sticky Kopf. Gleicher Wert wie dessen
-   padding-top, damit alle Titel auf derselben Höhe stehen. */
+/* Non-task utility pages can still render a bare title without the shared page header. */
 .bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 40px; }
 
 .bt-view .bt-page-top {
@@ -3286,6 +3280,8 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   position: absolute; top: 40px; right: 24px;
   display: inline-flex; align-items: center; gap: 6px;
 }
+.bt-view .bt-page-top .bt-head-actions:empty { display: none; }
+.bt-view .bt-page-top .bt-head-actions > .bt-tabs { margin: 0; }
 @media (max-width: 700px) {
   /* Narrow desktop panes use the same compact header grammar as mobile. */
   .bt-view .bt-sizer { max-width: calc(100% - 24px); }
