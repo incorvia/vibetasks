@@ -41,7 +41,7 @@ export interface SigLookup {
 export function rowSig(t: Task, look: SigLookup): string {
   return [
     t.path, t.status, t.priority, t.title, t.description,
-    t.due ?? "", t.dueTime ?? "", t.duration ?? "", t.scheduled ?? "", t.scheduledTime ?? "", t.start ?? "",
+    t.due ?? "", t.dueTime ?? "", t.estimate ?? "",
     t.recurrence ?? "", t.recurBasis, t.reminders.join(","), t.labels.join(","), t.sortOrder ?? "",
     // Das Projekt gehört DAZU: Die Zeile zeigt es als @Backlink. Ohne dieses Feld galt eine in ein
     // anderes Projekt gezogene Aufgabe als unverändert – auf einer Projektseite fiel sie wenigstens

@@ -84,7 +84,7 @@ describe("nextSchemaVersion – was nach dem Lauf in der Datei steht", () => {
 
 describe("SCHEMA_STEPS – die Reihenfolge ist Vertrag", () => {
   it("steht fest und stimmt mit CURRENT_SCHEMA überein", () => {
-    expect(SCHEMA_STEPS).toEqual(["descriptions", "inboxRemoval", "titles", "recurrenceRRule"]);
+    expect(SCHEMA_STEPS).toEqual(["descriptions", "inboxRemoval", "titles", "recurrenceRRule", "timingModel"]);
     expect(CURRENT_SCHEMA).toBe(SCHEMA_STEPS.length);
   });
 });

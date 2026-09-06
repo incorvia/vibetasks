@@ -25,7 +25,7 @@ Ziel: ein eingebauter, nicht-destruktiver, idempotenter Import.
 | Task-Tag | `type: task` | nur getaggte Notizen importieren |
 | `status` | `status` (Registry `statuses.ts`) | Status-Map; `completed_values` → „done" |
 | `priority` | `priority` (`FILTER_PRIORITIES`) | Prio-Map; „normal"/Default weglassen |
-| `due` / `scheduled` | `due` / `scheduled` | Datum/Datetime direkt (`combineDT`) |
+| `due` / `scheduled` | `due` | frühestes Datum gewinnt; `scheduled` wird nicht gespeichert |
 | `contexts` + `tags` | `labels` | zusammenführen, „@" strippen |
 | `projects` (Wikilinks) | `project: [[Basename]]` (einer) | erstes = project, Rest → Labels; auto-anlegen |
 | `recurrence` (RRULE) | `recurrence` (`"every N unit"`) | nur `FREQ`+`INTERVAL`; Rest → Beschreibung |
@@ -33,7 +33,7 @@ Ziel: ein eingebauter, nicht-destruktiver, idempotenter Import.
 | `completedDate` | `completed` | für „Erledigt"/Sortierung |
 | `dateCreated` | `created` | direkt |
 | `id`/Pfad | **`external_id`** | Dedup-Schlüssel (idempotent) |
-| `timeEstimate` | `duration` | falls Minuten-kompatibel |
+| `timeEstimate` | `estimate` | falls Minuten-kompatibel |
 
 Verlustbehaftet (im Report zeigen): komplexe Recurrence (`BYDAY`/`COUNT`/`UNTIL` → Original-RRULE
 in Beschreibung), `timeEntries`, `complete_instances`, `blockedBy`, `reminders` (v1 weglassen).

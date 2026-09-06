@@ -3,7 +3,8 @@ import { DatedItem, planTemplateDates, shiftReminder, templateShift, templateSpa
 
 /** Eine Vorlagen-Aufgabe. Nur die Felder, die der Planer anfasst. */
 function mk(path: string, due: string | null, scheduled: string | null = null, reminders: string[] = []): DatedItem {
-  return { path, due, scheduled, reminders };
+  void scheduled;
+  return { path, due, reminders };
 }
 
 // Die Beispielvorlage „Urlaub vorbereiten“: Reisepass am 1. Juni, Koffer am 13., Übergabe am 14.
@@ -20,8 +21,8 @@ describe("templateSpan – die Spanne des Baums", () => {
     expect(templateSpan(urlaub)).toEqual({ first: "2026-06-01", last: "2026-06-14" });
   });
 
-  it("zählt auch die Deadline (scheduled), nicht nur die Fälligkeit", () => {
-    expect(templateSpan([mk("a", "2026-06-10", "2026-06-20")])).toEqual({ first: "2026-06-10", last: "2026-06-20" });
+  it("ignoriert alte scheduled-Werte", () => {
+    expect(templateSpan([mk("a", "2026-06-10", "2026-06-20")])).toEqual({ first: "2026-06-10", last: "2026-06-10" });
   });
 
   it("übergeht Aufgaben ohne Datum", () => {
@@ -74,14 +75,14 @@ describe("planTemplateDates – der fertige Plan", () => {
     expect(due(p, "T/Uebergabe.md")).toBe("2026-09-20");
   });
 
-  it("hält den Abstand zwischen Fälligkeit und Deadline", () => {
+  it("verschiebt nur due und kopiert keine alten Planungsdaten", () => {
     const p = planTemplateDates([mk("a", "2026-06-01", "2026-06-08")], "2026-09-01", "start");
-    expect(p.get("a")).toMatchObject({ due: "2026-09-01", scheduled: "2026-09-08" });
+    expect(p.get("a")).toEqual({ due: "2026-09-01", reminders: [] });
   });
 
   it("erfindet für undatierte Aufgaben kein Datum", () => {
     const p = planTemplateDates([mk("a", "2026-06-01"), mk("b", null)], "2026-09-01", "start");
-    expect(p.get("b")).toMatchObject({ due: null, scheduled: null });
+    expect(p.get("b")).toMatchObject({ due: null });
   });
 
   it("ohne Anker bleibt alles, wie es ist", () => {
@@ -91,7 +92,7 @@ describe("planTemplateDates – der fertige Plan", () => {
 
   it("ohne Datum im Baum bleibt alles, wie es ist", () => {
     const p = planTemplateDates([mk("a", null, null, ["-30m"])], "2026-09-01", "start");
-    expect(p.get("a")).toMatchObject({ due: null, scheduled: null, reminders: ["-30m"] });
+    expect(p.get("a")).toMatchObject({ due: null, reminders: ["-30m"] });
   });
 
   it("gibt die Erinnerungsliste als KOPIE heraus (kein geteiltes Array)", () => {

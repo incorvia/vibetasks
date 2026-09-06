@@ -2,7 +2,7 @@ import { setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
-import { Task, CalEvent, agendaDate } from "./types";
+import { Task, CalEvent, TimeBlock, agendaDate } from "./types";
 import { ViewOptions } from "./filterEngine";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { isInboxLink } from "./taskService";
@@ -10,11 +10,14 @@ import { combineDT, todayStr } from "./format";
 import { isDone, isOpen } from "./statuses";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
-import { openPopover } from "./popover";
+import { openPopover, popRow } from "./popover";
 import { tip, tipWhenClipped } from "./tooltip";
+import { TimeBlockModal } from "./timeBlockModal";
+import { blockKind } from "./timeService";
+import { calendarTaskColor } from "./calendarTaskColor";
 import {
-  CalMode, CAL_MODES, monthGrid, timeGridDays, timeGridStep, yearMonths, bucketByDate, layoutDayMixed, allDayOf,
-  addDays, addMonths, addYears, sameMonth, parseISO, DEFAULT_BLOCK_MIN,
+  CalMode, CAL_MODES, monthGrid, timeGridDays, timeGridStep, yearMonths, bucketByDate,
+  addDays, addMonths, addYears, sameMonth, parseISO, DEFAULT_BLOCK_MIN, layoutSlots,
   ChipMetrics, ChipFit, chipsThatFit, shownChips,
   DayEvent, bucketEvents, allDayEventsOf, pageShowsEvents,
 } from "./calendarModel";
@@ -40,6 +43,7 @@ const SNAP_MIN = 15;             // Raster beim Ziehen/Resizen
 const MIN_DUR = 15;
 const TWO_LINE_PX = 34;          // darunter passen Uhrzeit + Titel nicht untereinander -> eine Zeile
 const DAY_START_HOUR = 7;        // Startansicht der Wochenansicht (nicht Mitternacht)
+let movingBlockId: string | null = null;
 
 // Angezeigter Zeitraum je Seite UND TAB (transient wie boardScroll – ein Reload startet wieder
 // bei „heute“). Der Tab gehört in den Schlüssel: zwei Kalender-Tabs derselben Seite blätterten
@@ -69,7 +73,25 @@ export interface CalendarAdd { project?: string | null; label?: string }
 
 /** Jeder Modus-Zeichner liefert diese Füll-Funktion: Aufgaben UND Termine des Zeitraums, jeweils
  *  nach Tag gebündelt. Das Gerüst bleibt stehen, nur der Inhalt wird neu gezeichnet. */
-type GridFiller = (tasks: Map<string, Task[]>, events: Map<string, DayEvent[]>) => void;
+type GridFiller = (tasks: Map<string, Task[]>, events: Map<string, DayEvent[]>, blocks: Map<string, BlockSlice[]>) => void;
+type BlockSlice = { block: TimeBlock; startMin: number; endMin: number };
+
+export function bucketBlocks(blocks: TimeBlock[], days: string[]): Map<string, BlockSlice[]> {
+  const out = new Map(days.map((day) => [day, [] as BlockSlice[]]));
+  for (const block of blocks) {
+    if (block.status === "cancelled") continue;
+    const start = new Date(block.start), end = new Date(start.getTime() + block.duration * 60000);
+    if (Number.isNaN(start.getTime())) continue;
+    for (const day of days) {
+      const ds = parseISO(day), de = new Date(ds); de.setDate(de.getDate() + 1);
+      const a = Math.max(start.getTime(), ds.getTime()), b = Math.min(end.getTime(), de.getTime());
+      if (b <= a) continue;
+      const startMin = Math.round((a - ds.getTime()) / 60000), endMin = Math.round((b - ds.getTime()) / 60000);
+      out.get(day)!.push({ block, startMin, endMin });
+    }
+  }
+  return out;
+}
 
 /**
  * ── Inkrementelles Nachzeichnen ──────────────────────────────────────────────────────────────
@@ -173,10 +195,8 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
     b.onclick = () => ctx.setOption({ calMode: m });
   }
 
-  // Undatierte der Seite = Quelle der Seitenleiste: weder Fälligkeit noch Deadline. Sie fallen
-  // ohnehin aus bucketByDate() heraus,
-  // tauchen im Raster also nirgends auf – ohne Panel wären sie im Kalender unsichtbar.
-  const unscheduledOf = (list: Task[]): Task[] => list.filter((tk) => !agendaDate(tk) && isOpen(tk.status));
+  // Wirklich ungeplante Aufgaben: weder Deadline noch primärer Aufgaben-Zeitplan.
+  const unscheduledOf = (list: Task[]): Task[] => list.filter((tk) => !agendaDate(tk) && !plugin.scheduling.getTaskSchedule(tk.id) && isOpen(tk.status));
   // Im Jahr gibt es keine Drop-Ziele -> dort wäre eine Ablage zum Ziehen sinnlos.
   const panelUseful = mode !== "year";
   let setPanelCount: (n: number) => void = () => { /* kein Panel-Knopf im Jahr */ };
@@ -214,6 +234,9 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
     if (!showsEvents || !gridDays.length || !plugin.gcalFeed?.isActive()) return new Map();
     return bucketEvents(plugin.gcalFeed.eventsIn(gridDays[0], gridDays[gridDays.length - 1]), gridDays);
   };
+  const timeBlocks = (): Map<string, BlockSlice[]> => gridDays.length
+    ? bucketBlocks(plugin.timeStore.blocksIn(gridDays[0], gridDays[gridDays.length - 1]), gridDays)
+    : new Map<string, BlockSlice[]>();
 
   // Kalender + Seitenleiste stehen nebeneinander (das Panel schiebt das Raster, überlagert es nicht).
   const body = root.createDiv({ cls: "bt-calview-body" });
@@ -229,7 +252,7 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
    *  ohne dass die Kontext-Signatur die (ständig wechselnde) Terminmenge kennen müsste. */
   const paint = (list: Task[]): void => {
     const unsched = unscheduledOf(list);
-    fillGrid(bucketByDate(list), feedEvents());
+    fillGrid(bucketByDate(list), feedEvents(), timeBlocks());
     fillPanel?.(unsched);
     setPanelCount(unsched.length);
   };
@@ -286,9 +309,9 @@ function renderYear(root: HTMLElement, plugin: VibeTaskPlugin,
   }
 
   // Füller: im Jahr ändert sich nur der Aufgaben-Punkt – kein Element wird neu erzeugt.
-  return (buckets) => {
+  return (buckets, _events, blocks) => {
     for (const { day, el } of cells) {
-      const n = (buckets.get(day) ?? []).length;
+      const n = (buckets.get(day) ?? []).length + (blocks.get(day) ?? []).length;
       el.toggleClass("has-tasks", n > 0);
       tip(el, n ? t("cal_tasks", n) : "");
     }
@@ -361,10 +384,11 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
 
   // Termine zuerst (sie sind der Kontext des Tages: „so viel ist schon belegt"), dann die Aufgaben.
   // „+N weitere" zählt beide zusammen, damit die Zelle nicht überläuft.
-  const fillCell = (day: string, body: HTMLElement, events: DayEvent[], tasks: Task[], fit: ChipFit): void => {
+  const fillCell = (day: string, body: HTMLElement, events: DayEvent[], tasks: Task[], blocks: BlockSlice[], fit: ChipFit): void => {
     body.empty();
     const draws: ((p: HTMLElement) => void)[] = [
       ...events.map((de) => (p: HTMLElement) => renderEventChip(p, de)),
+      ...blocks.map((b) => (p: HTMLElement) => renderBlockChip(p, plugin, b.block)),
       ...tasks.map((tk) => (p: HTMLElement) => renderChip(p, plugin, tk)),
     ];
     const shown = shownChips(draws.length, fit);
@@ -389,6 +413,7 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
   let fit: ChipFit | null = null;
   let last: Map<string, Task[]> = new Map();
   let lastEv: Map<string, DayEvent[]> = new Map();
+  let lastBlocks: Map<string, BlockSlice[]> = new Map();
 
   /** Passende Chip-Zahl für die aktuelle Zellenhöhe. Ohne Höhe (View noch nicht sichtbar) oder ohne
    *  Aufgabe zum Messen bleibt es beim Notnagel – der ResizeObserver zieht nach, sobald es liegt. */
@@ -402,7 +427,7 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
 
   const draw = (): void => {
     fit = currentFit();
-    for (const { day, body } of cells) fillCell(day, body, lastEv.get(day) ?? [], sortDay(last.get(day) ?? []), fit);
+    for (const { day, body } of cells) fillCell(day, body, lastEv.get(day) ?? [], sortDay(last.get(day) ?? []), lastBlocks.get(day) ?? [], fit);
   };
 
   // Zellenhöhe ändert sich mit dem Fenster, der Sidebar und der Zoomstufe – ohne Datenänderung.
@@ -414,9 +439,10 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
   });
   ro.observe(grid);
 
-  return (buckets, events) => {
+  return (buckets, events, blocks) => {
     last = buckets;
     lastEv = events;
+    lastBlocks = blocks;
     draw();
   };
 }
@@ -488,9 +514,13 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
     // Klick auf freie Fläche: neue Aufgabe mit der Uhrzeit des Slots.
     col.onclick = (e) => {
       if (e.target !== col) return;                        // nur die freie Fläche, nicht ein Block
-      plugin.openNewTaskOn(day, hhmm(snap(yToMin(e.clientY, col))), add.project ?? undefined, add.label);
+      const minutes = snap(yToMin(e.clientY, col)), time = hhmm(minutes);
+      openPopover(col, (pop, close) => {
+        popRow(pop, "plus-circle", "New task", () => { plugin.openNewTaskOn(day, time, add.project ?? undefined, add.label); close(); });
+        popRow(pop, "calendar-plus", "New time block", () => { new TimeBlockModal(plugin, new Date(`${day}T${time}:00`)).open(); close(); });
+      });
     };
-    dropTarget(col, plugin, (_task, ev) => combineDT(day, hhmm(snap(yToMin(ev.clientY, col)))), add);
+    blockDropTarget(col, plugin, day);
     attachGhost(col, plugin);                              // Live-Vorschau beim Ziehen
     cols.set(day, col);
   }
@@ -502,7 +532,7 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
   // Füller: Ganztägig-Zeile (Aufgaben + Termine) und Zeitblöcke (gemeinsam angeordnet) – Gerüst,
   // Stundenraster und Scrollposition bleiben. Termine sind read-only, teilen sich aber die Breite
   // mit den Aufgabenblöcken (ein Meeting schiebt den Aufgabenblock zur Seite, statt ihn zu verdecken).
-  return (buckets, events) => {
+  return (buckets, events, blocks) => {
     for (const day of days) {
       const dayTasks = sortDay(buckets.get(day) ?? []);
       const dayEvents = events.get(day) ?? [];
@@ -510,13 +540,19 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
       const cell = alldayCells.get(day)!;
       cell.empty();
       for (const de of allDayEventsOf(dayEvents)) renderEventChip(cell, de);
-      for (const tk of allDayOf(dayTasks)) renderChip(cell, plugin, tk);
+      const scheduledHere = new Set((blocks.get(day) ?? [])
+        .filter((slice) => blockKind(slice.block) === "task_schedule" && slice.block.scope.type === "task")
+        .map((slice) => slice.block.scope.id));
+      for (const tk of dayTasks) if (!scheduledHere.has(tk.id)) renderChip(cell, plugin, tk);
 
       const col = cols.get(day)!;
       for (const old of Array.from(col.children)) {
         if (old.hasClass("bt-calview-block") || old.hasClass("bt-calview-ev")) old.remove();   // Jetzt-Linie bleibt stehen
       }
-      for (const b of layoutDayMixed(dayTasks, dayEvents)) {
+      const timedEvents = dayEvents.filter((d): d is DayEvent & { startMin: number; endMin: number } => d.startMin !== null && d.endMin !== null)
+        .map((d) => ({ kind: "event" as const, ...d, startMin: d.startMin, endMin: d.endMin }));
+      const timedBlocks = (blocks.get(day) ?? []).map((b) => ({ kind: "block" as const, ...b }));
+      for (const b of layoutSlots([...timedEvents, ...timedBlocks], (a, z) => a.kind.localeCompare(z.kind))) {
         const h = Math.max(18, ((b.endMin - b.startMin) / 60) * HOUR_PX - 2);
         const setBox = (el: HTMLElement): void => {
           el.style.top = (b.startMin / 60) * HOUR_PX + "px";
@@ -539,23 +575,44 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
           continue;
         }
 
-        const el = col.createDiv({ cls: "bt-calview-block" });
+        const el = col.createDiv({ cls: "bt-calview-block", attr: { "data-time-block": b.block.id } });
+        const scheduledTask = blockKind(b.block) === "task_schedule" && b.block.scope.type === "task"
+          ? plugin.index.getById(b.block.scope.id) : undefined;
+        if (b.block.status === "completed" || (scheduledTask && isDone(scheduledTask.status))) el.addClass("is-done");
+        if (scheduledTask) {
+          el.dataset.path = scheduledTask.path;
+          el.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, scheduledTask));
+          renderCheck(el, plugin, scheduledTask, { compact: true });
+        }
+        el.draggable = true;
+        el.ondragstart = (event) => { movingBlockId = b.block.id; event.dataTransfer?.setData("application/x-vibetask-time-block", b.block.id); };
+        el.ondragend = () => { movingBlockId = null; };
         setBox(el);
         // Flacher Block (30 min = eine Zeile hoch): NUR der Titel. Die Uhrzeit steht ohnehin an
         // der Position im Raster – eine zweite Zeile würde den Titel verdrängen.
         if (compact) el.addClass("is-compact");
-        decorate(el, plugin, b.task);
-        renderCheck(el, plugin, b.task, { compact: true });
         const inner = el.createDiv({ cls: "bt-calview-block-in" });
-        const titleEl = inner.createDiv({ cls: "bt-calview-block-title", text: b.task.title });
+        const titleEl = inner.createDiv({ cls: "bt-calview-block-title", text: b.block.scope.title_snapshot });
         if (!compact) inner.createDiv({ cls: "bt-calview-block-time", text: span(b.startMin, b.endMin) });
         // Gleiche Bauart wie beim Termin daneben (Zeitspanne · Titel) – nur eben erst, wenn der
         // Titel im Block nicht mehr ganz hineinpasst.
-        tipWhenClipped(el, titleEl, span(b.startMin, b.endMin) + " · " + b.task.title);
-        dragSource(el, b.task);
+        tipWhenClipped(el, titleEl, span(b.startMin, b.endMin) + " · " + b.block.scope.title_snapshot);
+        el.onclick = (event) => {
+          if ((event.target as HTMLElement).closest(".bt-calview-resize")) return;
+          event.stopPropagation();
+          if (blockKind(b.block) === "task_schedule") {
+            const task = plugin.index.getById(b.block.scope.id); if (task) plugin.openEditTask(task);
+            return;
+          }
+          openPopover(el, (pop, close) => {
+            popRow(pop, "play", b.block.mode === "blitz" ? "Start Blitz" : "Start timer", () => { void plugin.startTimeBlock(b.block); close(); });
+            popRow(pop, "pencil", "Edit time block", () => { new TimeBlockModal(plugin, new Date(b.block.start), b.block.scope, b.block).open(); close(); });
+            popRow(pop, "x", "Cancel time block", () => { void plugin.scheduling.cancelBlock(b.block.id); close(); });
+          });
+        };
         // Griff am unteren Rand: zieht die Dauer auf (rundet auf 15 min, Minimum 15 min).
         const grip = el.createDiv({ cls: "bt-calview-resize" });
-        grip.onmousedown = (ev) => startResize(ev, el, b.task, b.startMin, plugin);
+        grip.onmousedown = (ev) => startBlockResize(ev, el, b.block, b.startMin, plugin);
       }
     }
   };
@@ -614,31 +671,36 @@ function yToMin(clientY: number, col: HTMLElement, top?: number): number {
   return ((clientY - t) / HOUR_PX) * 60;
 }
 
-/** Dauer per Maus ziehen. Bewusst Maus-Events (kein HTML5-Drag): das liefert stetige Positionen. */
-function startResize(e: MouseEvent, el: HTMLElement, task: Task, startMin: number,
+function startBlockResize(e: MouseEvent, el: HTMLElement, block: TimeBlock, startMin: number,
   plugin: VibeTaskPlugin): void {
   e.preventDefault(); e.stopPropagation();
-  const col = el.parentElement!;
-  const doc = el.ownerDocument;
-  el.addClass("is-resizing");   // Hover-Optik einfrieren, damit Hintergrund/Griff beim Ziehen nicht flackern
-  let minutes = Math.max(MIN_DUR, (task.duration ?? 30));
-  const onMove = (ev: MouseEvent): void => {
+  const col = el.parentElement!, doc = el.ownerDocument; el.addClass("is-resizing");
+  let minutes = Math.max(MIN_DUR, block.duration);
+  const onMove = (ev: MouseEvent) => {
     minutes = Math.max(MIN_DUR, snap(yToMin(ev.clientY, col)) - startMin);
-    const h = Math.max(18, (minutes / 60) * HOUR_PX - 2);
-    el.style.height = h + "px";
-    el.toggleClass("is-compact", h < TWO_LINE_PX);   // beim Aufziehen sofort zweizeilig werden
+    const h = Math.max(18, (minutes / 60) * HOUR_PX - 2); el.style.height = h + "px";
+    el.toggleClass("is-compact", h < TWO_LINE_PX);
   };
-  const onUp = (): void => {
-    el.removeClass("is-resizing");
-    doc.removeEventListener("mousemove", onMove);
-    doc.removeEventListener("mouseup", onUp);
-    // Den auf mouseup folgenden synthetischen Klick schlucken: sein Ziel ist der gemeinsame Vorfahr
-    // (die Spalte), sonst löst deren „Klick auf freien Slot → neue Aufgabe" aus (Geister-Modal).
+  const onUp = () => {
+    el.removeClass("is-resizing"); doc.removeEventListener("mousemove", onMove); doc.removeEventListener("mouseup", onUp);
     doc.addEventListener("click", (ev) => ev.stopPropagation(), { capture: true, once: true });
-    if (minutes !== task.duration) void plugin.setTaskDuration(task, minutes);   // Index zeichnet neu (s. dropTarget)
+    if (minutes !== block.duration) void plugin.scheduling.resizeBlock(block.id, minutes);
   };
-  doc.addEventListener("mousemove", onMove);
-  doc.addEventListener("mouseup", onUp);
+  doc.addEventListener("mousemove", onMove); doc.addEventListener("mouseup", onUp);
+}
+
+function blockDropTarget(col: HTMLElement, plugin: VibeTaskPlugin, day: string): void {
+  col.addEventListener("dragover", (e) => { if (!dragTask() && !movingBlockId) return; e.preventDefault(); col.addClass("is-drop"); });
+  col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget as Node | null)) col.removeClass("is-drop"); });
+  col.addEventListener("drop", (e) => {
+    e.preventDefault(); e.stopPropagation(); col.removeClass("is-drop");
+    const time = hhmm(snap(yToMin(e.clientY, col)));
+    const blockId = e.dataTransfer?.getData("application/x-vibetask-time-block") || movingBlockId;
+    if (blockId) { movingBlockId = null; void plugin.scheduling.moveBlock(blockId, new Date(`${day}T${time}:00`)); return; }
+    const path = e.dataTransfer?.getData("text/plain") || dragTask(); endTaskDrag();
+    const task = path ? plugin.index.get(path) : null; if (!task) return;
+    void plugin.scheduling.scheduleTask(task.id, { start: `${day}T${time}:00`, source: "drag" });
+  });
 }
 
 // ── Chips, Drag & Drop ─────────────────────────────────────────────────────────
@@ -653,6 +715,32 @@ function renderChip(parent: HTMLElement, plugin: VibeTaskPlugin, task: Task): vo
   // eines Chips nur zu lesen, indem man die Aufgabe öffnete. Aufbau wie beim Termin-Chip.
   tipWhenClipped(chip, titleEl, (task.dueTime ? task.dueTime + " · " : "") + task.title);
   dragSource(chip, task);
+}
+
+function renderBlockChip(parent: HTMLElement, plugin: VibeTaskPlugin, block: TimeBlock): void {
+  const chip = parent.createDiv({ cls: "bt-calview-chip bt-time-block-chip" });
+  const scheduledTask = blockKind(block) === "task_schedule" && block.scope.type === "task"
+    ? plugin.index.getById(block.scope.id) : undefined;
+  if (block.status === "completed" || (scheduledTask && isDone(scheduledTask.status))) chip.addClass("is-done");
+  if (scheduledTask) {
+    chip.dataset.path = scheduledTask.path;
+    chip.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, scheduledTask));
+    renderCheck(chip, plugin, scheduledTask, { compact: true });
+  }
+  const start = new Date(block.start);
+  chip.createSpan({ cls: "bt-calview-chip-time", text: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` });
+  chip.createSpan({ cls: "bt-calview-chip-title", text: block.scope.title_snapshot });
+  chip.onclick = (e) => {
+    e.stopPropagation();
+    if (blockKind(block) === "task_schedule") {
+      const task = plugin.index.getById(block.scope.id); if (task) plugin.openEditTask(task);
+      return;
+    }
+    openPopover(chip, (pop, close) => {
+      popRow(pop, "play", block.mode === "blitz" ? "Start Blitz" : "Start timer", () => { void plugin.startTimeBlock(block); close(); });
+      popRow(pop, "x", "Cancel time block", () => { void plugin.scheduling.cancelBlock(block.id); close(); });
+    });
+  };
 }
 
 // ── Termine (read-only Anzeige-Schicht) ────────────────────────────────────────
@@ -704,14 +792,9 @@ function decorate(el: HTMLElement, plugin: VibeTaskPlugin, task: Task): void {
   el.dataset.path = task.path;
   if (task.path === menuHoldPath()) el.addClass("bt-menu-hold");   // offenes Kontextmenü hält das Hover
   if (isDone(task.status)) el.addClass("is-done");
-  el.style.setProperty("--bt-cal-tint", prioTint(task));
+  el.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, task));
   el.onclick = (e) => { e.stopPropagation(); plugin.openEditTask(task); };
 }
-
-const PRIO_TINT: Record<string, string> = {
-  highest: "#ef4444", high: "#f59e0b", medium: "#3b82f6",
-};
-const prioTint = (task: Task): string => PRIO_TINT[task.priority] ?? "var(--interactive-accent)";
 
 function dragSource(el: HTMLElement, task: Task): void {
   el.setAttr("draggable", "true");
@@ -748,7 +831,7 @@ function attachGhost(col: HTMLElement, plugin: VibeTaskPlugin): void {
       colTop = col.getBoundingClientRect().top;       // Sicherheitsnetz, falls dragenter ausblieb
       ghost = col.createDiv({ cls: "bt-calview-ghost" });
       // Höhe steht für den ganzen Drag fest (die Dauer ändert sich beim Ziehen nicht) -> einmal setzen.
-      const dur = task.duration && task.duration > 0 ? task.duration : DEFAULT_BLOCK_MIN;
+      const dur = task.estimate && task.estimate > 0 ? task.estimate : DEFAULT_BLOCK_MIN;
       ghost.style.height = Math.max(18, (dur / 60) * HOUR_PX - 2) + "px";
       ghost.dataset.dur = String(dur);
     }

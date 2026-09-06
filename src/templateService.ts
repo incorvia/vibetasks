@@ -123,8 +123,7 @@ export async function saveAsTemplate(plugin: VibeTaskPlugin, task: Task, kind: T
     description: task.description,
     status: firstOpenStatus(),
     due: task.due, dueTime: task.dueTime,
-    scheduled: task.scheduled, scheduledTime: task.scheduledTime,
-    duration: task.duration,
+    estimate: task.estimate,
     priority: task.priority,
     // Das Projekt der Quelle wandert MIT – als Vorschlag, nicht als Bindung. Eine Vorlage wie
     // „Wäsche machen" gehört immer in dasselbe Projekt; sie jedes Mal neu suchen zu lassen ist
@@ -238,8 +237,7 @@ export async function applyTemplate(plugin: VibeTaskPlugin, rootPath: string, op
     description: root.description,
     status: firstOpenStatus(),
     due: d ? d.due : root.due, dueTime: root.dueTime,
-    scheduled: d ? d.scheduled : root.scheduled, scheduledTime: root.scheduledTime,
-    duration: root.duration,
+    estimate: root.estimate,
     priority: root.priority,
     project: opts.project,
     labels: [...root.labels],

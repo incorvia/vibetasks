@@ -4,8 +4,7 @@ import { isOverdueTask, isTodayTask, isUpcomingTask } from "../src/filterEngine"
 
 /**
  * Die EINE Regel der Zeit-Ansichten:
- *   Ohne Fälligkeit ist die Deadline die Fälligkeit; sonst entscheidet allein die Fälligkeit.
- *   Eine verstrichene Frist macht überfällig – auch bei künftigem Plan.
+ *   `due` ist die einzige Aufgaben-Zeitachse. Planung lebt in separaten Zeitblöcken.
  *
  * Wichtigste Zusicherung dieser Datei: Jede Aufgabe fällt in HÖCHSTENS EINEN der drei Töpfe.
  * Genau daran ist die frühere Lösung gescheitert (dieselbe Aufgabe aus zwei Gründen sichtbar).
@@ -30,11 +29,9 @@ const bucket = (t: Task): string =>
     .filter(Boolean).join("+") || "nirgends";
 
 describe("Zeit-Ansichten: Platzierung", () => {
-  it("ohne Fälligkeit ist die Deadline die Fälligkeit", () => {
-    expect(agendaDate(mk({ scheduled: MORGEN }))).toBe(MORGEN);
-    expect(bucket(mk({ scheduled: TODAY }))).toBe("heute");
-    expect(bucket(mk({ scheduled: MORGEN }))).toBe("demnächst");
-    expect(bucket(mk({ scheduled: GESTERN }))).toBe("überfällig");
+  it("alte scheduled-Werte werden nach der Migration nicht mehr als Agenda-Datum gelesen", () => {
+    expect(agendaDate(mk({ scheduled: MORGEN }))).toBeNull();
+    expect(bucket(mk({ scheduled: TODAY }))).toBe("nirgends");
   });
 
   it("mit Fälligkeit entscheidet die Fälligkeit – die Deadline verschiebt nichts", () => {
@@ -43,9 +40,9 @@ describe("Zeit-Ansichten: Platzierung", () => {
     expect(bucket(mk({ due: MORGEN, scheduled: TODAY }))).toBe("demnächst");   // Frist heute, Plan morgen
   });
 
-  it("eine verstrichene Frist macht überfällig – auch bei künftigem Plan", () => {
-    expect(bucket(mk({ due: MORGEN, scheduled: GESTERN }))).toBe("überfällig");
-    expect(bucket(mk({ due: NAECHSTE_WOCHE, scheduled: GESTERN }))).toBe("überfällig");
+  it("alte scheduled-Werte ändern eine due-basierte Platzierung nicht", () => {
+    expect(bucket(mk({ due: MORGEN, scheduled: GESTERN }))).toBe("demnächst");
+    expect(bucket(mk({ due: NAECHSTE_WOCHE, scheduled: GESTERN }))).toBe("demnächst");
   });
 
   it("… aber NICHT, wenn die Aufgabe heute ohnehin dran ist", () => {
@@ -71,11 +68,11 @@ describe("Zeit-Ansichten: Platzierung", () => {
     }
   });
 
-  it("jede datierte Aufgabe landet in GENAU EINEM Topf", () => {
+  it("jede Aufgabe mit due landet in GENAU EINEM Topf", () => {
     const daten = [GESTERN, TODAY, MORGEN, NAECHSTE_WOCHE];
     for (const due of [null, ...daten]) {
       for (const scheduled of [null, ...daten]) {
-        if (!due && !scheduled) continue;
+        if (!due) continue;
         expect(bucket(mk({ due, scheduled })), `due=${due} scheduled=${scheduled}`).not.toBe("nirgends");
       }
     }

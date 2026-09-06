@@ -153,7 +153,7 @@ export function layoutSlots<T extends Slot>(items: T[], tie: (a: T, b: T) => num
 function taskSlot(task: Task): { task: Task; startMin: number; endMin: number } | null {
   const startMin = minutesOf(task);
   if (startMin === null) return null;
-  const dur = task.duration && task.duration > 0 ? task.duration : DEFAULT_BLOCK_MIN;
+  const dur = DEFAULT_BLOCK_MIN;
   return { task, startMin, endMin: Math.min(startMin + dur, 1440) };
 }
 

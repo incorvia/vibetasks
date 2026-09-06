@@ -14,6 +14,7 @@ import { ApplyTemplateModal, promptNewTemplate } from "./templateModal";
 import { TaskModal } from "./taskModal";
 import { deleteTemplate, listTemplates, refreshTemplates, renameTemplate, templateEditScope, TemplateInfo } from "./templateService";
 import { t } from "./i18n";
+import { entityIcon } from "./entityPresentation";
 
 // setSubmenu() ist seit App 1.7 verfügbar, fehlt aber in den mitgelieferten Typings (1.13.1).
 declare module "obsidian" {
@@ -275,10 +276,10 @@ export function addCreateItems(menu: Menu, plugin: VibeTaskPlugin, includeTask =
     menu.addItem((m) => m.setTitle(t(key)).setIcon(icon).onClick(open));
   };
   if (includeTask) row("cmd_new_task", "circle-plus", () => plugin.openQuickAddHere());
-  // Icons wie in der Seitenleiste: Projekt = list-checks, Bereich = circle, Label = hash,
+  // Entity icons come from the same presenter as the sidebar, embeds, and pickers.
   // Filter = tag (fest vergeben in filterService.toItem – nicht der Trichter „filter").
-  row("create_project", "list-checks", () => new NewItemModal(plugin, "project").open());
-  row("create_area", "circle", () => new NewItemModal(plugin, "area").open());
+  row("create_project", entityIcon("project"), () => new NewItemModal(plugin, "project").open());
+  row("create_area", entityIcon("area"), () => new NewItemModal(plugin, "area").open());
   row("create_label", "hash", () => new NewItemModal(plugin, "label").open());
   row("create_filter", "tag", () => new FilterModal(plugin).open());
   row("create_template", "clipboard-list", () => promptNewTemplate(plugin));

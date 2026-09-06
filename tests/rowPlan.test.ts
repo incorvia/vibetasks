@@ -88,18 +88,10 @@ describe("Fälligkeit", () => {
   });
 });
 
-describe("Deadline", () => {
-  it("entfällt bei Deadline-Gruppierung, solange sie nicht vergangen ist", () => {
-    expect(plan(aufgabe({ scheduled: "2026-08-20" }), { deadlineImplied: true }).deadline).toBeNull();
-  });
-
-  it("bleibt stehen, wenn sie vergangen ist – dort sammelt der Ueberfaellig-Bucket ohne eigenes Datum", () => {
-    expect(plan(aufgabe({ scheduled: "2026-08-01" }), { deadlineImplied: true }).deadline).not.toBeNull();
-  });
-
-  it("zeigt auch bei Gruppierung wenigstens die Uhrzeit", () => {
-    const t = aufgabe({ scheduled: "2026-08-20", scheduledTime: "08:00" });
-    expect(plan(t, { deadlineImplied: true }).deadline?.text).toBe("08:00");
+describe("Estimate", () => {
+  it("zeigt Aufwand mit Tilde und lässt alte Planungsfelder unsichtbar", () => {
+    expect(plan(aufgabe({ estimate: 90 })).estimate).toBe("~1h30m");
+    expect(plan(aufgabe({ scheduled: "2026-08-01" })).deadline).toBeNull();
   });
 });
 

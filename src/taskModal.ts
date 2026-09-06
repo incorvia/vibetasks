@@ -16,6 +16,7 @@ import { CHIPS, ChipHost, ChipFields, chipsCompact, resolveChipOrder, isInline, 
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { attachLinkSuggest } from "./linkSuggest";
+import { TimeBlockModal } from "./timeBlockModal";
 
 // PRIOS/PRIO_KEY leben jetzt in chips.ts (gemeinsam mit der Schnelleingabe); hier re-exportiert,
 // damit bestehende Importe (filterModal, quickAddModal) unverändert bleiben.
@@ -32,7 +33,7 @@ let openModals = 0;
 /** Aufgaben-Modal (randloser Titel, Chip-Reihe, Projekt-Picker, CTA).
  *  Erfasst neu oder bearbeitet/verschiebt eine bestehende Aufgabe. */
 export class TaskModal extends Modal {
-  private f: TaskFields & { scheduled?: string | null; recurrence?: string | null; reminders: string[] };
+  private f: TaskFields & { recurrence?: string | null; reminders: string[] };
   private chipBar!: HTMLElement;
   private descInput: HTMLTextAreaElement | null = null;
   private projektBtn!: HTMLButtonElement;
@@ -83,7 +84,7 @@ export class TaskModal extends Modal {
     this.f = existing
       ? {
           title: existing.title, status: existing.status, due: existing.due, dueTime: existing.dueTime,
-          scheduled: existing.scheduled, scheduledTime: existing.scheduledTime, duration: existing.duration,
+          estimate: existing.estimate,
           priority: existing.priority, recurrence: existing.recurrence, recurBasis: existing.recurBasis,
           project: existing.project ? baseName(existing.project) : null,
           parent: existing.parent ? baseName(existing.parent) : null,
@@ -100,8 +101,7 @@ export class TaskModal extends Modal {
           labels: seed?.labels ? [...seed.labels] : (opts.defaultLabel ? [opts.defaultLabel] : []),
           reminders: seed?.reminders ? [...seed.reminders] : [],
           due: seed?.due ?? (opts.defaultToday ? todayIso() : null),
-          dueTime: seed?.dueTime ?? null, duration: seed?.duration ?? null,
-          scheduled: seed?.scheduled ?? null, scheduledTime: seed?.scheduledTime ?? null,
+          dueTime: seed?.dueTime ?? null, estimate: seed?.estimate ?? null,
           recurrence: seed?.recurrence ?? null, recurBasis: seed?.recurBasis ?? "due",
           parent: seed?.parent ?? null, description: seed?.description,
           project: defaultProject ?? null,   // kein Default-Projekt -> Eingang (= kein Projekt)
@@ -317,6 +317,19 @@ export class TaskModal extends Modal {
     }
 
     const actions = foot.createDiv({ cls: "bt-actions" });
+    if (this.existing) {
+      const schedule = this.plugin.scheduling.getTaskSchedule(this.existing.id);
+      const scheduleButton = actions.createEl("button", { attr: { "aria-label": schedule ? "Edit task schedule" : "Schedule task" } });
+      setIcon(scheduleButton, "calendar-clock");
+      tip(scheduleButton, schedule ? `Scheduled ${new Date(schedule.start).toLocaleString()} · ${schedule.duration}m` : "Schedule task");
+      scheduleButton.onclick = () => new TimeBlockModal(this.plugin, schedule ? new Date(schedule.start) : new Date(),
+        { type: "task", id: this.existing!.id, title_snapshot: this.existing!.title }, schedule ?? undefined, "task_schedule").open();
+      const timer = actions.createEl("button", { attr: { "aria-label": "Start timer" } });
+      const active = this.plugin.workTimer.active(); setIcon(timer, active?.task_id === this.existing.id ? "square" : "play");
+      timer.onclick = () => active?.task_id === this.existing!.id
+        ? void this.plugin.stopTaskTimer()
+        : void this.plugin.startTaskTimer(this.existing!);
+    }
     const cancel = actions.createEl("button", { text: t("btn_cancel") });
     cancel.onclick = () => { this.discarding = true; this.close(); };
     const submit = actions.createEl("button", { cls: "mod-cta", text: this.existing ? t("btn_save") : t("btn_add_task") });
@@ -489,9 +502,16 @@ export class TaskModal extends Modal {
     // Der Wert kam aus dem Titel – escapen heisst: er ist weg. Erst leeren, dann neu parsen
     // (der escapte Text setzt nichts mehr). KEIN pinDue: das Escape im Titel IST der Zustand,
     // ein spaeter getipptes „uebermorgen" soll wieder erkannt werden.
-    this.f.due = null; this.f.dueTime = null; this.f.duration = null;
+    this.f.due = null; this.f.dueTime = null;
     this.applyParse();
     return true;
+  }
+
+  private unparseEstimate(): boolean {
+    const next = escapeTriggers(this.f.title, [this.nl.estimateSrc]);
+    if (next === this.f.title) return false;
+    this.f.title = next; this.titleInput.value = next; this.f.estimate = null;
+    this.applyParse(); return true;
   }
 
   // ── Chips ──
@@ -509,6 +529,7 @@ export class TaskModal extends Modal {
       // Manuell gesetzt/geleert: der Titel besitzt das Datum ab jetzt nicht mehr.
       pinDue: () => { this.duePinned = true; this.nl.dueSrc = ""; this.nl.timeSrc = ""; },
       unparseDue: () => this.unparseDue(),
+      unparseEstimate: () => this.unparseEstimate(),
       unparseRecur: () => this.unparseRecur(),
       existingPath: this.existing?.path,
       onParentPicked: (proj) => { if (proj) this.f.project = proj; if (!this.opts.hideProjekt) this.renderProjekt(); },
@@ -831,8 +852,7 @@ export class TaskModal extends Modal {
           set("title", title);
           set("priority", this.f.priority && this.f.priority !== "normal" ? this.f.priority : null);
           set("due", this.f.due ? combineDT(this.f.due, this.f.dueTime) : null);
-          set("scheduled", this.f.scheduled ? combineDT(this.f.scheduled, this.f.scheduledTime) : null);
-          set("duration", this.f.duration ?? null);
+          set("estimate", this.f.estimate ?? null);
           set("recurrence", this.f.recurrence);
           set("recur_basis", this.f.recurrence && this.f.recurBasis === "done" ? "done" : null);
           set("project", this.f.project ? "[[" + this.f.project + "]]" : null);

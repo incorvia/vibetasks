@@ -17,6 +17,7 @@ import { isTrashed } from "./statuses";
 import { combineDT } from "./format";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
+import { TimeBlockModal } from "./timeBlockModal";
 
 
 /** Icon-Button einer Schnellzeile (Datum/Priorität). Liefert den Button für Sonderfälle. */
@@ -124,8 +125,7 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     // Picker ÖFFNEN, DANN das Menü schließen: er positioniert sich einmalig am noch lebenden Button.
     const moreB = iconButton(dates, t("chip_date"), false, () => {
       openDatePicker(moreB, task.due ? combineDT(task.due, task.dueTime) : "",
-        (v) => void plugin.setTaskDate(task, "due", v),
-        { value: task.duration, onChange: (d) => void plugin.setTaskDuration(task, d) });
+        (v) => void plugin.setTaskDate(task, "due", v));
       close();
     });
     setIcon(moreB.createSpan({ cls: "bt-icbtn-ic" }), "more-horizontal");
@@ -142,6 +142,16 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     pop.createDiv({ cls: "bt-plus-sep" });
 
     const remRow = popRow(pop, "alarm-clock", t("reminders_title"), () => openReminderEditor(plugin, task, remRow));
+    pop.createDiv({ cls: "bt-plus-sep" });
+
+    const active = plugin.workTimer.active();
+    if (active?.task_id === task.id) row("square", "Stop timer", () => void plugin.stopTaskTimer());
+    else row("play", "Start timer", () => void plugin.startTaskTimer(task));
+    row("calendar-clock", "Schedule task", () => {
+      const existing = plugin.scheduling.getTaskSchedule(task.id);
+      new TimeBlockModal(plugin, existing ? new Date(existing.start) : new Date(), { type: "task", id: task.id, title_snapshot: task.title }, existing ?? undefined, "task_schedule").open();
+    });
+    row("calendar-plus", "Plan time block", () => new TimeBlockModal(plugin, new Date(), { type: "task", id: task.id, title_snapshot: task.title }).open());
     pop.createDiv({ cls: "bt-plus-sep" });
 
     const mvRow = popRow(pop, "corner-up-right", t("menu_move_project"), () => openMovePicker(plugin, task, mvRow, close));

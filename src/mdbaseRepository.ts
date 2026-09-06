@@ -135,7 +135,13 @@ function cleanPatch(target: Record<string, unknown>, patch: Record<string, unkno
 
 function cleanRecord(source: Record<string, unknown>): Record<string, unknown> {
   const target: Record<string, unknown> = {};
-  cleanPatch(target, source);
+  // Creation must preserve explicitly supplied empty collections. Some record types (notably
+  // time_log) require canonical `blocks: []` and `sessions: []` fields before their first entry.
+  // Patch semantics stay unchanged: assigning [] to an existing optional field still clears it.
+  for (const [key, value] of Object.entries(source)) {
+    if (value === null || value === undefined || value === "") continue;
+    target[key] = value;
+  }
   return target;
 }
 

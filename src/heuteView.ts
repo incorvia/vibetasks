@@ -29,6 +29,7 @@ import { PRIOS, TaskModal } from "./taskModal";
 import { isOpen, isDone, isTrashed, boardStatuses, statusLabel, statusTint, firstOpenStatus, StatusKind } from "./statuses";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
+import { entityIcon, renderProjectIdentity } from "./entityPresentation";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -126,7 +127,7 @@ function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, 
   anchor.addClass(insert ? "is-adding-task" : "is-editing");
   const modal = new TaskModal(ctx.plugin, undefined, project, {
     defaultLabel: label, defaultToday: today, defaultStatus: status,
-    seed: (due || scheduled || priority) ? { due: due ?? undefined, scheduled: scheduled ?? undefined, priority } : undefined,
+    seed: (due || scheduled || priority) ? { due: due ?? scheduled ?? undefined, priority } : undefined,
     hideProjekt: !!insert?.task.parent,
     parent: insert?.task.parent ? baseName(insert.task.parent) : undefined,
     insertBefore: insert ? { parentPath: insert.task.parent, beforePath: insert.beforePath } : undefined,
@@ -619,20 +620,25 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     }
     openHeaderNewTask(ctx, root, add, isInbox ? undefined : name, undefined, false, addDue(ctx), meta?.workflowStatus, meta?.priority);
   };
-  const heading = top.createEl("h1", { cls: !isInbox && !ctx.embedded ? "bt-record-heading" : "" });
-  if (!isInbox && !ctx.embedded) {
+  const heading = ctx.embedded && meta
+    ? top.createDiv({ cls: "bt-project-embed-identity" })
+    : top.createEl("h1", { cls: !isInbox && !ctx.embedded ? "bt-record-heading" : "" });
+  if (ctx.embedded && meta) {
+    c.style.setProperty("--bt-project-context", meta.color || "var(--text-faint)");
+    renderProjectIdentity(heading, meta, () => void plugin.openPage({ kind: "project", key: meta.path }));
+  } else if (!isInbox && !ctx.embedded) {
     const recordLabel = `VibeTask · ${t(meta?.type === "area" ? "context_area_record" : "context_project_record")}`;
     const recordIcon = heading.createSpan({
       cls: "bt-record-icon",
       attr: { "aria-label": recordLabel, title: recordLabel },
     });
-    setIcon(recordIcon, "check-circle");
+    setIcon(recordIcon, entityIcon(meta?.type ?? "project", meta?.icon));
     heading.createSpan({ cls: "bt-record-title", text: projectDisplayName(name) });
   } else {
     heading.setText(isInbox ? t("nav_inbox") : projectDisplayName(name));
   }
   pageHeader(top, ctx, heading,
-    { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded, onAdd: openTask });
+    { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded && !meta, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
@@ -646,8 +652,8 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   if (!tasks.length && !(meta?.type === "area" && childProjects.length)) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
-    else if (isArea) emptyState(root, "circle-small", "empty_no_area_tasks");
-    else emptyState(root, "list-checks", "empty_no_project_tasks");
+    else if (isArea) emptyState(root, entityIcon("area"), "empty_no_area_tasks");
+    else emptyState(root, entityIcon("project"), "empty_no_project_tasks");
     return;
   }
   if (meta?.type === "area" && ctx.opts.layout === "list") renderAreaList(root, ctx, meta, childProjects, source(), today);
@@ -1235,7 +1241,7 @@ function projectColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): B
  *  Bucket ohne setzbares Datum -> KEIN Drop-/„+"-Ziel (onDrop/onAdd weggelassen). „Ohne Datum" und die
  *  konkreten Datumsspalten sind Drop-Ziele: Ziehen setzt bzw. löscht das Datum (setTaskDate). */
 function dateColumns(plugin: VibeTaskPlugin, cards: Task[], today: string, field: "due" | "scheduled", add: BoardAdd): BoardColumn[] {
-  const dateOfTask = (tk: Task): string | null => field === "due" ? tk.due : tk.scheduled;
+  const dateOfTask = (tk: Task): string | null => tk.due;
   return dateColumnKeys(cards, today, field).map((key): BoardColumn => {
     if (key === "overdue") return {
       id: "overdue", title: t("sec_overdue"), tint: "var(--bt-overdue)", kind: "open",
@@ -1254,7 +1260,7 @@ function dateColumns(plugin: VibeTaskPlugin, cards: Task[], today: string, field
       has: (tk: Task) => dateOfTask(tk) === d,
       onDrop: (tk: Task) => { if (dateOfTask(tk) !== d) void plugin.setTaskDate(tk, field, d); },
       onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
-        add.status, field === "due" ? d : undefined, field === "scheduled" ? d : undefined, add.priority),
+        add.status, d, undefined, add.priority),
     };
   });
 }
@@ -1509,7 +1515,7 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
     : opts.group === "priority" ? priorityColumns(plugin, add)
       : opts.group === "project" ? projectColumns(plugin, cards, add)
         : opts.group === "date" ? dateColumns(plugin, cards, today, "due", add)
-          : opts.group === "deadline" ? dateColumns(plugin, cards, today, "scheduled", add)
+          : opts.group === "deadline" ? dateColumns(plugin, cards, today, "due", add)
             : statusColumns(plugin, add);
   const cols = reorderable ? applyColumnOrder(baseCols, plugin.settings.boardColumnOrder?.[groupKey]) : baseCols;
   const board = root.createDiv({ cls: "bt-kanban" });
@@ -2306,33 +2312,22 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
       if (plan.due.dist) chip.dataset.dist = plan.due.dist;
       chip.onclick = (e) => {
         e.stopPropagation();
-        openDatePicker(chip, combineDT(task.due!, task.dueTime), (v) => void plugin.setTaskDate(task, "due", v),
-          { value: task.duration, onChange: (d) => void plugin.setTaskDuration(task, d) });
+        openDatePicker(chip, combineDT(task.due!, task.dueTime), (v) => void plugin.setTaskDate(task, "due", v));
       };
     }
   }
-  // Deadline DIREKT hinter der Fälligkeit: die beiden gehören zusammen („wann arbeite ich daran"
-  // und „wann muss es fertig sein") und werden meist im Vergleich gelesen. Zwischen ihnen standen
-  // vorher Wiederholung, Erinnerung und sämtliche Labels.
-  if (task.scheduled) {
-    // Analog zum Datum: ist nach Deadline gruppiert (Sektion/Spalte = Deadline-Datum), ist der Deadline-
-    // Chip redundant -> im Kompakt-Thema ausblenden, außer es gibt eine Uhrzeit (dann nur Icon + Uhrzeit).
-    // Überfällige Deadlines (< heute) liegen im Sammel-Bucket „Überfällig" -> dort NICHT ausblenden.
-    // Anders als beim Datum genügt hier der Vergleich „nicht vergangen": Bei Gruppierung NACH
-    // DEADLINE bilden die Sektionen/Spalten sich aus genau diesem Feld, alle Zeilen einer Gruppe
-    // tragen also dieselbe Frist. Der einzige Sammel-Bucket ohne eigenes Datum ist „Überfällig"
-    // (scheduled < heute) – und dort soll der Chip ja gerade stehen bleiben. Ein Datumsvergleich
-    // wie bei impliedDate wäre möglich, verlangte aber, die Gruppen-Frist bis hierher zu reichen,
-    // ohne dass sich etwas am Ergebnis änderte.
-    if (plan.deadline) {
-      const chip = meta.createSpan({ cls: "bt-chip bt-sched" });
-      // Wie beim Datums-Chip: data-when trägt „verstrichen", data-dist die Nähe-Abstufung
-      // (heute/morgen/übermorgen/Tag 3–7). Beide Angaben lesen sich damit gleich (s. styles.css).
-      chip.dataset.when = plan.deadline.when;
-      if (plan.deadline.dist) chip.dataset.dist = plan.deadline.dist;
-      chip.createSpan({ cls: "bt-meta-txt", text: plan.deadline.text });
-      chip.onclick = (e) => { e.stopPropagation(); openDatePicker(chip, combineDT(task.scheduled!, task.scheduledTime), (v) => void plugin.setTaskDate(task, "scheduled", v)); };
-    }
+  if (plan.estimate) meta.createSpan({ cls: "bt-chip bt-estimate" }).createSpan({ cls: "bt-meta-txt", text: plan.estimate });
+  if (!trash && isOpen(task.status)) {
+    const active = plugin.workTimer.active();
+    const timer = meta.createSpan({ cls: "bt-task-timer", attr: { role: "button", tabindex: "0" } });
+    const run = (event: Event): void => {
+      event.stopPropagation();
+      if (active?.task_id === task.id) void plugin.stopTaskTimer(); else void plugin.startTaskTimer(task);
+    };
+    setIcon(timer, active?.task_id === task.id ? "square" : "play");
+    tip(timer, active?.task_id === task.id ? "Stop timer" : "Start timer");
+    timer.onclick = run;
+    timer.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(event); } };
   }
   if (plan.recur) meta.createSpan({ cls: "bt-chip bt-recur" });
   // Erinnerungs-Indikator: nur Icon (alarm-clock, wie der Reminder-Chip im Editor), Details im Tooltip.
@@ -2459,14 +2454,18 @@ function activate(el: HTMLElement, handler: () => void): void {
 function navItem(c: HTMLElement, plugin: VibeTaskPlugin, o: NavItemOpts): void {
   const item = c.createDiv({ cls: "bt-nav-item" + (o.active ? " is-active" : "") + (o.cls ? " " + o.cls : ""), attr: { role: "button", tabindex: "0" } });
   if (o.depth) item.style.setProperty("--bt-nav-depth", String(o.depth));
+  const ic = item.createSpan({
+    cls: "bt-nav-ic" + (o.toggle ? " bt-nav-tree-toggle" : ""),
+    ...(o.toggle ? { attr: { role: "button", tabindex: "0", "aria-expanded": String(!o.toggle.collapsed) } } : {}),
+  });
+  setIcon(ic, o.icon);
+  if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
   if (o.toggle) {
-    const treeToggle = item.createSpan({ cls: "bt-nav-tree-toggle", attr: { role: "button", tabindex: "0", "aria-expanded": String(!o.toggle.collapsed) } });
-    setIcon(treeToggle, o.toggle.collapsed ? "chevron-right" : "chevron-down");
+    tip(ic, t("nav_toggle_section"));
     const run = (e: Event): void => { e.preventDefault(); e.stopPropagation(); o.toggle?.onToggle(); };
-    treeToggle.onclick = run;
-    treeToggle.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") run(e); };
+    ic.onclick = run;
+    ic.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") run(e); };
   }
-  const ic = item.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, o.icon); if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
   const lbl = item.createSpan({ cls: "bt-nav-lbl", text: o.label });
   // Langer Name in schmaler Leiste: Tooltip zeigt ihn ganz, statt den Nutzer die Leiste
   // aufziehen zu lassen. Er hängt am Label, nicht an der Zeile – das Label ist das, was
@@ -3064,7 +3063,8 @@ export class MainView extends ItemView {
   /**
    * Tab- und Pane-Titel = der NAME DER SEITE, nicht der Programmname. Solange es genau eine
    * Dashboard-Leaf gab, war „VibeTask" eine brauchbare Beschriftung; bei drei offenen Tabs
-   * sähen alle drei gleich aus. Woher die Seite kommt, zeigt das Icon im Tab.
+   * sähen alle drei gleich aus. Projekt- und Bereichsseiten tragen zusätzlich ihre Art, damit
+   * ihr Dashboard-Tab nicht genauso heißt wie die daneben geöffnete Markdown-Notiz.
    *
    * Bewusst OHNE Unterzustand: „Erledigt" bleibt „Erledigt", auch wenn gerade der Papierkorb-Tab
    * innerhalb der Seite aktiv ist – der Tab-Titel benennt die Seite, nicht die Stelle darin.
@@ -3074,7 +3074,12 @@ export class MainView extends ItemView {
     if (p.kind === "manage") return t(manageTitleKey(p.key));
     if (p.kind === "filter") return readFilter(this.plugin.app, p.key)?.name ?? baseName(p.key);
     if (p.kind === "label") return "#" + p.key;
-    if (p.kind === "project") return p.key === INBOX_KEY ? t("nav_inbox") : projectDisplayName(baseName(p.key));
+    if (p.kind === "project") {
+      if (p.key === INBOX_KEY) return t("nav_inbox");
+      const name = projectDisplayName(baseName(p.key));
+      const kind = t(isAreaPath(this.plugin.app, p.key) ? "kind_area" : "kind_project");
+      return `${name} (${kind})`;
+    }
     return viewTitle(p.key as ViewId);
   }
 

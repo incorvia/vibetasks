@@ -18,6 +18,27 @@ describe("parseQuickEntry – Labels", () => {
   });
 });
 
+describe("parseQuickEntry – Estimate", () => {
+  it.each([
+    ["Task ~30m", 30], ["Task ~1h", 60], ["Task ~1h30m", 90], ["Task ~1.5h", 90],
+  ])("parses %s", (raw, minutes) => {
+    const parsed = parseQuickEntry(raw);
+    expect(parsed.estimate).toBe(minutes);
+    expect(parsed.title).toBe("Task");
+  });
+
+  it("keeps escaped and invalid forms as title text", () => {
+    expect(parseQuickEntry("Task \\~30m")).toMatchObject({ estimate: null, title: "Task ~30m" });
+    for (const raw of ["Task ~0m", "Task ~nope", "Task ~1h-30m"]) {
+      expect(parseQuickEntry(raw)).toMatchObject({ estimate: null, title: raw });
+    }
+  });
+
+  it("parses the first repeated token and preserves the second", () => {
+    expect(parseQuickEntry("Task ~30m ~1h")).toMatchObject({ estimate: 30, title: "Task ~1h" });
+  });
+});
+
 describe("parseQuickEntry – @Projekt (nur bestehende)", () => {
   it("ordnet ein bestehendes Projekt zu und entfernt @Name aus dem Titel", () => {
     const r = parseQuickEntry("Readme schreiben @VibeTask", ["VibeTask"]);

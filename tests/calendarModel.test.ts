@@ -88,9 +88,9 @@ describe("bucketByDate", () => {
     const m = bucketByDate([mk({ due: "2026-07-13T23:30" })]);
     expect(m.get("2026-07-13")).toHaveLength(1);
   });
-  it("ohne Fälligkeit zählt die Deadline – ohne Plan IST die Frist der Plan", () => {
+  it("ignoriert das alte scheduled-Feld", () => {
     const m = bucketByDate([mk({ title: "frist", scheduled: "2026-07-15" })]);
-    expect(m.get("2026-07-15")).toHaveLength(1);
+    expect(m.has("2026-07-15")).toBe(false);
   });
   it("mit Fälligkeit entscheidet allein die Fälligkeit – die Deadline verschiebt nichts", () => {
     const m = bucketByDate([mk({ due: "2026-07-13", scheduled: "2026-07-15" })]);
@@ -109,9 +109,10 @@ describe("minutesOf / allDayOf", () => {
     expect(minutesOf(mk({ due: "2026-07-13" }))).toBeNull();
     expect(minutesOf(mk({ due: "2026-07-13", dueTime: "quatsch" }))).toBeNull();
   });
-  it("ohne Fälligkeit zählt die Uhrzeit der Deadline – sie bekommt einen Zeitblock", () => {
-    expect(minutesOf(mk({ scheduled: "2026-07-15", scheduledTime: "14:00" }))).toBe(840);
-    expect(allDayOf([mk({ scheduled: "2026-07-15", scheduledTime: "14:00" })])).toEqual([]);
+  it("alte scheduled-Zeiten belegen keinen Slot", () => {
+    const task = mk({ scheduled: "2026-07-15", scheduledTime: "14:00" });
+    expect(minutesOf(task)).toBeNull();
+    expect(allDayOf([task])).toEqual([task]);
   });
   it("Deadline OHNE Uhrzeit gehört in die Ganztägig-Zeile", () => {
     const t = mk({ title: "frist", scheduled: "2026-07-15" });
@@ -129,10 +130,10 @@ describe("minutesOf / allDayOf", () => {
 });
 
 describe("layoutDay", () => {
-  it("Dauer bestimmt die Blockhöhe, sonst Default", () => {
+  it("Aufgabenfristen nutzen nur den Legacy-Default; echte Dauer lebt an Zeitblöcken", () => {
     const [b] = layoutDay([mk({ due: "2026-07-13", dueTime: "09:00", duration: 90 })]);
     expect(b.startMin).toBe(540);
-    expect(b.endMin).toBe(630);
+    expect(b.endMin).toBe(540 + DEFAULT_BLOCK_MIN);
     const [d] = layoutDay([mk({ due: "2026-07-13", dueTime: "09:00" })]);
     expect(d.endMin).toBe(540 + DEFAULT_BLOCK_MIN);
   });
@@ -150,15 +151,15 @@ describe("layoutDay", () => {
   it("zwei überlappende Blöcke teilen sich die Breite", () => {
     const bs = layoutDay([
       mk({ title: "a", due: "2026-07-13", dueTime: "09:00", duration: 60 }),
-      mk({ title: "b", due: "2026-07-13", dueTime: "09:30", duration: 60 }),
+      mk({ title: "b", due: "2026-07-13", dueTime: "09:15", duration: 60 }),
     ]);
     expect(bs.map((b) => [b.col, b.cols])).toEqual([[0, 2], [1, 2]]);
   });
   it("Kette a-b-c: ein Cluster, aber zwei Spalten genügen", () => {
     const bs = layoutDay([
       mk({ title: "a", due: "2026-07-13", dueTime: "09:00", duration: 60 }),   // 09:00-10:00
-      mk({ title: "b", due: "2026-07-13", dueTime: "09:30", duration: 60 }),   // 09:30-10:30
-      mk({ title: "c", due: "2026-07-13", dueTime: "10:00", duration: 60 }),   // 10:00-11:00
+      mk({ title: "b", due: "2026-07-13", dueTime: "09:15", duration: 60 }),
+      mk({ title: "c", due: "2026-07-13", dueTime: "09:30", duration: 60 }),
     ]);
     // c überlappt zwar b (denselben Cluster), aber NICHT a -> es erbt a's Spalte. Zwei Spalten
     // reichen, die Blöcke werden dadurch breiter. (Wie Google Calendar; nicht eine Spalte je Block.)
@@ -168,7 +169,7 @@ describe("layoutDay", () => {
   it("nach einer Lücke beginnt ein neuer Cluster mit voller Breite", () => {
     const bs = layoutDay([
       mk({ title: "a", due: "2026-07-13", dueTime: "09:00", duration: 60 }),
-      mk({ title: "b", due: "2026-07-13", dueTime: "09:30", duration: 60 }),
+      mk({ title: "b", due: "2026-07-13", dueTime: "09:15", duration: 60 }),
       mk({ title: "c", due: "2026-07-13", dueTime: "14:00", duration: 60 }),   // weit danach
     ]);
     expect(bs[2].cols).toBe(1);
@@ -275,7 +276,7 @@ describe("layoutSlots / layoutDayMixed – Aufgaben und Termine teilen sich die 
   it("ein Meeting und ein Aufgabenblock zur selben Zeit weichen einander aus", () => {
     const task = mk({ title: "Aufgabe", due: "2026-07-17", dueTime: "10:00", duration: 60 });
     const events: ReturnType<typeof bucketEvents> = bucketEvents(
-      [mkEv({ title: "Meeting", start: "2026-07-17T10:30", end: "2026-07-17T11:30" })],
+      [mkEv({ title: "Meeting", start: "2026-07-17T10:15", end: "2026-07-17T11:30" })],
       ["2026-07-17"],
     );
     const laid = layoutDayMixed([task], events.get("2026-07-17")!);

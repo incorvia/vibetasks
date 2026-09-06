@@ -67,11 +67,11 @@ describe("groupTasks – Datum: ein Tag = eine Gruppe", () => {
     ]);
   });
 
-  it("Deadline gruppiert nach scheduled statt nach due", () => {
+  it("Deadline-Gruppierung ist ein kompatibler Alias für due", () => {
     const list = [mk({ id: "a", due: "2026-07-22", scheduled: null }), mk({ id: "b", due: null, scheduled: "2026-07-25" })];
     const g = groupTasks(list, "deadline", TODAY);
-    expect(titles(g)).toEqual([groupLabel("2026-07-25", TODAY), t("sec_no_date")]);
-    expect(g[0].tasks.map((x) => x.id)).toEqual(["b"]);
+    expect(titles(g)).toEqual([groupLabel("2026-07-22", TODAY), t("sec_no_date")]);
+    expect(g[0].tasks.map((x) => x.id)).toEqual(["a"]);
   });
 });
 
@@ -292,12 +292,12 @@ describe("visibleRows – „das eigene Datum gewinnt“ (ownRow)", () => {
     expect(visibleRows([kindHeute], alle)).toHaveLength(0);
   });
 
-  it("agendaOwnRow: nur Datum/Deadline haben die Ausnahme, jeweils auf ihrer Achse", () => {
+  it("agendaOwnRow: Datum und alter Deadline-Name teilen die due-Achse", () => {
     const deadline = agendaOwnRow("deadline")!;
     const mitDeadline = mk({ id: "d", scheduled: "2026-07-25" });
-    expect(deadline(mitDeadline)).toBe(true);
-    expect(deadline(kindHeute)).toBe(false);        // due zählt für die Deadline-Achse nicht
-    expect(ownRow(mitDeadline)).toBe(false);        // und umgekehrt
+    expect(deadline(mitDeadline)).toBe(false);
+    expect(deadline(kindHeute)).toBe(true);
+    expect(ownRow(mitDeadline)).toBe(false);
     for (const g of ["none", "priority", "label", "project"] as const) expect(agendaOwnRow(g)).toBeUndefined();
   });
 });

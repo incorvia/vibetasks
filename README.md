@@ -91,8 +91,12 @@ Each task can carry:
 
 - **Status** — the built-in *To-Do · In progress · Done* (plus a *Cancelled* trash state), or your **own custom statuses**. Set one by **right-clicking** the checkbox (or **long-pressing** it on mobile), from the **status chip** in the task editor, or by dragging on the Kanban board — a left-click still simply completes the task.
 - **Priority** (highest → lowest) with colored checkbox rings (P1/P2/P3).
-- **Due date & time** and an optional **duration** (event length).
-- A separate **deadline / scheduled** date & time. A task with only a deadline still shows up in Today and Upcoming when it comes due — one rule, no task hiding because you filled in the “wrong” date field. Deadlines are written as a countdown (*“in 3 days”*) and coloured by distance.
+- **Due date & time** — the external deadline. It appears in Today, Upcoming, and as a deadline marker in calendars; it never occupies calendar time.
+- **Estimate** — expected total effort, displayed compactly as `~30m`, `~1h`, or `~1h30m`.
+- **Task schedule** — a task’s primary calendar placement. Dragging a task into a timed calendar slot sets or moves this start and duration without changing its estimate or deadline.
+- **Calendar task colors** — color scheduled tasks by priority, with one calendar color, or with a stable per-task color. Completed schedules remain in place with their status circle and a dimmed treatment.
+- **Time blocks** — explicit broader allocations for a task, project, or area, such as “30 minutes on Marketing.”
+- **Work sessions** — actual task time recorded by the timer. Planned and actual time remain separate.
 - **Project** and **Area** assignment.
 - **Sub-tasks** — nest tasks under a parent, drawn with clean connector lines. Choose per view how they appear: compact (as progress on the parent), indented beneath it, or standing on their own.
 - **Labels** (`#tags`).
@@ -100,10 +104,13 @@ Each task can carry:
 - **Reminders** — get notified before or at a task’s time (see below).
 - A **Markdown description**, a **timestamped comment log**, and **file/image attachments** (see below).
 
+For contributors, calendar and timer entry points share the intent-level contracts documented in [Time domain API](docs/time-domain-api.md).
+
 ### Quick capture with natural language
 Add tasks at the speed of thought. The quick-add modal understands plain sentences:
 
 > `Write report tomorrow p1 #work`
+> `Write report ~1h30m tomorrow p1 #work`
 > `Bericht schreiben morgen um 07:30 #arbeit`
 > `Escribir informe mañana #importante`
 
@@ -121,10 +128,11 @@ Recognized tokens are stripped from the title automatically:
 | **Priority** | `p1`–`p4` or `!1`–`!4` |
 | **Label** | `#work` — any label, created on the fly |
 | **Project** | `@project` — existing projects and areas only |
+| **Estimate** | `~30m`, `~1h`, `~1h30m`, `~1.5h` |
 
 A time or a recurrence without a date is anchored to **today**: a time needs a day to be shown and saved, and a recurrence without a date would never come back.
 
-**Not recognized** (use the chips instead): reminders, duration, start date, status and parent.
+**Not recognized** (use the chips instead): reminders, status and parent.
 
 #### When a word should stay text
 
@@ -141,7 +149,7 @@ every \monday standup     → title "every monday standup", no recurrence
 
 The ✕ simply writes that backslash for you: `Dentist tomorrow` → ✕ → `Dentist \tomorrow`. Because the escape lives in the text, it survives — and typing a new date word afterwards is recognized again.
 
-Prefer full control? Open the Todoist-style task editor with its chip row for date, priority, labels, recurrence, deadline, reminder and parent — and **show, hide or reorder those chips** to taste (separately for quick add and the full editor).
+Prefer full control? Open the Todoist-style task editor with its chip row for due date, estimate, priority, labels, recurrence, reminder and parent — and **show, hide or reorder those chips** to taste (separately for quick add and the full editor).
 
 ### Reminders
 Attach one or more reminders to a task — either **relative** (“at time of task”, 10 min / 30 min / 1 h / 1 day before) or an **absolute** date & time. When a reminder is due, VibeTask shows a **system notification** on desktop (even when Obsidian is in the background) and an in-app notice; clicking it opens the task.
@@ -196,8 +204,7 @@ title: Write the launch blog post
 status: todo            # todo | doing | done | cancelled
 priority: high
 due: 2026-07-10T09:00
-scheduled: 2026-07-08
-duration: 30            # minutes
+estimate: 30            # expected effort, minutes
 project: "[[Website Relaunch]]"
 parent: "[[Draft the outline]]"
 labels: [work, writing]
@@ -311,7 +318,7 @@ assigned project's page can also be opened directly from the task editor, beside
 
 ## Google Calendar sync
 
-VibeTask can mirror every task that has a **due date** into Google Calendar, two-way: the **date and time** flow in both directions, while everything else (title, duration, reminders) is driven by Obsidian. It uses **your own** Google API credentials — no third-party server is involved, and your token stays in your vault.
+VibeTask mirrors planned **time blocks** into Google Calendar. Google start/end edits update the block start and duration; the block title, scope, mode, and other metadata remain VibeTask-owned. Task deadlines are not exported as events. It uses **your own** Google API credentials — no third-party server is involved, and your token stays in your vault.
 
 ### Setup (one-time, ~5 min)
 
@@ -329,14 +336,13 @@ The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.
 
 | Field | Obsidian → Google | Google → Obsidian |
 | --- | --- | --- |
-| Title | ✅ | — (Obsidian wins) |
-| Date / time (`due`) | ✅ | ✅ written back |
-| Duration | ✅ | — |
-| Reminders | ✅ (as popups) | — |
+| Block title | ✅ | — (VibeTask wins) |
+| Block start | ✅ | ✅ written back |
+| Block duration / end | ✅ | ✅ written back |
+| Scope, mode, selector | — | — (VibeTask-only metadata) |
 
-- On a conflict (both sides changed the date), **Obsidian wins**.
-- Existence is Obsidian-driven: an event deleted in Google is recreated as long as the task still has a date. To remove it for good, change the task in Obsidian or exclude its list.
-- Exclude a project/area from sync via its right-click menu, the icon in the management list, or the edit dialog.
+- On a conflict where both sides changed start/end, **VibeTask wins**.
+- Existence is VibeTask-driven: an owned event deleted in Google is recreated while its block remains planned. Cancel the block to remove it permanently.
 
 ### Show your Google events
 
@@ -352,8 +358,8 @@ Your Client ID/secret and the OAuth token are stored locally in `.obsidian/plugi
 
 VibeTask itself runs on Obsidian mobile — the views, the editor and quick capture all work there. What a plugin *cannot* do on iOS or Android is put a widget on your home screen or notify you while Obsidian is closed. That is an operating-system boundary, not something a plugin can work around: reminders only fire while Obsidian is open and in the foreground.
 
-For notifications while Obsidian is closed, turn on Google Calendar sync above. Dated tasks become
-calendar events and the phone's calendar app can notify you with the screen off.
+For notifications while Obsidian is closed, turn on Google Calendar sync above. Planned time blocks
+become calendar events and the phone's calendar app can notify you with the screen off.
 
 An independent task application can also consume the same mdbase collection when it has direct
 filesystem access to the vault. No compatibility with TaskNotes or any particular third-party task
@@ -368,6 +374,9 @@ does not route it through mdbase Connect or another cloud service.
 | Open Today / Upcoming / Recurring / Done | Jump straight to a view |
 | New task | Open the full task editor |
 | Quick add task | Fast natural-language capture |
+| New time block | Reserve calendar time for a task, project, or area |
+| Open time dashboard | Compare planned, estimated, and actual time |
+| Resolve timer conflicts | Resolve concurrent sessions found after vault sync |
 | Turn current note into a task | Make the open note a task — adds frontmatter only, never touches your text |
 | Search tasks | Fuzzy search |
 | Count tasks | Show total / open count |

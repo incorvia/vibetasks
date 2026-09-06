@@ -359,6 +359,7 @@ body {
   box-sizing: border-box;
   padding: 12px 16px 14px;
   border: 1px solid var(--background-modifier-border);
+  border-top: 3px solid var(--bt-project-context, var(--text-faint));
   border-radius: var(--radius-m);
   overflow: visible;
   scrollbar-gutter: auto;
@@ -373,6 +374,19 @@ body {
 .bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions {
   position: static;
   margin-left: auto;
+}
+.bt-project-embed-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+.bt-project-embed-identity .bt-project-note-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.bt-project-embed-identity .bt-project-note-title {
+  font-size: var(--font-ui-small);
 }
 /* The note already supplies the title and surrounding navigation. Keep the embedded controls
    icon-only and at desktop density, including on touch devices, so this reads as an inline
@@ -460,7 +474,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 64px;
+  min-height: 56px;
   padding: 12px 14px;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -507,6 +521,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  transform: translateY(2px);
 }
 .bt-project-note-title:hover {
   color: var(--text-accent);
@@ -1224,12 +1239,11 @@ body {
 .bt-nav-new-chevron { display: inline-flex; }
 .bt-nav-new-chevron svg { width: 15px; height: 15px; }
 .bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px calc(8px + var(--bt-nav-depth, 0) * 18px); border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
-.bt-nav-tree-toggle { display: inline-flex; flex: 0 0 auto; color: var(--text-faint); margin-right: -4px; }
-.bt-nav-tree-toggle svg { width: 13px; height: 13px; }
-/* The Area disclosure is an overlay, not a flex item. Otherwise Areas with children appear one
-   hierarchy level deeper than Areas without children even though both are top-level siblings. */
-.bt-nav-area { position: relative; }
-.bt-nav-area > .bt-nav-tree-toggle { position: absolute; left: 2px; margin: 0; }
+.bt-nav-tree-toggle { border-radius: 4px; }
+.bt-nav-tree-toggle:hover { background: var(--background-modifier-hover); }
+/* A stylesheet refresh can outlive sidebar DOM created by the previous bundle. Hide that legacy
+   standalone chevron; the current renderer puts this class on the Area icon itself. */
+.bt-nav-tree-toggle:not(.bt-nav-ic) { display: none; }
 .bt-nav-child { position: relative; }
 .bt-nav-child::before { content: ""; position: absolute; left: 15px; top: -4px; bottom: -4px; border-left: 1px solid var(--background-modifier-border); }
 /* Hover & Aktiv sind aus der Akzentfarbe abgeleitet. Der Hover ist bewusst schwächer als der
@@ -1257,8 +1271,6 @@ body {
 .bt-nav-label .bt-nav-ic { color: var(--bt-nav-label); }
 .bt-nav-area .bt-nav-ic { color: var(--bt-nav-area); }
 .bt-nav-project .bt-nav-ic { color: var(--bt-nav-project); }
-/* Bereich-Icon (circle-small) als gefüllten Punkt darstellen. */
-.bt-nav-area .bt-nav-ic svg { fill: currentColor; }
 .bt-nav-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bt-nav-count { color: var(--text-muted); font-size: 0.82em; flex-shrink: 0; }
 /* Sichtbarer Tastatur-Fokus (Regel 40) – nur bei Keyboard-Fokus, nicht bei Maus. */
@@ -2626,6 +2638,10 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-add svg { width: 14px; height: 14px; }
 .bt-area-project-card-tasks, .bt-area-project-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
 .bt-area-project-card-tasks .bt-task { border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
+/* The project card border already closes the group; avoid a second line beneath its final task.
+   Subtasks use ::after for their elbow connector, so only suppress their separate bottom border. */
+.bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { display: none; }
+.bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom: 0; }
 .bt-area-project-section { margin: 10px 0; border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px; }
 @media (max-width: 700px) {
   .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
@@ -2854,6 +2870,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   border-radius: 50%; background: var(--text-error);
 }
 .bt-calview-block {
+  --bt-cal-tint: var(--interactive-accent);
   position: absolute; z-index: 2; display: flex; flex-direction: row; align-items: flex-start; gap: 5px;
   overflow: hidden; padding: 3px 6px; border-radius: 4px; cursor: pointer; box-sizing: border-box;
   background: color-mix(in srgb, var(--bt-cal-tint) 22%, var(--background-primary));
@@ -3438,3 +3455,12 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Gesperrter Haupt-Knopf: Obsidian gibt `.mod-cta` seine Akzentfarbe ohne Rücksicht auf
    `disabled` – ohne diese Zeile sähe der gesperrte Knopf aus wie ein bereiter. */
 .bt-tpl-modal button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Time planning and tracking */
+.bt-time-block-chip { --bt-cal-tint: var(--interactive-accent); border-left: 3px solid var(--bt-cal-tint); }
+.bt-timer-status { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.bt-timer-status-icon { display: inline-flex; width: 14px; }
+.bt-time-block-modal input, .bt-time-block-modal select { width: 100%; margin: 6px 0; }
+.bt-time-dashboard-range { display: flex; gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+.bt-time-dashboard-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 12px 0; }
+.bt-time-dashboard-stat { padding: 10px; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); }
+.bt-time-dashboard details { margin: 6px 0 6px 12px; }

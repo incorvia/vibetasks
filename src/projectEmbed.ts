@@ -10,6 +10,7 @@ import { listManaged, priorityBucket, projectAreaName } from "./taskService";
 import { boardStatuses, isDone, isTrashed, statusIcon, statusLabel } from "./statuses";
 import { projectDisplayName, t } from "./i18n";
 import { PRIO_KEY } from "./chips";
+import { renderProjectIdentity } from "./entityPresentation";
 
 let nextEmbedId = 1;
 
@@ -107,28 +108,7 @@ export class ProjectHeaderEmbed extends MarkdownRenderChild {
 
     const card = this.containerEl.createDiv({ cls: "bt-project-note-card" });
     card.style.setProperty("--bt-project-context", project.color || "var(--text-faint)");
-    const icon = card.createSpan({ cls: "bt-project-note-icon" });
-    setIcon(icon, project.icon);
-    if (project.color) icon.style.color = project.color;
-
-    const identity = card.createDiv({ cls: "bt-project-note-identity" });
-    identity.createDiv({ cls: "bt-project-note-eyebrow", text: `VibeTask · ${t("context_linked_note")}` });
-    const title = identity.createSpan({
-      cls: "bt-project-note-title",
-      text: projectDisplayName(project.name),
-      attr: {
-        role: "button",
-        tabindex: "0",
-        "aria-label": t(project.type === "area" ? "menu_open_area_note" : "menu_open_project_note"),
-        title: t(project.type === "area" ? "menu_open_area_note" : "menu_open_project_note"),
-      },
-    });
-    title.onclick = () => void this.plugin.openPage({ kind: "project", key: project.path });
-    title.onkeydown = (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      void this.plugin.openPage({ kind: "project", key: project.path });
-    };
+    const identity = renderProjectIdentity(card, project, () => void this.plugin.openPage({ kind: "project", key: project.path }));
     const description = project.description.trim();
     if (description) identity.createDiv({ cls: "bt-project-note-description", text: description });
     const detail = identity.createDiv({ cls: "bt-project-note-detail" });

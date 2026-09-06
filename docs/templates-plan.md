@@ -82,7 +82,7 @@ im eigenen Ordner auf — der Unterordner beseitigt die Zweideutigkeit, statt si
 | Titel, Beschreibung, Priorität, Labels, Dauer | 1:1 |
 | Baumstruktur (`parent`), `sort_order` | 1:1 (frische Lücken, s. duplicateSubtree) |
 | `recurrence`, `recur_basis` | 1:1 |
-| `due`, `scheduled` | **verschoben** (templatePlan.ts) |
+| `due` | **verschoben** (templatePlan.ts); Zeitblöcke werden nicht kopiert |
 | Erinnerungen, relativ (`-30m`) | 1:1 — hängen ohnehin an der Fälligkeit |
 | Erinnerungen, absolut (ISO) | **verschoben** um dieselbe Differenz |
 | `status` | **immer** erster offener Status (wie beim Duplizieren) |

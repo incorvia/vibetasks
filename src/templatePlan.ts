@@ -21,9 +21,8 @@ import { parseReminder } from "./reminders";
  *   "end"   – „wann muss es fertig?"   Das SPÄTESTE Datum des Baums landet auf dem Anker.
  *
  * Beides ist dieselbe Verschiebung, nur von der anderen Seite gemessen. Alles andere wandert um
- * denselben Betrag mit – dadurch bleiben sämtliche Abstände erhalten, auch der zwischen Fälligkeit
- * und Deadline einer einzelnen Aufgabe. Dieselbe Zusage macht `nextInstance` in recurrence.ts
- * bereits für Wiederholungen; hier gilt sie für den ganzen Baum.
+ * denselben Betrag mit – dadurch bleiben sämtliche Abstände zwischen Aufgaben erhalten.
+ * Zeitblöcke werden bewusst nicht mitkopiert.
  *
  * Bewusst NICHT: ein Runden auf Wochentage. Entweder stimmt das eingegebene Anker-Datum genau,
  * oder die Wochentage bleiben – beides zugleich geht nicht, und ein Schalter, der das eingegebene
@@ -40,7 +39,6 @@ export type AnchorMode = "start" | "end";
 export interface DatedItem {
   path: string;
   due: string | null;         // Fälligkeit, reiner Datumsteil "YYYY-MM-DD" (Uhrzeit liegt in dueTime)
-  scheduled: string | null;   // Deadline, ebenso (s. types.ts)
   reminders: string[];        // rohe Erinnerungs-Strings, s. reminders.ts
 }
 
@@ -48,14 +46,13 @@ export interface DatedItem {
  *  (Titel, Priorität, Labels, Wiederholung, Unterbau) kopiert der Aufrufer unverändert. */
 export interface ShiftedDates {
   due: string | null;
-  scheduled: string | null;
   reminders: string[];
 }
 
 /**
  * Die Spanne des Baums: frühestes und spätestes Datum über ALLE Aufgaben.
  *
- * Gezählt werden nur `due` und `scheduled` – die Termine der Arbeit. Absolute Erinnerungen bleiben
+ * Gezählt wird nur `due`. Absolute Erinnerungen bleiben
  * bewusst außen vor: Eine Erinnerung „drei Tage vorher" darf die Spanne nicht nach vorn ziehen und
  * damit den Sinn von „Start am" verschieben. Sie wandert trotzdem mit (s. shiftReminder).
  *
@@ -65,7 +62,7 @@ export function templateSpan(items: readonly DatedItem[]): { first: string; last
   let first: string | null = null;
   let last: string | null = null;
   for (const it of items) {
-    for (const d of [it.due, it.scheduled]) {
+    for (const d of [it.due]) {
       if (!d) continue;
       if (first === null || d < first) first = d;
       if (last === null || d > last) last = d;
@@ -116,9 +113,8 @@ export function planTemplateDates(items: readonly DatedItem[], anchorIso: string
   const shift = anchorIso ? templateShift(items, anchorIso, mode) : null;
   const out = new Map<string, ShiftedDates>();
   for (const it of items) {
-    out.set(it.path, shift === null || shift === 0 ? { due: it.due, scheduled: it.scheduled, reminders: [...it.reminders] } : {
+    out.set(it.path, shift === null || shift === 0 ? { due: it.due, reminders: [...it.reminders] } : {
       due: it.due ? addDays(it.due, shift) : null,
-      scheduled: it.scheduled ? addDays(it.scheduled, shift) : null,
       reminders: it.reminders.map((r) => shiftReminder(r, shift)),
     });
   }

@@ -1,6 +1,6 @@
 import { Task } from "./types";
 import { isDone } from "./statuses";
-import { combineDT, formatDateTime, formatDeadline, dueWhen, dueDist } from "./format";
+import { combineDT, formatDateTime, formatEstimate, dueWhen, dueDist } from "./format";
 import { formatReminder } from "./reminders";
 import { isInboxLink, baseName } from "./taskService";
 import { projectDisplayName } from "./i18n";
@@ -49,6 +49,7 @@ export interface RowPlan {
   parentLink: { title: string } | null;
   due: DatePlan | null;
   deadline: DatePlan | null;
+  estimate: string | null;
   recur: boolean;
   reminders: string[];
   labels: string[];
@@ -95,17 +96,7 @@ export function rowPlan(i: RowPlanInput): RowPlan {
   // Deadline analog. Hier genügt „nicht vergangen": Bei Gruppierung NACH DEADLINE tragen alle
   // Zeilen einer Gruppe dieselbe Frist; der einzige Sammel-Bucket ohne eigenes Datum ist
   // „Überfällig", und dort soll der Chip gerade stehen bleiben.
-  let deadline: DatePlan | null = null;
-  if (t.scheduled) {
-    const kompakt = depth === 0 && !!i.deadlineImplied && t.scheduled >= i.today;
-    if (!(kompakt && !t.scheduledTime)) {
-      deadline = {
-        text: kompakt ? (t.scheduledTime ?? "") : formatDeadline(combineDT(t.scheduled, t.scheduledTime), i.today),
-        when: dueWhen(t.scheduled, i.today),
-        dist: dueDist(t.scheduled, i.today),
-      };
-    }
-  }
+  const deadline: DatePlan | null = null;
 
   // @Projekt-Verweis: nur an Hauptaufgaben, nie im Papierkorb, nicht auf einer Projektseite und
   // nicht, wenn Sektion oder Spalte das Projekt schon in der Überschrift zeigt.
@@ -127,6 +118,7 @@ export function rowPlan(i: RowPlanInput): RowPlan {
     parentLink: depth === 0 && t.parent && i.parentTitle !== undefined ? { title: i.parentTitle } : null,
     due,
     deadline,
+    estimate: t.estimate ? formatEstimate(t.estimate) : null,
     recur: !!t.recurrence,
     reminders: t.reminders.map(formatReminder),
     labels: [...t.labels],

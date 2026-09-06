@@ -3,6 +3,7 @@ import { VibeTaskSettings, TaskStatus, Priority } from "./types";
 import { todayIso } from "./taskService";
 import { titleKey } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
+import { migratedDeadline } from "./timingMigration";
 
 const PRIO_MAP: Record<string, Priority> = {
   "🔺": "highest", "⏫": "high", "🔼": "medium", "🔽": "low", "⏬": "lowest",
@@ -127,8 +128,7 @@ export async function runMigration(app: App, settings: VibeTaskSettings): Promis
         [titleKey()]: p.title,
         status: p.status,
         priority: p.priority === "normal" ? undefined : p.priority,
-        due: p.due,
-        scheduled: p.scheduled,
+        due: migratedDeadline(p.due, p.scheduled),
         project: "[[" + projectName + "]]",
         labels: p.labels,
         recurrence: p.recurrence,

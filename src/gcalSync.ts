@@ -1,5 +1,5 @@
 import { App, TFile, requestUrl, Notice } from "obsidian";
-import { Task } from "./types";
+import { Task, TimeBlock } from "./types";
 import { isTrashed, isDone } from "./statuses";
 import { isInboxLink } from "./taskService";
 import { resolveReminders } from "./reminders";
@@ -67,6 +67,8 @@ export interface GCalCache {
   cals: string[];                      // Kalender-IDs – einmal, statt in jedem Eintrag
   links: Record<string, GCalLink>;     // taskId -> zuletzt abgeglichener Stand
   syncTokens: Record<string, string>;  // calendarId -> nextSyncToken (inkrementeller Pull)
+  cleanup?: { eventId: string; calendarId: string }[];
+  blockLinks?: Record<string, { eventId: string; calendarId: string; sig: string }>;
 }
 
 export function emptyGCalCache(): GCalCache { return { cals: [], links: {}, syncTokens: {} }; }
@@ -220,6 +222,10 @@ export interface GCalSyncHost {
   persistCache(): Promise<void>;            // Abgleich-Cache speichern (geräte-lokal)
   allTasks(): Task[];
   subscribe(cb: () => void): () => void;    // TaskIndex-Änderungen
+  timeBlocks?(): TimeBlock[];
+  updateTimeBlockTiming?(id: string, start: string, duration: number): Promise<void>;
+  setTimeBlockCalendarLink?(id: string, eventId: string | null, calendarId: string | null): Promise<void>;
+  subscribeTime?(cb: () => void): () => void;
 }
 
 // ── Kalender-API (authentifiziert, mit Backoff) ───────────────────────────────
@@ -334,7 +340,7 @@ function eventBody(task: Task, s: GCalSyncSettings): Record<string, unknown> {
   const startDate = new Date(task.due + "T" + (task.dueTime ?? "00:00"));
   let start: Record<string, string>, end: Record<string, string>;
   if (timed) {
-    const endDate = new Date(startDate.getTime() + (task.duration ?? s.defaultDurationMin) * 60000);
+    const endDate = new Date(startDate.getTime() + s.defaultDurationMin * 60000);
     start = { dateTime: isoDateTime(startDate), timeZone: s.timezone };
     end = { dateTime: isoDateTime(endDate), timeZone: s.timezone };
   } else {
@@ -349,6 +355,17 @@ function eventBody(task: Task, s: GCalSyncSettings): Record<string, unknown> {
     end,
     reminders: overrides.length ? { useDefault: false, overrides } : { useDefault: true },
     extendedProperties: { private: { syncSource: SYNC_SOURCE, btTaskId: task.id } },
+  };
+}
+
+function blockSignature(block: TimeBlock): string { return JSON.stringify([block.start, block.duration, block.scope.title_snapshot, block.status]); }
+function blockEventBody(block: TimeBlock, s: GCalSyncSettings): Record<string, unknown> {
+  const startDate = new Date(block.start), endDate = new Date(startDate.getTime() + block.duration * 60000);
+  return {
+    summary: block.scope.title_snapshot,
+    start: { dateTime: startDate.toISOString(), timeZone: s.timezone },
+    end: { dateTime: endDate.toISOString(), timeZone: s.timezone },
+    extendedProperties: { private: { syncSource: SYNC_SOURCE, btBlockId: block.id } },
   };
 }
 
@@ -392,7 +409,7 @@ async function pullEvents(
 /** Signatur der gepushten Felder – ändert sie sich, wird das Event gepatcht. */
 function signature(task: Task, calIdx: number): string {
   return JSON.stringify([
-    task.title, task.due, task.dueTime, task.duration,
+    task.title, task.due, task.dueTime,
     (task.reminders ?? []).join(","), calIdx,
   ]);
 }
@@ -402,6 +419,7 @@ export class GCalSync {
   private statusCbs = new Set<(i: GCalStatusInfo) => void>();
   private info: GCalStatusInfo = { status: "disconnected", lastSyncedAt: null, lastError: null, account: null };
   private unsub: (() => void) | null = null;
+  private unsubTime: (() => void) | null = null;
   private debounceTimer: number | null = null;
   private pollTimer: number | null = null;
   private running = false;
@@ -424,10 +442,12 @@ export class GCalSync {
   start(): void {
     if (this.unsub) return;
     this.unsub = this.host.subscribe(() => this.scheduleSync());
+    this.unsubTime = this.host.subscribeTime?.(() => this.scheduleSync()) ?? null;
     this.pollTimer = window.setInterval(() => { if (this.host.settings.autoSync) void this.syncNow(); }, POLL_MS);
   }
   stop(): void {
     this.unsub?.(); this.unsub = null;
+    this.unsubTime?.(); this.unsubTime = null;
     if (this.debounceTimer) { window.clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     if (this.pollTimer) { window.clearInterval(this.pollTimer); this.pollTimer = null; }
   }
@@ -452,6 +472,8 @@ export class GCalSync {
     this.running = true;
     this.emit({ status: "syncing", lastError: null });
     try {
+      await this.cleanupLegacyEvents();
+      await this.syncBlocks();
       const pulled = await this.pullAll();   // Google → Obsidian (+ neuer syncToken)
       await this.pushAll(pulled);            // Obsidian → Google (frisch Gezogene übersprungen)
       await this.host.persistCache();   // NUR der Cache – die Einstellungen ändert ein Sync-Lauf nicht
@@ -463,6 +485,62 @@ export class GCalSync {
       this.running = false;
       if (this.rerun) { this.rerun = false; void this.syncNow(); }
     }
+  }
+
+  private async syncBlocks(): Promise<void> {
+    if (!this.host.timeBlocks || !this.host.updateTimeBlockTiming || !this.host.setTimeBlockCalendarLink) return;
+    const cal = this.host.settings.calendarId, links = this.host.cache.blockLinks ??= {};
+    const eligible = new Map(this.host.timeBlocks().filter((b) => b.status !== "cancelled").map((b) => [b.id, b]));
+    for (const block of eligible.values()) {
+      const sig = blockSignature(block), link = links[block.id];
+      if (!link) {
+        const created = await api(this.auth, "POST", `/calendars/${enc(cal)}/events`, blockEventBody(block, this.host.settings));
+        const eventId = created?.id as string | undefined;
+        if (eventId) { links[block.id] = { eventId, calendarId: cal, sig }; await this.host.setTimeBlockCalendarLink(block.id, eventId, cal); }
+        continue;
+      }
+      try {
+        const current = await gcalRequest(this.auth, "GET", `/calendars/${enc(link.calendarId)}/events/${enc(link.eventId)}`);
+        const startRaw = (current.json?.start as { dateTime?: string } | undefined)?.dateTime;
+        const endRaw = (current.json?.end as { dateTime?: string } | undefined)?.dateTime;
+        const googleStart = startRaw ? new Date(startRaw) : null, googleEnd = endRaw ? new Date(endRaw) : null;
+        const googleDuration = googleStart && googleEnd ? Math.round((googleEnd.getTime() - googleStart.getTime()) / 60000) : null;
+        if (link.sig === sig && googleStart && googleDuration && (googleStart.toISOString() !== new Date(block.start).toISOString() || googleDuration !== block.duration)) {
+          await this.host.updateTimeBlockTiming(block.id, googleStart.toISOString(), googleDuration);
+          links[block.id].sig = blockSignature({ ...block, start: googleStart.toISOString(), duration: googleDuration });
+        } else if (link.sig !== sig || link.calendarId !== cal) {
+          await gcalRequest(this.auth, "PUT", `/calendars/${enc(cal)}/events/${enc(link.eventId)}`, mergeEventBody(current.json, blockEventBody(block, this.host.settings)));
+          links[block.id] = { eventId: link.eventId, calendarId: cal, sig };
+        }
+      } catch (e) {
+        if (!(e instanceof GCalHttpError && (e.status === 404 || e.status === 410))) throw e;
+        const created = await api(this.auth, "POST", `/calendars/${enc(cal)}/events`, blockEventBody(block, this.host.settings));
+        const eventId = created?.id as string | undefined;
+        if (eventId) {
+          links[block.id] = { eventId, calendarId: cal, sig };
+          await this.host.setTimeBlockCalendarLink(block.id, eventId, cal);
+        }
+      }
+    }
+    for (const [id, link] of Object.entries(links)) {
+      if (eligible.has(id)) continue;
+      try { await api(this.auth, "DELETE", `/calendars/${enc(link.calendarId)}/events/${enc(link.eventId)}`); }
+      catch (e) { if (!(e instanceof GCalHttpError && (e.status === 404 || e.status === 410))) throw e; }
+      delete links[id];
+      await this.host.setTimeBlockCalendarLink(id, null, null);
+    }
+  }
+
+  private async cleanupLegacyEvents(): Promise<void> {
+    const pending = this.host.cache.cleanup ?? [];
+    const keep: typeof pending = [];
+    for (const item of pending) {
+      try { await api(this.auth, "DELETE", `/calendars/${enc(item.calendarId)}/events/${enc(item.eventId)}`); }
+      catch (e) {
+        if (!(e instanceof GCalHttpError && (e.status === 404 || e.status === 410))) { keep.push(item); continue; }
+      }
+    }
+    this.host.cache.cleanup = keep;
   }
 
   // ── Pull-Reconcile (Google → Obsidian) ──

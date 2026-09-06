@@ -12,8 +12,8 @@ import { ProjItem } from "../src/taskService";
 const AUFGABE: Task = {
   id: "t-abc", path: "VibeTask/Items/Test.md", title: "Test", titleInFm: true,
   status: "doing", priority: "high",
-  due: "2026-08-20", dueTime: "09:30", scheduled: "2026-08-18", scheduledTime: null,
-  duration: 45, start: "2026-08-01", sortOrder: 2110,
+  due: "2026-08-20", dueTime: "09:30", estimate: 45, scheduled: null, scheduledTime: null,
+  duration: null, start: null, sortOrder: 2110,
   project: "VibeTask/Projects/Haus.md", parent: "VibeTask/Items/Eltern.md",
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
@@ -37,9 +37,10 @@ describe("Aufgabe → Export → Frontmatter", () => {
     expect(fm.status).toBe("doing");
     expect(fm.priority).toBe("high");
     expect(fm.due).toBe("2026-08-20T09:30");   // Datum und Uhrzeit als ein Wert (combineDT)
-    expect(fm.scheduled).toBe("2026-08-18");
-    expect(fm.duration).toBe(45);
-    expect(fm.start).toBe("2026-08-01");
+    expect(fm.estimate).toBe(45);
+    expect(fm.scheduled).toBeUndefined();
+    expect(fm.duration).toBeUndefined();
+    expect(fm.start).toBeUndefined();
     expect(fm.project).toBe("[[Haus]]");        // Basename, nicht Pfad
     expect(fm.parent).toBe("[[Eltern]]");
     expect(fm.labels).toEqual(["ui", "bug"]);

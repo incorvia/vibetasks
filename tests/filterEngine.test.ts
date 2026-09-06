@@ -177,8 +177,8 @@ describe("sortTasks", () => {
     const list = [mk({ id: "a", title: "Zebra" }), mk({ id: "b", title: "Apfel" })];
     expect(sortTasks(list, "title").map((t) => t.id)).toEqual(["b", "a"]);
   });
-  it("deadline: nach scheduled (aufsteigend), ohne Deadline ans Ende", () => {
-    const list = [mk({ id: "a", scheduled: null }), mk({ id: "b", scheduled: "2026-07-10" }), mk({ id: "c", scheduled: "2026-07-08" })];
+  it("deadline: bestehender Sortiername sortiert nach due", () => {
+    const list = [mk({ id: "a", due: null }), mk({ id: "b", due: "2026-07-10" }), mk({ id: "c", due: "2026-07-08" })];
     expect(sortTasks(list, "deadline").map((t) => t.id)).toEqual(["c", "b", "a"]);
   });
 });

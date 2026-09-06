@@ -23,9 +23,9 @@ describe("dateColumnKeys – Board-Datumsspalten in Anzeige-Reihenfolge", () => 
     expect(dateColumnKeys([mk("x", "2026-07-20")], TODAY, "due")).toEqual(["d:2026-07-20"]);
   });
 
-  it("nutzt scheduled bei Feld = scheduled (due wird ignoriert)", () => {
+  it("behandelt den alten scheduled-Spaltennamen als due-Alias", () => {
     const cards = [mk("a", "2026-07-01", "2026-07-16"), mk("b", null, null)];
-    expect(dateColumnKeys(cards, TODAY, "scheduled")).toEqual(["d:2026-07-16", "nodate"]);
+    expect(dateColumnKeys(cards, TODAY, "scheduled")).toEqual(["overdue", "nodate"]);
   });
 
   it("heute zählt NICHT als überfällig (>= today ist eine eigene Datumsspalte)", () => {

@@ -5,7 +5,7 @@ export type Priority = "highest" | "high" | "medium" | "normal" | "low" | "lowes
 
 /** Attribut-Chips in den Eingabe-Modalen (Schnelleingabe + voller Editor). Reihenfolge und
  *  Sichtbarkeit sind über die Einstellungen konfigurierbar (chipOrder/chipTiers). */
-export type ChipId = "status" | "due" | "priority" | "label" | "recurrence" | "deadline" | "reminder" | "parent" | "details";
+export type ChipId = "status" | "due" | "estimate" | "priority" | "label" | "recurrence" | "reminder" | "parent" | "details";
 /** Sichtbarkeits-Stufe eines Chips:
  *  shown   = immer in der Chip-Leiste (leer = Add-Icon, gesetzt = Wert)
  *  onValue = nur sichtbar, sobald ein Wert gesetzt ist; leer nur über „+ Weitere Aktionen"
@@ -17,7 +17,7 @@ export type ChipSurface = "editor" | "quickAdd";
 export interface ChipProfile { order?: ChipId[]; tiers?: Partial<Record<ChipId, ChipTier>>; }
 /** Kanonische Reihenfolge (= bisheriges Render-Verhalten). Fehlt ein Chip in profile.order,
  *  wird er hier ergänzt; fehlt sein Tier, gilt "shown" (nichts ändert sich per Default). */
-export const CHIP_IDS: ChipId[] = ["status", "due", "priority", "label", "recurrence", "deadline", "reminder", "parent", "details"];
+export const CHIP_IDS: ChipId[] = ["status", "due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details"];
 
 /** Art eines Status – steuert Verhalten (nicht nur die Spalte):
  *  open = aktive Phase · done = terminal (Zeitstempel/Wiederholung/Ausblenden) · cancelled = Papierkorb. */
@@ -48,10 +48,7 @@ export interface Task {
   priority: Priority;
   due: string | null;      // YYYY-MM-DD (Datums-Teil; Zeit separat in dueTime)
   dueTime: string | null;  // "HH:mm" oder null (für Kalender/Uhrzeit)
-  scheduled: string | null;
-  scheduledTime: string | null;
-  duration: number | null; // Minuten (Event-Länge), optional
-  start: string | null;
+  estimate?: number | null; // erwarteter Gesamtaufwand in Minuten
   project: string | null;  // aufgelöster Pfad der zugeordneten Liste (Projekt ODER Bereich; Typ lebt an der Liste)
   parent: string | null;   // aufgelöster Pfad der Eltern-Aufgabe
   labels: string[];
@@ -71,16 +68,37 @@ export interface Task {
 
 /**
  * Das Datum, an dem eine Aufgabe in den Zeit-Ansichten steht (Heute, Demnächst, Kalender):
- * die Fälligkeit – und wenn es keine gibt, die Deadline. Ohne Plan IST die Frist der Plan.
+ * die Fälligkeit. Geplante Arbeit lebt ausschließlich in separaten Zeitblöcken.
  * `null` = die Aufgabe hat dort keinen Platz (Eingang/Projekt).
  *
  * Steht hier und nicht in filterEngine, weil auch calendarModel sie braucht und ein Import
  * dorthin einen Zyklus ergäbe (filterEngine holt sich CalMode von dort). Die vollständige Regel
  * samt Überfälligkeit ist bei den Prädikaten in filterEngine dokumentiert.
  */
-export const agendaDate = (t: Task): string | null => t.due ?? t.scheduled;
-/** Die Uhrzeit zum agendaDate – aus dem Feld, das das Datum liefert. */
-export const agendaTime = (t: Task): string | null => (t.due ? t.dueTime : t.scheduledTime);
+export const agendaDate = (t: Task): string | null => t.due;
+/** Deadlines retain an optional clock time but never imply occupied calendar time. */
+export const agendaTime = (t: Task): string | null => t.dueTime;
+
+export type TimeScopeType = "task" | "project" | "area";
+export type TimeBlockMode = "focus" | "blitz";
+export type TimeBlockSelector = "manual" | "next" | "ai";
+export type TimeBlockKind = "task_schedule" | "allocation";
+export interface TimeScope { type: TimeScopeType; id: string; title_snapshot: string }
+export interface TimeBlock {
+  id: string; start: string; duration: number; scope: TimeScope;
+  kind: TimeBlockKind;
+  mode: TimeBlockMode; selector: TimeBlockSelector;
+  status: "planned" | "completed" | "cancelled";
+  source: "manual" | "drag" | "ai" | "import";
+  gcal_event_id?: string; gcal_calendar_id?: string;
+}
+export interface WorkSession {
+  id: string; task_id: string; task_title_snapshot: string; block_id?: string;
+  started_at: string; ended_at?: string; elapsed?: number; device_id: string;
+  project_id_snapshot?: string; project_title_snapshot?: string;
+  area_id_snapshot?: string; area_title_snapshot?: string;
+}
+export interface TimeLog { path: string; id: string; date: string; blocks: TimeBlock[]; sessions: WorkSession[] }
 
 /**
  * Ein Termin aus einem verbundenen Google-Kalender. **Reine Anzeige-Schicht**: ein CalEvent wird
@@ -157,6 +175,7 @@ export interface VibeTaskSettings {
                            // Die WAHL ist Vault-Ebene; welche Ansicht zuletzt offen war, nicht
                            // (DeviceState.lastView).
   defaultCalendarView: import("./calendarModel").CalMode; // Kalender-Modus für Seiten ohne eigene Wahl
+  calendarTaskColorMode: import("./calendarTaskColor").CalendarTaskColorMode; // Farbe geplanter Aufgaben im Kalender
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
   showUnfiledInInbox: boolean;    // projektlose offene Aufgaben (auch handgeschriebene type:task-Notizen) im Eingang zeigen
   excludeFolders: string[];       // Ordner-Präfixe: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen)
@@ -223,6 +242,7 @@ export const DEFAULT_SETTINGS: VibeTaskSettings = {
   metaColors: {},
   startPage: { kind: "view", key: "heute" },
   defaultCalendarView: "3day",
+  calendarTaskColorMode: "priority",
   parseNaturalLanguage: true,
   showUnfiledInInbox: true,
   excludeFolders: [],

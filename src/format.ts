@@ -114,6 +114,14 @@ export function formatDuration(min: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
+/** Compact effort notation used by task estimates (Amazing Marvin compatible). */
+export function formatEstimate(min: number): string {
+  const whole = Math.max(0, Math.round(min));
+  if (whole < 60) return `~${whole}m`;
+  const hours = Math.floor(whole / 60), minutes = whole % 60;
+  return `~${hours}h${minutes ? `${minutes}m` : ""}`;
+}
+
 /** "past" | "today" | "future" – steuert die Datumsfarbe (nur Datums-Teil). */
 export function dueWhen(iso: string, today = todayStr()): "past" | "today" | "future" {
   const d = dateOf(iso), tn = dateOf(today);

@@ -1,6 +1,6 @@
 import { App, FuzzySuggestModal, TFile, normalizePath } from "obsidian";
 import type VibeTaskPlugin from "./main";
-import { VibeTaskSettings, Priority, TaskStatus, Task } from "./types";
+import { VibeTaskSettings, Priority, TaskStatus, Task, TimeLog } from "./types";
 import { ensureFolder, slugify, newId, createProjectNote, listManaged, baseName, ProjItem } from "./taskService";
 import { titleKey, newTaskBody, findH1LineInBody } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
@@ -11,9 +11,10 @@ import { isKnownStatus } from "./statuses";
 import { t } from "./i18n";
 import { repositoryFor, rfc3339Now } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
+import { migratedDeadline } from "./timingMigration";
 
 const EXPORT_FORMAT = "vibetask";
-const EXPORT_VERSION = 3;
+const EXPORT_VERSION = 4;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
@@ -34,10 +35,13 @@ export interface ExportTask {
   priority: Priority;
   due: string | null;
   dueTime: string | null;
-  scheduled: string | null;
-  scheduledTime: string | null;
-  duration: number | null;
-  start: string | null;
+  /** Legacy v1-v3 planning fields, accepted on import but omitted by v4 exports. */
+  scheduled?: string | null;
+  scheduledTime?: string | null;
+  /** v4 canonical effort estimate; duration is accepted from v1-v3 exports. */
+  estimate?: number | null;
+  duration?: number | null;
+  start?: string | null;
   project: string | null;   // Basename der zugeordneten Liste (Projekt ODER Bereich – Typ steht in `lists`)
   parent: string | null;
   labels: string[];
@@ -97,6 +101,7 @@ export interface ExportData {
    *  Label, nicht zur Aufgabe – ohne sie kommen Labels farblos und unsichtbar an. */
   labelColors?: Record<string, string>;
   visibleLabels?: string[];
+  timeLogs?: TimeLog[];
 }
 
 export interface ImportResult {
@@ -166,10 +171,7 @@ export function toExportTask(tk: Task, body = ""): ExportTask {
     priority: tk.priority,
     due: tk.due,
     dueTime: tk.dueTime,
-    scheduled: tk.scheduled,
-    scheduledTime: tk.scheduledTime,
-    duration: tk.duration,
-    start: tk.start,
+    estimate: tk.estimate ?? null,
     project: tk.project ? baseName(tk.project) : null,
     parent: tk.parent ? baseName(tk.parent) : null,
     labels: tk.labels,
@@ -195,7 +197,7 @@ export function toExportFilter(f: FilterItem): ExportFilter {
  * Liste (Projekt/Bereich) -> portabler Datensatz.
  *
  * `ProjItem.icon` ist das BERECHNETE Symbol, nicht das gespeicherte: Bereiche bekommen dort immer
- * `circle-small`, Projekte ohne eigenes Symbol `list-checks` (s. allProjItems). Diese Vorgaben werden
+ * `layers`, Projekte ohne eigenes Symbol `list-checks` (s. allProjItems). Diese Vorgaben werden
  * hier wieder abgezogen — sonst schriebe der Import ein Symbol in die Notiz, das der Nutzer nie
  * gesetzt hat, und aus „kein Symbol" würde dauerhaft eines.
  *
@@ -203,7 +205,7 @@ export function toExportFilter(f: FilterItem): ExportFilter {
  * Modell reicht es nicht durch (die App zeigt es dort ohnehin nicht), und dafür extra am Export
  * das Frontmatter zu lesen, lohnt den Aufwand nicht.
  */
-const BERECHNETE_SYMBOLE = new Set(["circle-small", "folder", "list-checks"]);
+const BERECHNETE_SYMBOLE = new Set(["circle-small", "circle", "layers", "folder", "list-checks"]);
 
 export function toExportList(p: ProjItem): ExportList {
   const icon = p.icon && !BERECHNETE_SYMBOLE.has(p.icon) ? p.icon : null;
@@ -233,10 +235,8 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
     [titleName]: et.title,
     status: et.status || "todo",
     priority: et.priority && et.priority !== "normal" ? et.priority : undefined,
-    due: et.due ? combineDT(et.due, et.dueTime) : null,
-    scheduled: et.scheduled ? combineDT(et.scheduled, et.scheduledTime) : null,
-    duration: et.duration ?? null,
-    start: et.start ?? null,
+    due: migratedDeadline(et.due ? combineDT(et.due, et.dueTime) : null, et.scheduled ? combineDT(et.scheduled, et.scheduledTime) : null),
+    estimate: et.estimate ?? et.duration ?? null,
     project: et.project ? "[[" + et.project + "]]" : null,
     parent: et.parent ? "[[" + et.parent + "]]" : null,
     labels: et.labels ?? [],
@@ -302,6 +302,7 @@ async function buildExportData(plugin: VibeTaskPlugin): Promise<ExportData> {
     taskCount: tasks.length, lists, labels: [...plugin.settings.knownLabels], tasks, filters,
     labelColors: { ...plugin.settings.labelColors },
     visibleLabels: [...plugin.settings.visibleLabels],
+    timeLogs: plugin.timeStore.logs(),
   };
 }
 
@@ -445,6 +446,9 @@ export async function importData(plugin: VibeTaskPlugin, data: ExportData): Prom
     if (et.id) seenIds.add(et.id);
     if (et.externalId) seenExt.add(et.externalId);
     created++;
+  }
+  for (const log of data.timeLogs ?? []) {
+    if (log && typeof log.date === "string" && Array.isArray(log.blocks) && Array.isArray(log.sessions)) await plugin.timeStore.mergeLog(log);
   }
   const unbekannt = unknownStatusReport(data.tasks, isKnownStatus);
   return { created, skipped, listsCreated, labelsAdded, filtersCreated, unknownStatuses: unbekannt.names, unknownStatusTasks: unbekannt.count };

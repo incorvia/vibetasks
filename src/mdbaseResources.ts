@@ -4,7 +4,7 @@ import type { StoredStatus } from "./types";
 export const MDBASE_SPEC_VERSION = "0.3.0";
 export const MDBASE_COLLECTION_ROOT = "_vibetasks";
 export const MDBASE_TYPES_FOLDER = "_types";
-export const RECORD_TYPES = ["task", "project", "area", "filter", "template"] as const;
+export const RECORD_TYPES = ["task", "project", "area", "filter", "template", "time_log", "timer_state"] as const;
 export type RecordType = (typeof RECORD_TYPES)[number];
 
 export const DEFAULT_MDBASE_STATUSES: StoredStatus[] = [
@@ -57,9 +57,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     status: { enum: DEFAULT_MDBASE_STATUSES.map((s) => s.id) },
     priority: { enum: [...DEFAULT_PRIORITIES] },
     due: dateOrDateTime,
-    scheduled: dateOrDateTime,
-    start: dateOrDateTime,
-    duration: { type: "integer", minimum: 0 },
+    estimate: { type: "integer", minimum: 1 },
     project: { type: "string", minLength: 1 },
     parent: { type: "string", minLength: 1 },
     labels: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
@@ -117,9 +115,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     status: { enum: DEFAULT_MDBASE_STATUSES.map((s) => s.id) },
     priority: { enum: [...DEFAULT_PRIORITIES] },
     due: dateOrDateTime,
-    scheduled: dateOrDateTime,
-    start: dateOrDateTime,
-    duration: { type: "integer", minimum: 0 },
+    estimate: { type: "integer", minimum: 1 },
     project: { type: "string", minLength: 1 },
     parent: { type: "string", minLength: 1 },
     labels: { type: "array", items: { type: "string", minLength: 1 } },
@@ -133,6 +129,40 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     gcal_event_id: { type: "string" },
     gcal_calendar_id: { type: "string" },
   }, ["status", "template_of"]),
+  time_log: extend(common("time_log"), {
+    date: { type: "string", format: "date" },
+    blocks: {
+      type: "array", items: { type: "object", additionalProperties: true,
+        required: ["id", "start", "duration", "scope", "mode", "selector", "status", "source"],
+        properties: {
+          id: { type: "string", minLength: 1 }, start: { type: "string", format: "date-time" },
+          duration: { type: "integer", minimum: 1 },
+          kind: { enum: ["task_schedule", "allocation"] },
+          scope: { type: "object", additionalProperties: false, required: ["type", "id", "title_snapshot"], properties: {
+            type: { enum: ["task", "project", "area"] }, id: { type: "string", minLength: 1 }, title_snapshot: { type: "string" },
+          } },
+          mode: { enum: ["focus", "blitz"] }, selector: { enum: ["manual", "next", "ai"] },
+          status: { enum: ["planned", "completed", "cancelled"] }, source: { enum: ["manual", "drag", "ai", "import"] },
+          gcal_event_id: { type: "string" }, gcal_calendar_id: { type: "string" },
+        } },
+    },
+    sessions: {
+      type: "array", items: { type: "object", additionalProperties: true,
+        required: ["id", "task_id", "task_title_snapshot", "started_at", "device_id"],
+        properties: {
+          id: { type: "string", minLength: 1 }, task_id: { type: "string", minLength: 1 }, task_title_snapshot: { type: "string" },
+          block_id: { type: "string" }, started_at: { type: "string", format: "date-time" }, ended_at: { type: "string", format: "date-time" },
+          elapsed: { type: "integer", minimum: 0 }, device_id: { type: "string", minLength: 1 },
+          project_id_snapshot: { type: "string" }, project_title_snapshot: { type: "string" }, area_id_snapshot: { type: "string" }, area_title_snapshot: { type: "string" },
+        } },
+    },
+  }, ["date", "blocks", "sessions"]),
+  timer_state: extend(common("timer_state"), {
+    active: { anyOf: [{ type: "null" }, { type: "object", additionalProperties: true,
+      required: ["session_id", "log_date", "task_id", "device_id", "started_at"],
+      properties: { session_id: { type: "string" }, log_date: { type: "string", format: "date" }, task_id: { type: "string" }, block_id: { type: "string" }, device_id: { type: "string" }, started_at: { type: "string", format: "date-time" } },
+    }] },
+  }),
 };
 
 export const DEFAULT_PATHS: Record<RecordType, string> = {
@@ -141,6 +171,8 @@ export const DEFAULT_PATHS: Record<RecordType, string> = {
   area: "projects/{title}.md",
   filter: "filters/{title}.md",
   template: "templates/{title}/{title}.md",
+  time_log: "time/{year}/{date}.md",
+  timer_state: "time/active.md",
 };
 
 export function collectionPath(relativePath: string): string {

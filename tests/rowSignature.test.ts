@@ -19,8 +19,7 @@ import { Task } from "../src/types";
 const BASIS: Task = {
   id: "t-1", path: "Items/a.md", title: "Aufgabe", titleInFm: true,
   status: "todo", priority: "normal",
-  due: "2026-08-10", dueTime: "09:00", scheduled: "2026-08-12", scheduledTime: "10:00",
-  duration: 30, start: "2026-08-09",
+  due: "2026-08-10", dueTime: "09:00", estimate: 30,
   project: "Projects/Haus.md", parent: "Items/eltern.md",
   labels: ["urgent"], description: "Beschreibung",
   recurrence: "FREQ=DAILY", recurBasis: "due", reminders: ["-30m"],

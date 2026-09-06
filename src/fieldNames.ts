@@ -35,7 +35,7 @@ const FIELD_EXCEPTION: Partial<Record<FieldId, string>> = { labels: "tags" };
  *  (oder über die Tags des Nutzers). Die KONFIGURIERBAREN Felder stehen hier NICHT drin; die
  *  kommen dynamisch dazu, siehe normalizeFieldName. */
 const FIXED_KEYS = new Set([
-  "id", "status", "priority", "due", "scheduled", "start", "duration", "project", "parent",
+  "id", "status", "priority", "due", "estimate", "project", "parent",
   "recurrence", "recur_basis", "reminders", "sort_order", "created", "completed",
   "cancelled", "description", "external_id", "gcal_event_id", "gcal_calendar_id", "gcal_sync",
   "icon", "color", "nav_hidden",

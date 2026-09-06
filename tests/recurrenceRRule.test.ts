@@ -68,9 +68,9 @@ describe("Regeln, die unser altes Modell nicht konnte", () => {
       nextInstance(task({ recurrence: rule, due: from, recurBasis: "due" }), from);
 
     const a = step("FREQ=WEEKLY;COUNT=3", "2026-06-01");
-    expect(a).toEqual({ due: "2026-06-08", scheduled: null, recurrence: "FREQ=WEEKLY;COUNT=2" });
+    expect(a).toEqual({ due: "2026-06-08", recurrence: "FREQ=WEEKLY;COUNT=2" });
     const b = step(a!.recurrence, a!.due!);
-    expect(b).toEqual({ due: "2026-06-15", scheduled: null, recurrence: "FREQ=WEEKLY;COUNT=1" });
+    expect(b).toEqual({ due: "2026-06-15", recurrence: "FREQ=WEEKLY;COUNT=1" });
     // COUNT=1: die eine erlaubte Wiederholung IST der Anker – also endet die Kette hier.
     expect(step(b!.recurrence, b!.due!)).toBeNull();
   });

@@ -274,7 +274,7 @@ export { agendaDate };
  *  ohnehin heute dran ist. Wer heute daran arbeitet, gewinnt nichts dadurch, unter „Überfällig"
  *  zu stehen; dass die Frist gerissen ist, sagt der rote Chip in seiner Zeile. */
 export const isOverdueTask = (t: Task, today: string): boolean =>
-  (!!t.due && t.due < today) || (!!t.scheduled && t.scheduled < today && t.due !== today);
+  !!t.due && t.due < today;
 /** Steht heute an: Agenda-Datum ist heute und nichts daran ist verstrichen. */
 export const isTodayTask = (t: Task, today: string): boolean =>
   !isOverdueTask(t, today) && agendaDate(t) === today;
@@ -414,7 +414,7 @@ function inRange(date: string | null, range: FilterRange, today: string): boolea
  *  ✓ (irgendeines muss zutreffen) UND + (alle müssen zutreffen) UND − (keines darf zutreffen). */
 export function matchesTask(t: Task, c: FilterCriteria, today: string): boolean {
   if (!inRange(t.due, c.range, today)) return false;
-  if (!inRange(t.scheduled, c.deadlineRange, today)) return false;
+  if (!inRange(t.due, c.deadlineRange, today)) return false;
   // Status (einwertig): ✓ irgendeiner / − keiner
   if (c.statuses.length && !c.statuses.includes(t.status)) return false;
   if (c.statusesNot.includes(t.status)) return false;
@@ -498,7 +498,7 @@ export function sortTasks(list: Task[], sort: FilterSort, dir: SortDir = "asc",
     return arr.sort((a, b) => byChain(a, b) || (a.created ?? "").localeCompare(b.created ?? "") || byTitle(a, b));
   }
   if (sort === "due") return arr.sort((a, b) => byDue(a, b) || byTitle(a, b));
-  if (sort === "deadline") return arr.sort((a, b) => byDate(key(a.scheduled, a.scheduledTime), key(b.scheduled, b.scheduledTime)) || byPrio(a, b));
+  if (sort === "deadline") return arr.sort((a, b) => byDate(key(a.due, a.dueTime), key(b.due, b.dueTime)) || byPrio(a, b));
   if (sort === "priority") return arr.sort((a, b) => byPrio(a, b) || byDue(a, b));
   // „Aufsteigend" = ältestes zuerst. (Vorher war Erstellt fest auf „neueste zuerst" – das ist
   // jetzt „absteigend" und damit wählbar statt eingebaut.)
@@ -603,7 +603,7 @@ export function planDiff(prev: { title: string; sig: string }[], next: { title: 
  */
 export function agendaOwnRow(group: FilterGroup): ((t: Task) => boolean) | undefined {
   if (group === "date") return (t) => !!t.due;
-  if (group === "deadline") return (t) => !!t.scheduled;
+  if (group === "deadline") return (t) => !!t.due;
   return undefined;
 }
 
@@ -655,7 +655,7 @@ export function groupTasks(tasks: Task[], group: FilterGroup, today: string,
   const prioOrder = (p: string): number => p === "highest" ? 0 : p === "high" ? 1 : p === "medium" ? 2 : 3;
   for (const tk of tasks) {
     if (group === "date" || group === "deadline") {
-      const d = group === "date" ? tk.due : tk.scheduled;   // „Datum" = due, „Deadline" = scheduled
+      const d = tk.due;
       if (!d) push("nodate", t("sec_no_date"), 0, 1, tk);
       else if (d < today) push("overdue", t("sec_overdue"), 0, -1, tk);
       // Ein Tag = eine Gruppe. Sortierschlüssel ist das Datum selbst (20260722): so stehen die
@@ -692,11 +692,11 @@ export function groupTasks(tasks: Task[], group: FilterGroup, today: string,
  *  exaktem künftigen Datum (aufsteigend) · „nodate" (falls undatierte). `field` = geprüftes
  *  Datumsfeld (due = „Datum", scheduled = „Deadline"). Rein/testbar; der Board-Provider (dateColumns)
  *  macht daraus BoardColumns mit has/onDrop/onAdd. */
-export function dateColumnKeys(cards: Task[], today: string, field: "due" | "scheduled"): string[] {
+export function dateColumnKeys(cards: Task[], today: string, _field: "due" | "scheduled"): string[] {
   let overdue = false, nodate = false;
   const dates = new Set<string>();
   for (const tk of cards) {
-    const d = field === "due" ? tk.due : tk.scheduled;
+    const d = tk.due;
     if (!d) nodate = true;
     else if (d < today) overdue = true;
     else dates.add(d);

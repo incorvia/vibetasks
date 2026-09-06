@@ -109,8 +109,9 @@ const recurRule = (n: number, unit: string): string => "FREQ=" + FREQ[unit] + (n
 
 export interface QuickEntry {
   title: string; faellig: string; time: string; tags: string[]; priority: Priority | null; project: string | null;
+  estimate: number | null;
   recurrence: string | null;
-  faelligSrc: string; timeSrc: string; recurSrc: string;
+  faelligSrc: string; timeSrc: string; recurSrc: string; estimateSrc: string;
 }
 
 // `projects` = bekannte Projekt-/Bereichsnamen. Nur damit wird @Projekt erkannt (Zuordnung nur
@@ -130,6 +131,24 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
   const unmask = (s: string): string => s.replace(PUA, (c) => lits[c.charCodeAt(0) - 0xE000] ?? c);
   text = text.replace(MASK, (_m, ws: string | undefined, word: string | undefined, q1: string, inner: string, q2: string) =>
     word !== undefined ? ws + lit(word) : q1 + lit(inner) + q2);
+
+  // Amazing-Marvin style effort estimate. It deliberately requires the tilde so ordinary
+  // durations in titles remain prose. One token is consumed; further tokens remain visible.
+  let estimate: number | null = null, estimateSrc = "";
+  const estimateMatch = text.match(/(?:^|\s)~((?:\d+(?:[.,]\d+)?)h(?:(\d+)m?)?|\d+m)(?![\p{L}\p{N}-])/iu);
+  if (estimateMatch) {
+    const rawEstimate = estimateMatch[1].toLowerCase().replace(",", ".");
+    const hours = rawEstimate.match(/^(\d+(?:\.\d+)?)h(?:(\d+)m?)?$/);
+    const minutes = rawEstimate.match(/^(\d+)m$/);
+    const parsed = hours
+      ? Math.round(parseFloat(hours[1]) * 60 + (hours[2] ? Number(hours[2]) : 0))
+      : minutes ? Number(minutes[1]) : 0;
+    if (parsed > 0) {
+      estimate = parsed;
+      estimateSrc = estimateMatch[0].trim();
+      text = text.replace(estimateMatch[0], " ");
+    }
+  }
 
   // Inline-#Labels sammeln + strippen.
   const tags: string[] = [];
@@ -340,7 +359,7 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
   // an, die nichts tut.
   if (recurrence) faellig = firstOccurrence(recurrence, faellig || iso(now)) ?? faellig;
 
-  return { title: unmask(text.replace(/\s{2,}/g, " ").trim()), faellig, time, tags: [...new Set(tags)], priority, project, recurrence, faelligSrc, timeSrc, recurSrc };
+  return { title: unmask(text.replace(/\s{2,}/g, " ").trim()), faellig, time, tags: [...new Set(tags)], priority, project, estimate, recurrence, faelligSrc, timeSrc, recurSrc, estimateSrc };
 }
 
 // ── Parse-Ergebnis auf die Eingabefelder anwenden ──
@@ -354,10 +373,10 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
  *  im Titel escapen soll (Wort bleibt Text) statt das Feld nur zu leeren. */
 export interface QuickEntryState {
   labels: string[]; project: string | null;
-  dueSrc: string; timeSrc: string; recurSrc: string;
+  dueSrc: string; timeSrc: string; recurSrc: string; estimateSrc: string;
   dueFromTitle: boolean;   // f.due stammt aus dem Titel (Datumswort ODER Anker) -> darf zurueck
 }
-export const emptyQuickEntryState = (): QuickEntryState => ({ labels: [], project: null, dueSrc: "", timeSrc: "", recurSrc: "", dueFromTitle: false });
+export const emptyQuickEntryState = (): QuickEntryState => ({ labels: [], project: null, dueSrc: "", timeSrc: "", recurSrc: "", estimateSrc: "", dueFromTitle: false });
 
 /** Setzt vor jedes Wort der Auslöser einen Backslash – das ✕ am Datums-Chip tippt ihn also für den
  *  Nutzer. Pro Wort statt Anführungszeichen ums Ganze: die blieben sonst im Titel stehen.
@@ -380,6 +399,7 @@ export function escapeTriggers(raw: string, triggers: string[]): string {
 /** Die Felder, die aus dem Titel befüllt werden können (Teilmenge der Modal-Felder). */
 export interface QuickEntryFields {
   due: string | null; dueTime: string | null; priority: Priority; labels: string[]; project: string | null;
+  estimate?: number | null;
   recurrence: string | null;
 }
 
@@ -413,8 +433,9 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
     if (state.timeSrc) f.dueTime = null;
   }
   if (state.recurSrc) f.recurrence = null;
+  if (state.estimateSrc) f.estimate = null;
 
-  let dueSrc = "", timeSrc = "", recurSrc = "", dueFromTitle = false;
+  let dueSrc = "", timeSrc = "", recurSrc = "", estimateSrc = "", dueFromTitle = false;
   if (!opts.duePinned && p.faellig) { f.due = p.faellig; dueSrc = p.faelligSrc; dueFromTitle = true; }
   // Eine Uhrzeit impliziert einen Tag: ohne Datum wäre sie unsichtbar (der Datums-Chip prüft
   // `!!due`) und ginge beim Speichern verloren (nur mit Datum wird kombiniert). Default heute.
@@ -424,6 +445,7 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
     if (f.due == null) { f.due = opts.today; dueFromTitle = true; }
   }
   if (p.priority) f.priority = p.priority;
+  if (p.estimate) { f.estimate = p.estimate; estimateSrc = p.estimateSrc; }
   // Wiederholung folgt dem Muster der Priorität (kein „pin"): steht sie im Text, gewinnt der Text.
   // Zurückgenommen wird sie über das ✕ am Chip, das den Auslöser escapt.
   // Wie die Uhrzeit braucht sie einen Anker: ohne Datum liefert recurrence.ts keine nächste
@@ -451,5 +473,5 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
   const parsed = [...new Set(p.tags)].filter((tag) => !manual.includes(tag));
   f.labels = [...manual, ...parsed];
 
-  return { title: p.title, fields: f, state: { labels: parsed, project, dueSrc, timeSrc, recurSrc, dueFromTitle } };
+  return { title: p.title, fields: f, state: { labels: parsed, project, dueSrc, timeSrc, recurSrc, estimateSrc, dueFromTitle } };
 }

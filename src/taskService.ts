@@ -9,6 +9,7 @@ import { ScanCache } from "./scanCache";
 import { t } from "./i18n";
 import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
+import { entityIcon } from "./entityPresentation";
 
 export const slugify = (s: string): string =>
   s.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Task";
@@ -94,9 +95,7 @@ export interface TaskFields {
   status?: TaskStatus;
   due?: string | null;          // Datums-Teil (YYYY-MM-DD)
   dueTime?: string | null;      // "HH:mm" -> wird in due eingebettet (YYYY-MM-DDTHH:mm)
-  scheduled?: string | null;
-  scheduledTime?: string | null;
-  duration?: number | null;     // Minuten (Event-Länge)
+  estimate?: number | null;     // erwarteter Gesamtaufwand in Minuten
   priority?: Priority;
   project?: string | null;   // Projekt-Basename (nicht Pfad)
   labels?: string[];
@@ -254,8 +253,7 @@ export async function createTaskNote(app: App, settings: VibeTaskSettings, f: Ta
     cancelled: stamps.cancelled,
     priority: f.priority && f.priority !== "normal" ? f.priority : undefined,
     due: f.due ? combineDT(f.due, f.dueTime) : null,
-    scheduled: f.scheduled ? combineDT(f.scheduled, f.scheduledTime) : null,
-    duration: f.duration ?? null,
+    estimate: f.estimate ?? null,
     project: f.project ? "[[" + f.project + "]]" : null,
     parent: f.parent ? "[[" + f.parent + "]]" : null,
     [fieldKey("labels")]: f.labels ?? [],
@@ -397,11 +395,9 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
     return [{
       id: typeof fm?.id === "string" && fm.id ? fm.id : f.path,
       name: typeof fm?.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path, type,
-      // Bereiche immer circle-small (per CSS gefüllt), unabhängig vom icon-Frontmatter.
-      // Projekte: eigenes icon-Frontmatter respektieren, sonst das semantische Projekt-Symbol.
-      // Ein altes explizites `folder` stammt von früheren VibeTask-Versionen und wird ebenfalls
-      // als berechneter Default behandelt, damit bestehende Projekte das neue Symbol erhalten.
-      icon: type === "area" ? "circle-small" : (typeof fm?.icon === "string" && fm.icon && fm.icon !== "folder" ? fm.icon : "list-checks"),
+      // Entity presentation is shared by the sidebar, embeds, pickers, and full-page headers.
+      // An old explicit `folder` remains a calculated default rather than a custom project icon.
+      icon: entityIcon(type, fm?.icon),
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
       area: typeof fm?.area === "string" ? fm.area : null,

@@ -20,8 +20,7 @@ import { TaskModal } from "./taskModal";
 export class QuickAddModal extends Modal {
   private f: {
     title: string; project: string | null; status: TaskStatus;
-    due: string | null; dueTime: string | null; duration: number | null;
-    scheduled: string | null; scheduledTime: string | null;
+    due: string | null; dueTime: string | null; estimate: number | null;
     priority: Priority; labels: string[];
     recurrence: string | null; recurBasis: "due" | "done";
     reminders: string[]; parent: string | null;
@@ -43,7 +42,7 @@ export class QuickAddModal extends Modal {
     this.f = {
       title: "", project: this.defaultProject, status: firstOpenStatus(),
       due: opts.due ?? (opts.today ? todayStr() : null),
-      dueTime: null, duration: null, scheduled: null, scheduledTime: null,
+      dueTime: null, estimate: null,
       priority: "normal", labels: opts.label ? [opts.label] : [],
       recurrence: null, recurBasis: "due", reminders: [], parent: null,
     };
@@ -125,9 +124,16 @@ export class QuickAddModal extends Modal {
     // Der Wert kam aus dem Titel – escapen heisst: er ist weg. Erst leeren, dann neu parsen
     // (der escapte Text setzt nichts mehr). KEIN pinDue: das Escape im Titel IST der Zustand,
     // ein spaeter getipptes „uebermorgen" soll wieder erkannt werden.
-    this.f.due = null; this.f.dueTime = null; this.f.duration = null;
+    this.f.due = null; this.f.dueTime = null;
     this.parse();
     return true;
+  }
+
+  private unparseEstimate(): boolean {
+    const next = escapeTriggers(this.f.title, [this.nl.estimateSrc]);
+    if (next === this.f.title) return false;
+    this.f.title = next; this.input.value = next; this.f.estimate = null;
+    this.parse(); return true;
   }
 
   // ── Chips (gemeinsame Registry) ──
@@ -145,6 +151,7 @@ export class QuickAddModal extends Modal {
       // Manuell gesetzt/geleert: der Titel besitzt das Datum ab jetzt nicht mehr.
       pinDue: () => { this.duePinned = true; this.nl.dueSrc = ""; this.nl.timeSrc = ""; },
       unparseDue: () => this.unparseDue(),
+      unparseEstimate: () => this.unparseEstimate(),
       unparseRecur: () => this.unparseRecur(),
       resetParsedLabels: () => { this.nl.labels = []; },
       onParentPicked: (proj) => { if (proj) { this.f.project = proj; this.nl.project = null; this.renderProjekt(); } },
@@ -234,8 +241,7 @@ export class QuickAddModal extends Modal {
     if (!title) { new Notice(t("err_enter_taskname")); return; }
     await createTaskNote(this.app, this.plugin.settings, {
       title, status: this.f.status,
-      due: this.f.due, dueTime: this.f.dueTime, duration: this.f.duration,
-      scheduled: this.f.scheduled, scheduledTime: this.f.scheduledTime,
+      due: this.f.due, dueTime: this.f.dueTime, estimate: this.f.estimate,
       priority: this.f.priority, labels: this.f.labels,
       recurrence: this.f.recurrence, recurBasis: this.f.recurBasis,
       reminders: this.f.reminders, parent: this.f.parent,
@@ -246,7 +252,7 @@ export class QuickAddModal extends Modal {
     const project = this.f.project;
     this.f = {
       title: "", project, status: firstOpenStatus(),
-      due: null, dueTime: null, duration: null, scheduled: null, scheduledTime: null,
+      due: null, dueTime: null, estimate: null,
       priority: "normal", labels: [], recurrence: null, recurBasis: "due", reminders: [], parent: null,
     };
     this.cleanTitle = ""; this.duePinned = false; this.nl = emptyQuickEntryState();
@@ -266,8 +272,8 @@ export class QuickAddModal extends Modal {
     const title = this.f.title.trim();
     const project = this.f.project ?? undefined;
     const seed = {
-      status: this.f.status, due: this.f.due, dueTime: this.f.dueTime, duration: this.f.duration,
-      scheduled: this.f.scheduled, scheduledTime: this.f.scheduledTime, priority: this.f.priority,
+      status: this.f.status, due: this.f.due, dueTime: this.f.dueTime, estimate: this.f.estimate,
+      priority: this.f.priority,
       labels: [...this.f.labels], recurrence: this.f.recurrence, recurBasis: this.f.recurBasis,
       reminders: [...this.f.reminders], parent: this.f.parent,
     };

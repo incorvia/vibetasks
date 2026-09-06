@@ -7,6 +7,7 @@ import { baseName, listProjectsAndAreas, normalizeLabel } from "./taskService";
 import { buildSwatchRow } from "./colorSwatches";
 import { ConfirmModal } from "./confirmModal";
 import { t } from "./i18n";
+import { entityIcon } from "./entityPresentation";
 import { Priority, TaskStatus } from "./types";
 import { boardStatuses, firstOpenStatus, statusLabel } from "./statuses";
 import { PRIOS, PRIO_KEY } from "./chips";
@@ -19,7 +20,7 @@ export type EditFocus = "name" | "description";
 export interface EditRef { key: string; name: string; color: string | null; visible: boolean; description?: string; area?: string | null; workflowStatus?: TaskStatus; priority?: Priority; }
 export interface NewItemDefaults { area?: string | null; workflowStatus?: TaskStatus; priority?: Priority; }
 
-const ICON: Record<NewItemKind, string> = { project: "list-checks", area: "circle", label: "hash" };
+const ICON: Record<NewItemKind, string> = { project: entityIcon("project"), area: entityIcon("area"), label: "hash" };
 const TITLE: Record<NewItemKind, string> = { project: "new_project_title", area: "new_area_title", label: "new_label_title" };
 const EDIT_TITLE: Record<NewItemKind, string> = { project: "edit_project_title", area: "edit_area_title", label: "edit_label_title" };
 const PH: Record<NewItemKind, string> = { project: "placeholder_project_name", area: "placeholder_area_name", label: "placeholder_label" };

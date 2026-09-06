@@ -26,7 +26,10 @@ Plugin-weiter State in `data.json` (nicht pro Notiz):
 - `gcalSyncTokens: Record<calendarId, nextSyncToken>` — für inkrementellen Pull.
 - `gcalLastSynced: Record<taskId, {due, status}>` — letzter Stand je Aufgabe (3-Wege-Basis).
 
-## Task ↔ Event-Mapping
+> **Timing-model update:** Google write sync now operates on `time_log.blocks[]`, not task
+> deadlines. The task mapping below documents the retired pre-migration design only.
+
+## Legacy Task ↔ Event-Mapping
 | VibeTask | Google-Event | Hinweis |
 |---|---|---|
 | `# Titel` (H1) | `summary` | via `TaskIndex` (`cache.headings[0]`) |

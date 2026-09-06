@@ -6,9 +6,9 @@
 import { App, Platform, setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, VibeTaskSettings } from "./types";
-import { formatDateTime, formatDeadline, formatDuration, combineDT, dateOf, timeOf } from "./format";
+import { formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf } from "./format";
 import { boardStatuses, statusLabel, statusIcon, statusTint, firstOpenStatus, isTrashed } from "./statuses";
-import { openDatePicker } from "./datePicker";
+import { openDatePicker, parseDuration } from "./datePicker";
 import { formatReminder } from "./reminders";
 import { openPopover, popRow } from "./popover";
 import { TaskPickerModal } from "./searchModal";
@@ -70,8 +70,7 @@ export const recurLabel = (v: string, basis?: "due" | "done"): string => {
  *  TaskFields, damit TaskModal.f direkt zuweisbar ist; Picker greifen defensiv (?? []). */
 export interface ChipFields {
   status?: TaskStatus;
-  due?: string | null; dueTime?: string | null; duration?: number | null;
-  scheduled?: string | null; scheduledTime?: string | null;
+  due?: string | null; dueTime?: string | null; estimate?: number | null;
   priority?: Priority;
   labels?: string[];
   recurrence?: string | null; recurBasis?: "due" | "done";
@@ -94,6 +93,8 @@ export interface ChipHost {
   /** ✕ am Datums-Chip: Kam der Wert aus dem Titel („morgen"), dort den Auslöser escapen, statt nur
    *  das Feld zu leeren – sonst bliebe das Wort aus dem Titel gestrippt. true = übernommen. */
   unparseDue?(): boolean;
+  /** Same behavior for an estimate parsed from a `~30m` title token. */
+  unparseEstimate?(): boolean;
   /** Dasselbe fuer den Wiederholungs-Chip („jeden tag" -> „\jeden \tag"). */
   unparseRecur?(): boolean;
   resetParsedLabels?(): void;             // Schnelleingabe: manuelle Label-Änderung entkoppelt vom Parser
@@ -133,21 +134,36 @@ function keepRecurrenceAnchored(f: ChipFields): void {
   f.due = firstOccurrence(f.recurrence, today) ?? today;
 }
 
-function openDate(host: ChipHost, anchor: HTMLElement, field: "due" | "scheduled"): void {
+function openDate(host: ChipHost, anchor: HTMLElement): void {
   const f = host.f;
-  const timeField = field === "due" ? "dueTime" : "scheduledTime";
-  const d = f[field];
-  const value = d ? combineDT(d, f[timeField]) : "";
-  // Dauer nur am Fälligkeits-Datum anbieten (= Event-Länge im Kalender).
-  const dur = field === "due"
-    ? { value: f.duration ?? null, onChange: (v: number | null) => { f.duration = v; host.rerender(); } }
-    : undefined;
+  const value = f.due ? combineDT(f.due, f.dueTime) : "";
   openDatePicker(anchor, value, (v) => {
-    f[field] = v ? dateOf(v) : null;
-    f[timeField] = v ? timeOf(v) : null;
-    if (field === "due") { keepRecurrenceAnchored(f); host.pinDue(); }
+    f.due = v ? dateOf(v) : null;
+    f.dueTime = v ? timeOf(v) : null;
+    keepRecurrenceAnchored(f); host.pinDue();
     host.rerender();
-  }, dur);
+  });
+}
+
+function openEstimate(host: ChipHost, anchor: HTMLElement): void {
+  openPopover(anchor, (pop, close) => {
+    pop.addClass("bt-picker");
+    pop.createDiv({ cls: "bt-pop-head", text: t("chip_estimate") });
+    const presets = [15, 30, 45, 60, 90, 120, 180, 240, 360, 480];
+    for (const minutes of presets) popRow(pop, "hourglass", formatEstimate(minutes), () => {
+      host.f.estimate = minutes; host.rerender(); close();
+    }, host.f.estimate === minutes);
+    const input = pop.createEl("input", { type: "text", cls: "bt-pop-input", attr: { placeholder: "30m · 1h · 3h" } });
+    input.value = host.f.estimate ? formatDuration(host.f.estimate) : "";
+    input.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const value = parseDuration(input.value);
+      if (!value || value < 1) { input.addClass("is-invalid"); return; }
+      host.f.estimate = value; host.rerender(); close();
+    };
+    window.setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
 }
 
 function openPrio(host: ChipHost, anchor: HTMLElement): void {
@@ -346,19 +362,26 @@ export const CHIPS: Record<ChipId, ChipDef> = {
     clear: () => { /* Status ist nie leer */ },
   },
   due: {
-    id: "due", icon: "calendar", nameKey: "chip_date", kind: "value",
+    id: "due", icon: "flag", nameKey: "chip_deadline", kind: "value",
     isSet: (f) => !!f.due,
-    valueLabel: (f) => formatDateTime(combineDT(f.due!, f.dueTime)) + (f.duration ? " · " + formatDuration(f.duration) : ""),
-    open: (host, a) => openDate(host, a, "due"),
+    valueLabel: (f) => formatDateTime(combineDT(f.due!, f.dueTime)),
+    open: (host, a) => openDate(host, a),
     // Aus dem Titel erkannt -> dort escapen (das Modal parst neu, der Chip leert sich dabei selbst
     // und das Wort bleibt im Titel). Sonst – manuell gesetzt oder Auslöser nicht mehr auffindbar –
     // wie bisher einfach leeren.
     clear: (host) => {
       if (host.unparseDue?.()) return;
-      host.f.due = null; host.f.dueTime = null; host.f.duration = null;
+      host.f.due = null; host.f.dueTime = null;
       keepRecurrenceAnchored(host.f);
       host.pinDue();
     },
+  },
+  estimate: {
+    id: "estimate", icon: "hourglass", nameKey: "chip_estimate", kind: "value",
+    isSet: (f) => !!f.estimate && f.estimate > 0,
+    valueLabel: (f) => formatEstimate(f.estimate!),
+    open: (host, a) => openEstimate(host, a),
+    clear: (host) => { if (host.unparseEstimate?.()) return; host.f.estimate = null; },
   },
   priority: {
     id: "priority", icon: "flag", nameKey: "chip_priority", kind: "value",
@@ -381,13 +404,6 @@ export const CHIPS: Record<ChipId, ChipDef> = {
     open: (host, a) => openRecur(host, a),
     // Aus dem Titel erkannt -> dort escapen (das Wort bleibt im Titel); sonst wie bisher leeren.
     clear: (host) => { if (host.unparseRecur?.()) return; host.f.recurrence = null; },
-  },
-  deadline: {
-    id: "deadline", icon: "clock", nameKey: "chip_deadline", kind: "value",
-    isSet: (f) => !!f.scheduled,
-    valueLabel: (f) => formatDeadline(combineDT(f.scheduled!, f.scheduledTime)),
-    open: (host, a) => openDate(host, a, "scheduled"),
-    clear: (host) => { host.f.scheduled = null; host.f.scheduledTime = null; },
   },
   reminder: {
     id: "reminder", icon: "alarm-clock", nameKey: "chip_reminder", kind: "value",
@@ -416,12 +432,12 @@ export const CHIPS: Record<ChipId, ChipDef> = {
  *  gespeichertes Profil hat). Tiers nur für nicht-„shown" Chips gelistet (Rest = shown). */
 export const DEFAULT_CHIP_PROFILES: Record<ChipSurface, ChipProfile> = {
   editor: {
-    order: ["due", "priority", "label", "details", "recurrence", "reminder", "deadline", "parent", "status"],
-    tiers: { deadline: "onValue", parent: "onValue", status: "hidden" },
+    order: ["due", "estimate", "priority", "label", "details", "recurrence", "reminder", "parent", "status"],
+    tiers: { parent: "onValue", status: "hidden" },
   },
   quickAdd: {
-    order: ["due", "priority", "label", "recurrence", "reminder", "deadline", "parent", "details", "status"],
-    tiers: { recurrence: "onValue", reminder: "onValue", deadline: "onValue", parent: "onValue", details: "hidden", status: "hidden" },
+    order: ["due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details", "status"],
+    tiers: { recurrence: "onValue", reminder: "onValue", parent: "onValue", details: "hidden", status: "hidden" },
   },
 };
 

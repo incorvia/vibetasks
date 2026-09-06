@@ -128,7 +128,6 @@ export function legacyToRRule(rule: string): string | null {
 const z = (n: number) => String(n).padStart(2, "0");
 const toIso = (d: Date) => d.getUTCFullYear() + "-" + z(d.getUTCMonth() + 1) + "-" + z(d.getUTCDate());
 const fromIso = (iso: string) => new Date(iso + "T00:00:00Z");
-const addDays = (iso: string, days: number) => { const d = fromIso(iso); d.setUTCDate(d.getUTCDate() + days); return toIso(d); };
 const ms = (iso: string) => fromIso(iso).getTime();
 
 /** Regel + Anker -> erster Termin ECHT nach `afterIso`. `null`, wenn die Regel ausläuft
@@ -171,10 +170,9 @@ function successorRule(rule: string): string {
  * Wiederholung sofort wieder als überfällig zurück, und der Nutzer hakt sie mehrfach ab, ohne
  * dass sich etwas bewegt.
  *
- * `scheduled` wandert mit und behält seinen Abstand zu `due` – wer „drei Tage vorher einplanen"
- * eingestellt hat, will das auch in der nächsten Runde.
+ * Zeitblöcke werden nicht kopiert; die neue Instanz übernimmt nur ihre Fälligkeit und Regel.
  */
-export function nextInstance(task: Task, today: string): { due: string | null; scheduled: string | null; recurrence: string } | null {
+export function nextInstance(task: Task, today: string): { due: string; recurrence: string } | null {
   if (!task.recurrence || !isValidRecurrence(task.recurrence)) return null;
   const fromDone = task.recurBasis === "done";
   const rule = successorRule(task.recurrence);
@@ -184,18 +182,7 @@ export function nextInstance(task: Task, today: string): { due: string | null; s
     const after = fromDone ? today : (ms(task.due) > ms(today) ? task.due : today);
     const nextDue = nextAfter(task.recurrence, anchor, after);
     if (!nextDue) return null;
-    let nextScheduled: string | null = null;
-    if (task.scheduled) {
-      const gap = Math.round((ms(task.scheduled) - ms(task.due)) / 86400000);
-      nextScheduled = addDays(nextDue, gap);
-    }
-    return { due: nextDue, scheduled: nextScheduled, recurrence: rule };
-  }
-  if (task.scheduled) {
-    const anchor = fromDone ? today : task.scheduled;
-    const after = fromDone ? today : (ms(task.scheduled) > ms(today) ? task.scheduled : today);
-    const next = nextAfter(task.recurrence, anchor, after);
-    return next ? { due: null, scheduled: next, recurrence: rule } : null;
+    return { due: nextDue, recurrence: rule };
   }
   // Regel ohne jedes Datum. Das ist ein Widerspruch – die Regel sagt WANN, ohne Anker gibt es kein
   // Wann – und wird deshalb gar nicht erst zugelassen (chips.ts haelt das Datum nach). In
@@ -203,7 +190,7 @@ export function nextInstance(task: Task, today: string): { due: string | null; s
   // Statt aufzugeben wird ab heute gerechnet. Sonst verschwaende die Aufgabe beim Abhaken
   // ERSATZLOS, und der Nutzer merkte es erst, wenn sie nie wiederkam.
   const fallback = nextAfter(task.recurrence, today, today);
-  return fallback ? { due: fallback, scheduled: null, recurrence: rule } : null;
+  return fallback ? { due: fallback, recurrence: rule } : null;
 }
 
 /**
@@ -223,4 +210,3 @@ export function firstOccurrence(rule: string, from: string): string | null {
   const hit = new RRule({ ...opts, dtstart: start }).after(start, true);
   return hit ? toIso(hit) : null;
 }
-

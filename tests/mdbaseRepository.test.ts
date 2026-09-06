@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TFile, parseYaml, stringifyYaml } from "obsidian";
-import { MdbaseRepository, MdbaseRepositoryError } from "../src/mdbaseRepository";
+import { bindRepository, MdbaseRepository, MdbaseRepositoryError } from "../src/mdbaseRepository";
+import { TimeStore } from "../src/timeService";
 
 type FakeFile = TFile & { path: string; basename: string; extension: string; stat: { mtime: number; size: number } };
 
@@ -56,12 +57,27 @@ function fakeApp() {
 }
 
 describe("MdbaseRepository", () => {
+  it("makes a newly dragged time block visible without waiting for metadataCache", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+    const store = new TimeStore(fake.app);
+    const block = await store.addBlock({
+      start: "2026-09-06T14:30:00-05:00", duration: 45,
+      kind: "task_schedule",
+      scope: { type: "task", id: "task-1", title_snapshot: "Dragged task" },
+      mode: "focus", selector: "manual", source: "drag",
+    });
+    expect(store.block(block.id)).toMatchObject({ start: "2026-09-06T14:30:00-05:00", duration: 45 });
+    expect(store.blocksIn("2026-09-06", "2026-09-06")).toHaveLength(1);
+  });
+
   it("initializes idempotently and performs lossless, revision-checked CRUD", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);
     const first = await repository.initialize();
     expect(first.ready).toBe(true);
-    expect(first.created).toHaveLength(6);
+    expect(first.created).toHaveLength(8);
     expect((await repository.initialize()).created).toEqual([]);
 
     await repository.create({

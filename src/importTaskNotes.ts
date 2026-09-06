@@ -9,6 +9,7 @@ import { ExportList, ExportTask, makeImportData, importData } from "./importExpo
 import { firstOpenStatus, firstDoneStatus, isDone, isTrashed, isKnownStatus } from "./statuses";
 import { isValidRecurrence, legacyToRRule } from "./recurrence";
 import { readTaskNotesConfig, mergeFieldMapping, buildStatusResolver, buildPriorityResolver, TnConfig } from "./tasknotesApi";
+import { migratedDeadline } from "./timingMigration";
 import { todayIso } from "./taskService";
 import { t } from "./i18n";
 
@@ -165,8 +166,9 @@ async function buildImportData(app: App, files: { file: TFile; fm: Record<string
     tasks.push({
       id: "", externalId: asStr(get("id")).trim() || file.path,
       title, status, priority: toPriority(asStr(get("priority"))),
-      due: due.date, dueTime: due.time, scheduled: sched.date, scheduledTime: sched.time,
-      duration: numOrNull(get("timeEstimate")), start: null,
+      due: migratedDeadline(due.date ? (due.time ? `${due.date}T${due.time}` : due.date) : null, sched.date ? (sched.time ? `${sched.date}T${sched.time}` : sched.date) : null)?.slice(0, 10) ?? null,
+      dueTime: (() => { const value = migratedDeadline(due.date ? (due.time ? `${due.date}T${due.time}` : due.date) : null, sched.date ? (sched.time ? `${sched.date}T${sched.time}` : sched.date) : null); return value?.includes("T") ? value.slice(11, 16) : null; })(),
+      estimate: numOrNull(get("timeEstimate")),
       project, parent: null, labels, recurrence: rec.recurrence, recurBasis: "due",
       reminders: [], created: (asStr(get("dateCreated")).trim() || todayIso()).slice(0, 10),
       completed, cancelled, description: body,

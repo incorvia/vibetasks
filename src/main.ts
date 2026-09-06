@@ -1,5 +1,5 @@
 import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
-import { VibeTaskSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE } from "./types";
+import { VibeTaskSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
 import { applyDefaults, toDelta } from "./settingsDelta";
@@ -33,7 +33,7 @@ import { todayStr, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
 import { tip } from "./tooltip";
 import { VibeTaskSettingTab } from "./settingsTab";
-import { TaskSearchModal } from "./searchModal";
+import { TaskSearchModal, TaskPickerModal } from "./searchModal";
 import { writeExportFile, parseExport, importData, JsonFilePickerModal, pickOsJsonFile } from "./importExport";
 import { ImportTaskNotesModal } from "./importTaskNotes";
 import { WhatsNewModal } from "./whatsNew";
@@ -45,6 +45,13 @@ import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } f
 import { isCollectionPath } from "./mdbaseResources";
 import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
 import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent } from "./linkedProjectNote";
+import { migrateTimingFields } from "./timingMigration";
+import { TimeStore, TimerService } from "./timeService";
+import { TimeDashboardModal } from "./timeDashboard";
+import { TimerConflictModal } from "./timerConflictModal";
+import { TimeBlockModal } from "./timeBlockModal";
+import { SchedulingService } from "./schedulingService";
+import { WorkTimerService } from "./workTimerService";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -75,6 +82,10 @@ export default class VibeTaskPlugin extends Plugin {
    *  Getrennt zu halten ist der ganze Trick: Vorlagen sind für Ansichten, Zähler, Google-Sync
    *  und Erinnerungen dadurch nicht vorhanden, ohne dass dort irgendwo ausgeschlossen wird. */
   templates!: TaskIndex;
+  timeStore!: TimeStore;
+  private timerSessions!: TimerService;
+  scheduling!: SchedulingService;
+  workTimer!: WorkTimerService;
   repository!: MdbaseRepository;
   gcalAuth!: GCalAuth;
   gcalSync!: GCalSync;
@@ -82,6 +93,9 @@ export default class VibeTaskPlugin extends Plugin {
   private gcalCache!: GCalCache;   // geräte-lokal (GCAL_CACHE_KEY), NICHT in data.json
   private device!: DeviceState;    // geräte-lokal (DEVICE_STATE_KEY), NICHT in data.json
   private gcalStatusBar: HTMLElement | null = null;
+  private timerStatusBar: HTMLElement | null = null;
+  private timerTick: number | null = null;
+  private notifiedExpiredBlocks = new Set<string>();
   private feedRedrawTimer: number | null = null;
   // WELCHE SEITE OFFEN IST, steht NICHT mehr hier: das gehört seit 1.34 dem jeweiligen Tab
   // (MainView.page, s. pageCtx.ts). Am Plugin bleibt nur, was es wirklich nur einmal gibt.
@@ -150,6 +164,19 @@ export default class VibeTaskPlugin extends Plugin {
     this.addChild(this.index);
     this.templates = new TaskIndex(this.app, () => this.settings, TEMPLATE_SCOPE);
     this.addChild(this.templates);
+    this.timeStore = new TimeStore(this.app); this.addChild(this.timeStore);
+    this.timerSessions = new TimerService(this.app, this.timeStore); this.addChild(this.timerSessions);
+    this.scheduling = new SchedulingService(this.timeStore, (id) => this.index.getById(id));
+    this.workTimer = new WorkTimerService(this.timerSessions, this.timeStore, {
+      taskById: (id) => this.index.getById(id),
+      tasksForScope: (scope) => this.tasksForTimeScope(scope),
+      snapshotsForTask: (task) => this.timeSnapshotsForTask(task),
+      markTaskComplete: (task) => this.setTaskStatus(task, firstDoneStatus()),
+      notify: (message) => { new Notice(message); },
+    });
+    this.register(this.timeStore.subscribe(() => this.renderAll()));
+    this.register(this.workTimer.subscribe(() => this.renderTimerStatus()));
+    this.setupTimerStatus();
     this.wireScanCaches();
     // KEIN globales Abo hier: MainView und NavView abonnieren den Index selbst (onOpen) und
     // zeichnen sich bei jeder Meldung neu. Ein zusätzliches renderAll() hier hieße, dass jede
@@ -190,6 +217,9 @@ export default class VibeTaskPlugin extends Plugin {
       this.renderAll();
       this.applyStartPage();   // wiederhergestellten Tab auf die eingestellte Startseite schicken
       await this.runPendingMigrations();   // Einmal-Migrationen beim ersten Start nach dem Update
+      this.timeStore.rebuild();
+      await this.workTimer.recover();
+      if (this.workTimer.needsResolution()) new Notice("VibeTask: multiple active timers need resolution. Run “Resolve timer conflicts”.", 0);
       this.scanReminders();   // Startlauf (fängt beim Öffnen kürzlich Verpasstes)
       this.seedGCalCacheIfEmpty();   // MUSS vor dem ersten Lauf stehen – sonst Massen-Push
       this.gcalSync.start();  // Auto-Push verdrahten + einmal initial abgleichen
@@ -306,6 +336,11 @@ export default class VibeTaskPlugin extends Plugin {
     this.addCommand({ id: "search", name: t("cmd_search"), callback: () => this.openSearch() });
     this.addCommand({ id: "whats-new", name: t("cmd_whatsnew"), callback: () => new WhatsNewModal(this).open() });
     this.addCommand({ id: "gcal-sync-now", name: t("cmd_gcal_sync_now"), callback: () => void this.gcalSync.syncNow() });
+    this.addCommand({ id: "time-dashboard", name: "Open time dashboard", callback: () => new TimeDashboardModal(this).open() });
+    this.addCommand({ id: "new-time-block", name: "New time block", callback: () => new TimeBlockModal(this, new Date()).open() });
+    this.addCommand({ id: "resolve-timer-conflicts", name: "Resolve timer conflicts", checkCallback: (checking) => {
+      const conflicted = this.workTimer?.needsResolution(); if (conflicted && !checking) new TimerConflictModal(this).open(); return conflicted;
+    } });
     this.addCommand({
       id: "count-tasks", name: t("cmd_count_tasks"),
       callback: () => new Notice(t("notice_count", this.index.all().length, this.index.open().length)),
@@ -2021,7 +2056,7 @@ export default class VibeTaskPlugin extends Plugin {
   openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null, priority?: Priority): void {
     new TaskModal(this, undefined, project, {
       defaultLabel: label, defaultToday: today, defaultStatus: status,
-      seed: (due || scheduled || priority) ? { due: due ?? undefined, scheduled: scheduled ?? undefined, priority } : undefined,
+      seed: (due || scheduled || priority) ? { due: due ?? scheduled ?? undefined, priority } : undefined,
     }).open();
   }
   openEditTask(task: Task): void { new TaskModal(this, task).open(); }
@@ -2229,11 +2264,44 @@ export default class VibeTaskPlugin extends Plugin {
       if (step === "descriptions") await this.migrateDescriptions({ silent: true });
       else if (step === "inboxRemoval") await this.migrateInboxRemoval({ silent: true });
       else if (step === "recurrenceRRule") await this.migrateRecurrenceToRRule();
+      else if (step === "timingModel") await this.migrateTimingModel();
       else await this.migrateTitles({ silent: true });
     }
     this.settings.schemaVersion = nextSchemaVersion(version);
     await this.saveSettings();
     if (hasData) { this.index.build(); this.renderAll(); new Notice(t("notice_auto_migrated")); }
+  }
+
+  private async migrateTimingModel(): Promise<void> {
+    const records = [...this.index.all(), ...this.templates.all()];
+    const backup: { path: string; before: Record<string, unknown>; gcal_link?: unknown }[] = [];
+    const cleanup = this.gcalCache.cleanup ?? [];
+    for (const task of records) {
+      const file = this.app.vault.getAbstractFileByPath(task.path); if (!(file instanceof TFile)) continue;
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const link = this.gcalCache.links[task.id];
+      if (!fm || !("scheduled" in fm || "start" in fm || "duration" in fm || "gcal_event_id" in fm || link)) continue;
+      await updateRecord(this.app, file, (frontmatter) => {
+        const result = migrateTimingFields(frontmatter);
+        if (result.changed || link) backup.push({ path: file.path, before: result.before as Record<string, unknown>, gcal_link: link });
+        if (typeof result.before.gcal_event_id === "string" && typeof result.before.gcal_calendar_id === "string") {
+          cleanup.push({ eventId: result.before.gcal_event_id, calendarId: result.before.gcal_calendar_id });
+        }
+      });
+      if (link) {
+        const calendarId = this.gcalCache.cals[link.c];
+        if (calendarId) cleanup.push({ eventId: link.e, calendarId });
+      }
+      delete this.gcalCache.links[task.id];
+    }
+    this.gcalCache.cleanup = cleanup;
+    if (backup.length) {
+      const folder = "_vibetasks/migrations";
+      if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      await this.app.vault.create(`${folder}/timing-${stamp}.json`, JSON.stringify({ version: 1, migrated_at: new Date().toISOString(), records: backup }, null, 2));
+      this.app.saveLocalStorage("vibetask-gcal-cache", this.gcalCache);
+    }
   }
 
   /** Bestehenden Log einer Notiz auf den aktuellen Stand bringen (verlustfrei): führendes „📄 " aus
@@ -2332,7 +2400,7 @@ export default class VibeTaskPlugin extends Plugin {
   async setTaskDate(task: Task, field: "due" | "scheduled", isoVal: string): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (isoVal) fm[field] = isoVal; else delete fm[field]; });
+    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (isoVal) fm.due = isoVal; else delete fm.due; delete fm.scheduled; });
   }
 
   /** Sammel-Verschieben („Verschieben" im Kopf der Überfällig-Sektion): setzt `due` ALLER
@@ -2352,16 +2420,112 @@ export default class VibeTaskPlugin extends Plugin {
     new Notice(t("report_tasks_moved", tasks.length));
   }
 
-  async setTaskDuration(task: Task, minutes: number | null): Promise<void> {
+  async setTaskEstimate(task: Task, minutes: number | null): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(task.path);
     if (!(f instanceof TFile)) return;
-    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (minutes) fm.duration = minutes; else delete fm.duration; });
+    await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (minutes) fm.estimate = minutes; else delete fm.estimate; });
+  }
+
+  private async timeSnapshotsForTask(task: Task): Promise<Partial<WorkSession>> {
+    const snapshots: Partial<WorkSession> = {};
+    if (task.project) {
+      const pf = this.app.vault.getAbstractFileByPath(task.project);
+      const fm = pf instanceof TFile ? this.app.metadataCache.getFileCache(pf)?.frontmatter : null;
+      if (typeof fm?.id === "string") {
+        const directArea = fm.type === "area";
+        snapshots[directArea ? "area_id_snapshot" : "project_id_snapshot"] = fm.id;
+        snapshots[directArea ? "area_title_snapshot" : "project_title_snapshot"] = String(fm.title ?? pf?.name ?? fm.id);
+      }
+      if (fm?.type === "project" && typeof fm.area === "string") {
+        const areaName = fm.area.replace(/^\[\[|\]\]$/g, "").split("|")[0];
+        const area = (await this.repository.list("area")).find((r) => r.path.endsWith(`/${areaName}.md`) || r.frontmatter.title === areaName);
+        if (area) {
+          snapshots.area_id_snapshot = area.id;
+          snapshots.area_title_snapshot = typeof area.frontmatter.title === "string" ? area.frontmatter.title : area.id;
+        }
+      }
+    }
+    return snapshots;
+  }
+
+  async startTaskTimer(task: Task, block?: TimeBlock): Promise<void> {
+    try { await this.workTimer.startTask(task.id, block?.id); this.renderTimerStatus(); }
+    catch (error) { new Notice(error instanceof Error ? error.message : String(error)); }
+  }
+
+  async tasksForTimeScope(scope: TimeScope): Promise<Task[]> {
+    let paths = new Set<string>();
+    if (scope.type === "project") {
+      const project = (await this.repository.list("project")).find((r) => r.id === scope.id); if (project) paths.add(project.path);
+    } else if (scope.type === "area") {
+      const area = (await this.repository.list("area")).find((r) => r.id === scope.id);
+      if (area) {
+        paths.add(area.path); const title = typeof area.frontmatter.title === "string" ? area.frontmatter.title : "";
+        for (const project of await this.repository.list("project")) {
+          const parent = typeof project.frontmatter.area === "string" ? project.frontmatter.area.replace(/^\[\[|\]\]$/g, "").split("|")[0] : "";
+          if (parent === title || parent === area.path.replace(/\.md$/, "").split("/").pop()) paths.add(project.path);
+        }
+      }
+    }
+    const tasks = this.index.open().filter((task) => scope.type === "task" ? task.id === scope.id : !!task.project && paths.has(task.project));
+    const cmp = (a: number[], b: number[]) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] ?? 0) - (b[i] ?? 0); if (d) return d; } return 0; };
+    return tasks.sort((a, b) => cmp(this.index.orderKey(a), this.index.orderKey(b)) || a.title.localeCompare(b.title));
+  }
+
+  async startTimeBlock(block: TimeBlock): Promise<void> {
+    try {
+      const result = await this.workTimer.startBlock(block.id);
+      if (result.status === "empty") { new Notice("No open tasks are available in this time block."); return; }
+      if (result.status === "selection_required") {
+        const eligible = new Set(result.taskIds);
+        const candidates = this.index.open().filter((task) => eligible.has(task.id));
+        new TaskPickerModal(this.app, candidates, "Choose a task for this block", (task) => {
+          void this.workTimer.startBlock(block.id, task.id).catch((error) => new Notice(error instanceof Error ? error.message : String(error)));
+        }).open();
+      }
+    } catch (error) { new Notice(error instanceof Error ? error.message : String(error)); }
+  }
+
+  async stopTaskTimer(): Promise<void> { await this.workTimer.stop(); this.renderTimerStatus(); }
+
+  async skipTaskTimer(): Promise<void> { await this.workTimer.skip(); }
+
+  async completeTimedTask(): Promise<void> { await this.workTimer.completeActive(); }
+
+  private setupTimerStatus(): void {
+    this.timerStatusBar = this.addStatusBarItem(); this.timerStatusBar.addClass("bt-timer-status");
+    this.timerTick = window.setInterval(() => this.renderTimerStatus(), 1000);
+    this.register(() => { if (this.timerTick) window.clearInterval(this.timerTick); });
+    this.renderTimerStatus();
+  }
+
+  private renderTimerStatus(): void {
+    const el = this.timerStatusBar; if (!el) return;
+    const active = this.workTimer?.active(); el.empty(); el.style.display = active ? "" : "none"; if (!active) return;
+    const task = this.index?.all().find((t) => t.id === active.task_id);
+    const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(active.started_at)) / 1000));
+    const clock = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    const block = active.block_id ? this.timeStore.block(active.block_id) : null;
+    if (block && Date.now() >= Date.parse(block.start) + block.duration * 60_000 && !this.notifiedExpiredBlocks.has(block.id)) {
+      this.notifiedExpiredBlocks.add(block.id);
+      new Notice("Time block ended. The current timer will keep running until you stop or complete it.");
+    }
+    const stop = el.createSpan({ cls: "bt-timer-status-icon", attr: { role: "button" } }); setIcon(stop, "square");
+    stop.onclick = (event) => { event.stopPropagation(); void this.stopTaskTimer(); }; tip(stop, "Stop timer");
+    el.createSpan({ text: `${task?.title ?? "Timer"} · ${clock}` });
+    const complete = el.createSpan({ cls: "bt-timer-status-icon", attr: { role: "button" } }); setIcon(complete, "check");
+    complete.onclick = (event) => { event.stopPropagation(); void this.completeTimedTask(); }; tip(complete, "Complete task");
+    if (block?.mode === "blitz") {
+      const skip = el.createSpan({ cls: "bt-timer-status-icon", attr: { role: "button" } }); setIcon(skip, "skip-forward");
+      skip.onclick = (event) => { event.stopPropagation(); void this.skipTaskTimer(); }; tip(skip, "Skip and start next");
+    }
   }
 
   /** Checkbox-Umschalten: erledigt ⇄ offen. Delegiert an setTaskStatus, damit die
    *  Erledigt-Semantik (Zeitstempel, Wiederholung) an EINER Stelle lebt. */
   async toggleDone(task: Task): Promise<void> {
-    await this.setTaskStatus(task, isDone(task.status) ? firstOpenStatus() : firstDoneStatus());
+    if (!isDone(task.status)) await this.workTimer.completeTask(task.id);
+    else await this.setTaskStatus(task, firstOpenStatus());
   }
 
   /** Status setzen (Frontmatter). Beim Wechsel nach „erledigt" wird `completed`
@@ -2468,7 +2632,7 @@ export default class VibeTaskPlugin extends Plugin {
     // Wiederkehrend + gerade erledigt -> nächste Instanz anlegen.
     if (nowDone && !wasDone && task.recurrence) {
       const next = nextInstance(task, todayStr());
-      if (next && (next.due || next.scheduled)) {
+      if (next?.due) {
         await createTaskNote(this.app, this.settings, {
           title: task.title,
           titleInFrontmatter: task.titleInFm,   // nächste Instanz wie die Vorlage
@@ -2477,9 +2641,7 @@ export default class VibeTaskPlugin extends Plugin {
           labels: [...task.labels],
           due: next.due,
           dueTime: task.dueTime,             // Uhrzeit/Dauer in die nächste Instanz übernehmen
-          scheduled: next.scheduled,
-          scheduledTime: task.scheduledTime,
-          duration: task.duration,
+          estimate: task.estimate,
           // Nicht task.recurrence: Bei COUNT traegt die Folgeaufgabe eine um eins verringerte
           // Regel, sonst liefe die Zaehlung nie ab (s. recurrence.successorRule).
           recurrence: next.recurrence,
@@ -2487,6 +2649,8 @@ export default class VibeTaskPlugin extends Plugin {
         });
       }
     }
+    if (nowDone && !wasDone) await this.scheduling.completeTask(task.id);
+    else if (wasDone && !nowDone) await this.scheduling.reopenTask(task.id);
   }
 
   /** Erinnerungen einer Aufgabe setzen (Kontextmenü – das Modal schreibt sie über persist).
@@ -2510,8 +2674,7 @@ export default class VibeTaskPlugin extends Plugin {
       description: task.description,
       status: firstOpenStatus(),
       due: task.due, dueTime: task.dueTime,
-      scheduled: task.scheduled, scheduledTime: task.scheduledTime,
-      duration: task.duration,
+      estimate: task.estimate,
       priority: task.priority,
       project: task.project ? baseName(task.project) : null,
       labels: [...task.labels],
@@ -2573,8 +2736,7 @@ export default class VibeTaskPlugin extends Plugin {
         description: kid.description,
         status: firstOpenStatus(),
         due: d ? d.due : kid.due, dueTime: kid.dueTime,
-        scheduled: d ? d.scheduled : kid.scheduled, scheduledTime: kid.scheduledTime,
-        duration: kid.duration,
+        estimate: kid.estimate,
         priority: kid.priority,
         // `undefined` heisst „Projekt des Originals behalten", ein ausdrückliches `null` heisst
         // Eingang. Beim Anwenden einer Vorlage gewinnt immer das Ziel des Dialogs: Der
@@ -2601,7 +2763,9 @@ export default class VibeTaskPlugin extends Plugin {
    *  (Kaskade). Sonst blieben Kinder ohne sichtbaren Parent zurück und wären nur noch
    *  über die Suche, nicht mehr in den Boards erreichbar. */
   async cancelTask(task: Task, from: ChildSource & { descendants(p: string): Task[] } = this.index): Promise<void> {
+    const targets = [task, ...from.descendants(task.path)];
     await this.trashTasks([task], from);
+    for (const target of targets) await this.scheduling.cancelFutureForTask(target.id);
   }
 
   /** Aufgaben in den Papierkorb – jede inkl. ihres Unteraufgaben-Baums (collectTrashTargets: Dedup
@@ -2640,6 +2804,8 @@ export default class VibeTaskPlugin extends Plugin {
 
   /** Einzelne Aufgabe endgültig löschen (in Obsidians Papierkorb – dort wiederherstellbar). */
   async deleteTaskForever(path: string): Promise<void> {
+    const task = this.index.get(path);
+    if (task) await this.scheduling.cancelFutureForTask(task.id);
     const f = this.app.vault.getAbstractFileByPath(path);
     if (f instanceof TFile) await this.repository.trash(f.path);
   }
@@ -2872,8 +3038,13 @@ export default class VibeTaskPlugin extends Plugin {
       cache: this.gcalCache,
       persist: () => this.saveSettings(),
       persistCache: () => { this.app.saveLocalStorage(GCAL_CACHE_KEY, this.gcalCache); return Promise.resolve(); },
-      allTasks: () => this.index.all(),
+      // Deadlines are metadata, not occupied time. Google receives time blocks only.
+      allTasks: () => [],
       subscribe: (cb) => this.index.subscribe(cb),
+      timeBlocks: () => this.timeStore.blocks(),
+      updateTimeBlockTiming: (id, start, duration) => this.scheduling.updateFromCalendar(id, start, duration),
+      setTimeBlockCalendarLink: (id, eventId, calendarId) => this.scheduling.setCalendarLink(id, eventId, calendarId),
+      subscribeTime: (cb) => this.timeStore.subscribe(cb),
     };
     this.gcalSync = new GCalSync(host, this.gcalAuth);
     this.register(() => this.gcalSync.stop());   // Auto-Push-Abo + Debounce beim Unload lösen

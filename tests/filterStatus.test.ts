@@ -73,26 +73,25 @@ describe("matchesTask – Suche", () => {
   });
 });
 
-describe("matchesTask – Deadline-Zeitraum", () => {
+describe("matchesTask – alter Deadline-Filter als due-Alias", () => {
   const withDates = (due: string | null, scheduled: string | null): Task => ({ ...mk("x", "todo"), due, scheduled });
 
-  it("prüft `scheduled`, nicht `due`", () => {
-    // Der Kern: „Deadline diese Woche" ist eine andere Frage als „fällig diese Woche".
-    const t1 = withDates("2030-01-01", "2026-07-20");   // Deadline überfällig, Fälligkeit fern
+  it("prüft `due` und ignoriert `scheduled`", () => {
+    const t1 = withDates("2026-07-20", "2030-01-01");
     expect(matchesTask(t1, crit({ deadlineRange: "overdue" }), TODAY)).toBe(true);
-    expect(matchesTask(t1, crit({ range: "overdue" }), TODAY)).toBe(false);
+    expect(matchesTask(t1, crit({ range: "overdue" }), TODAY)).toBe(true);
   });
 
   it("ohne Deadline: nur „ohne Datum“ trifft", () => {
-    const t1 = withDates("2026-07-20", null);
+    const t1 = withDates(null, "2026-07-20");
     expect(matchesTask(t1, crit({ deadlineRange: "nodate" }), TODAY)).toBe(true);
     expect(matchesTask(t1, crit({ deadlineRange: "next7" }), TODAY)).toBe(false);
   });
 
-  it("wirkt UND-verknüpft mit dem Fälligkeits-Zeitraum", () => {
-    const t1 = withDates("2026-07-20", "2026-07-24");   // überfällig fällig, Deadline in 2 Tagen
-    expect(matchesTask(t1, crit({ range: "overdue", deadlineRange: "next7" }), TODAY)).toBe(true);
-    expect(matchesTask(t1, crit({ range: "next7", deadlineRange: "next7" }), TODAY)).toBe(false);
+  it("bleibt als zweite Facette UND-verknüpft", () => {
+    const t1 = withDates("2026-07-20", "2026-07-24");
+    expect(matchesTask(t1, crit({ range: "overdue", deadlineRange: "overdue" }), TODAY)).toBe(true);
+    expect(matchesTask(t1, crit({ range: "next7", deadlineRange: "overdue" }), TODAY)).toBe(false);
   });
 
   it("zählt als eigene aktive Facette", () => {

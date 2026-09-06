@@ -332,11 +332,8 @@ export class TaskIndex extends Component {
       priority: (typeof fm.priority === "string" && PRIO.has(fm.priority) ? fm.priority : "normal") as Priority,
       due: asDate(fm.due),
       dueTime: asTime(fm.due),
-      scheduled: asDate(fm.scheduled),
-      scheduledTime: asTime(fm.scheduled),
-      duration: asNum(fm.duration),
+      estimate: asNum(fm.estimate),
       sortOrder: asNum(fm.sort_order),
-      start: asDate(fm.start),
       // Projekt über den Basenamen gegen echte Projekt-/Bereichs-Notizen (immun gegen gleichnamige
       // Fremd-Notizen, s. resolveProjectPath). `parent` bleibt beim generischen Link-Resolver.
       project: resolveProjectPath(fm.project, this.projectPaths()),

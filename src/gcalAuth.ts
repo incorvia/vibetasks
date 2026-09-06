@@ -145,7 +145,7 @@ function toTokens(json: Record<string, unknown>, prevRefresh?: string): GCalToke
   const access = json.access_token as string | undefined;
   const refresh = (json.refresh_token as string | undefined) ?? prevRefresh;
   const expiresIn = (json.expires_in as number | undefined) ?? 3600;
-  if (!access || !refresh) throw new GCalAuthError("Unvollständige Token-Antwort von Google.");
+  if (!access || !refresh) throw new GCalAuthError("Incomplete token response from Google.");
   return {
     accessToken: access,
     refreshToken: refresh,
@@ -173,7 +173,7 @@ export class GCalAuth {
   /** Gültiges Access-Token liefern; bei Bedarf transparent per Refresh-Token erneuern. */
   async getAccessToken(): Promise<string> {
     const t = this.store.load();
-    if (!t?.refreshToken) throw new GCalAuthError("Nicht mit Google verbunden.");
+    if (!t?.refreshToken) throw new GCalAuthError("Not connected to Google.");
     if (t.accessToken && Date.now() < t.expiresAt - EXPIRY_SKEW_MS) return t.accessToken;
     return this.refresh(t);
   }
@@ -220,7 +220,7 @@ export class GCalAuth {
 
   private requireCredentials(): GCalCredentials {
     const creds = this.getCredentials();
-    if (!creds?.clientId) throw new GCalAuthError("Keine Google-Zugangsdaten hinterlegt.");
+    if (!creds?.clientId) throw new GCalAuthError("Google credentials have not been configured.");
     return creds;
   }
 
@@ -249,7 +249,7 @@ export class GCalAuth {
             server.close();
             window.clearTimeout(timer);
             if (url.searchParams.get("error")) return reject(new GCalAuthError(url.searchParams.get("error")!));
-            if (!ok) return reject(new GCalAuthError("Ungültige Antwort (state stimmt nicht)."));
+            if (!ok) return reject(new GCalAuthError("Invalid response (OAuth state did not match)."));
             resolve({ code: url.searchParams.get("code")!, redirectUri: base });
           } catch (e) {
             reject(e instanceof Error ? e : new GCalAuthError(String(e)));
@@ -258,7 +258,7 @@ export class GCalAuth {
         let base = "";
         const timer = window.setTimeout(() => {
           server.close();
-          reject(new GCalAuthError("Zeitüberschreitung bei der Google-Anmeldung."));
+          reject(new GCalAuthError("Google sign-in timed out."));
         }, LOOPBACK_TIMEOUT_MS);
         server.on("error", (e: Error) => { window.clearTimeout(timer); reject(e); });
         server.listen(0, "127.0.0.1", () => {
@@ -275,6 +275,7 @@ export class GCalAuth {
             state,
             access_type: "offline",
             prompt: "consent",   // erzwingt refresh_token auch bei erneutem Login
+            hl: "en",            // keep Google's OAuth UI consistent with VibeTask's default UI
           });
           window.open(authUrl);
         });
@@ -309,7 +310,7 @@ export class GCalAuth {
     // Auf Zustimmung am Zweitgerät warten (authorization_pending → weiter pollen).
     let wait = intervalMs;
     for (;;) {
-      if (Date.now() > expiresAt) throw new GCalAuthError("Der Anmeldecode ist abgelaufen.");
+      if (Date.now() > expiresAt) throw new GCalAuthError("The sign-in code has expired.");
       await sleep(wait);
       const res = await requestUrl({
         url: TOKEN_ENDPOINT,
@@ -340,12 +341,12 @@ function sleep(ms: number): Promise<void> {
 /** Schlichte Abschluss-Seite im Browser nach dem Loopback-Redirect. */
 function loopbackPage(ok: boolean): string {
   const msg = ok
-    ? "✅ VibeTask ist jetzt mit Google Kalender verbunden."
-    : "⚠️ Anmeldung fehlgeschlagen. Bitte in Obsidian erneut versuchen.";
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+    ? "✅ VibeTask is now connected to Google Calendar."
+    : "⚠️ Sign-in failed. Please try again in Obsidian.";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>VibeTask</title><style>
 body{font-family:system-ui,sans-serif;background:#1e1e1e;color:#eee;display:flex;
 min-height:100vh;align-items:center;justify-content:center;margin:0}
 div{max-width:28rem;text-align:center;line-height:1.5;padding:2rem}
-</style></head><body><div><p>${msg}</p><p>Du kannst dieses Fenster schließen.</p></div></body></html>`;
+</style></head><body><div><p>${msg}</p><p>You can close this window.</p></div></body></html>`;
 }

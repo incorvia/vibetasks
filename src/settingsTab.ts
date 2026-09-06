@@ -9,6 +9,7 @@ import { PlanTabId, readPlanTabs, dailyNotesEnabled, forceListLeft } from "./pla
 import { t } from "./i18n";
 import { tip } from "./tooltip";
 import { CAL_MODES, CalMode } from "./calendarModel";
+import { CalendarTaskColorMode } from "./calendarTaskColor";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
@@ -198,6 +199,18 @@ export class VibeTaskSettingTab extends PluginSettingTab {
       dd.setValue(p.settings.defaultCalendarView);
       dd.onChange(async (v) => {
         p.settings.defaultCalendarView = v as CalMode;
+        await p.saveSettings();
+        p.renderAll();
+      });
+    });
+
+    new Setting(containerEl).setName(t("set_calendar_task_colors")).setDesc(t("set_calendar_task_colors_desc")).addDropdown((dd) => {
+      dd.addOption("priority", t("set_calendar_task_colors_priority"));
+      dd.addOption("calendar", t("set_calendar_task_colors_calendar"));
+      dd.addOption("task", t("set_calendar_task_colors_task"));
+      dd.setValue(p.settings.calendarTaskColorMode);
+      dd.onChange(async (value) => {
+        p.settings.calendarTaskColorMode = value as CalendarTaskColorMode;
         await p.saveSettings();
         p.renderAll();
       });
@@ -541,10 +554,6 @@ export class VibeTaskSettingTab extends PluginSettingTab {
     boolRow("gcal_on_update", () => g.syncOnUpdate, (v) => (g.syncOnUpdate = v));
     boolRow("gcal_on_delete", () => g.syncOnDelete, (v) => (g.syncOnDelete = v));
     boolRow("gcal_remove_on_complete", () => g.removeEventOnComplete, (v) => (g.removeEventOnComplete = v));
-    new Setting(av).setName(t("gcal_duration")).addText((txt) => {
-      txt.inputEl.type = "number";
-      txt.setValue(String(g.defaultDurationMin)).onChange((v) => { const n = parseInt(v, 10); if (n > 0) { g.defaultDurationMin = n; void p.saveSettings(); } });
-    });
     new Setting(av).setName(t("gcal_timezone")).addText((txt) =>
       txt.setValue(g.timezone).onChange((v) => { g.timezone = v.trim() || g.timezone; void p.saveSettings(); }));
     new Setting(av).setName(t("gcal_statusbar")).addToggle((tg) =>

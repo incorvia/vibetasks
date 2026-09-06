@@ -69,8 +69,8 @@ describe("seedGCalCache – Vorbelegung statt Massen-Push", () => {
     const link = c.links["t-1"];
     expect(link.d).toBe("2026-10-03");
     expect(link.t).toBe("09:30");
-    // Reihenfolge der Signatur: Titel, due, dueTime, Dauer, Erinnerungen, Kalender-INDEX.
-    expect(JSON.parse(link.s)).toEqual(["Zahnarzt", "2026-10-03", "09:30", null, "", 0]);
+    // Legacy task links no longer include task duration; writable timing lives on blocks.
+    expect(JSON.parse(link.s)).toEqual(["Zahnarzt", "2026-10-03", "09:30", "", 0]);
   });
 
   it("überspringt Aufgaben ohne Datum – die gehören gar nicht in den Kalender", () => {
