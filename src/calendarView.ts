@@ -162,9 +162,17 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
   // JEDER DOM-Änderung im Teilbaum muss die Bedingung neu geprüft werden (im Profil: 72 ms
   // Recalculate Style je Neuzeichnung). Eine schlichte Klasse kostet nichts.
   root.parentElement?.addClass("bt-view-calendar");
+  // Obsidian Mobile sometimes reports a desktop-like viewport. The page header already marks
+  // those panes explicitly; the media query is the fallback for embeds and unusually narrow panes.
+  const mobile = !!root.closest(".bt-mobile")
+    || (window.matchMedia("(hover: none)").matches && root.getBoundingClientRect().width <= 700);
+  root.toggleClass("bt-calview-mobile", mobile);
   const key = pageKey(ctx);
   const anchor = anchors.get(key) ?? today;
-  const mode: CalMode = opts.calMode;
+  // Seven (or even three) time columns cannot be made legible on a phone without a horizontally
+  // panning canvas, which conflicts with Obsidian's own pane swipe. Preserve the saved desktop
+  // preference, but present the same anchor as a day timeline while this pane is compact.
+  const mode: CalMode = mobile && (opts.calMode === "week" || opts.calMode === "3day") ? "day" : opts.calMode;
 
   const go = (next: string): void => { anchors.set(key, next); redraw(); };
   // Ein Klick auf ‹/› springt um die angezeigte Spanne weiter: Jahr, Monat, Woche oder Tag.
@@ -190,7 +198,8 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
   head.createSpan({ cls: "bt-calview-title", text: rangeTitle(mode, anchor) });
 
   const seg = head.createDiv({ cls: "bt-tabs bt-calview-seg" });
-  for (const m of CAL_MODES) {
+  const modes = mobile ? CAL_MODES.filter((m) => m === "year" || m === "month" || m === "day") : CAL_MODES;
+  for (const m of modes) {
     const b = seg.createEl("button", { cls: "bt-tab" + (mode === m ? " is-active" : ""), text: t("cal_mode_" + m) });
     b.onclick = () => ctx.setOption({ calMode: m });
   }
@@ -239,13 +248,21 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
     : new Map<string, BlockSlice[]>();
 
   // Kalender + Seitenleiste stehen nebeneinander (das Panel schiebt das Raster, überlagert es nicht).
-  const body = root.createDiv({ cls: "bt-calview-body" });
+  const body = root.createDiv({ cls: "bt-calview-body" + (mobile ? " is-mobile" : "") });
+  if (mobile) containHorizontalGestures(root);
   // Jeder Zeichner baut sein GERÜST und liefert eine Funktion zurück, die nur die Aufgaben füllt.
   // Tag, 3 Tage und Woche sind dasselbe Zeitraster – nur mit 1, 3 oder 7 Spalten.
   const fillGrid = mode === "year" ? renderYear(body, plugin, anchor, today, zoom)
-    : mode === "month" ? renderMonth(body, ctx, anchor, today, add)
+    : mode === "month" ? renderMonth(body, ctx, anchor, today, add, mobile ? zoom : undefined)
       : renderTimeGrid(body, plugin, timeGridDays(mode, anchor), today, add);
-  const fillPanel = panelUseful && opts.calPanel ? renderUnscheduled(body, plugin, add) : null;
+  let fillPanel: ((tasks: Task[]) => void) | null = null;
+  if (panelUseful && opts.calPanel) {
+    if (mobile) {
+      const scrim = body.createDiv({ cls: "bt-calview-panel-scrim" });
+      scrim.onclick = () => ctx.setCalPanel(false);
+    }
+    fillPanel = renderUnscheduled(body, plugin, add, mobile ? () => ctx.setCalPanel(false) : undefined);
+  }
 
   /** Nur die aufgabenabhängigen Teile neu zeichnen (Gerüst bleibt stehen). Termine werden bei
    *  JEDEM paint frisch aus dem Feed gelesen – so genügt ein renderMain() nach einem Feed-Refresh,
@@ -351,7 +368,8 @@ const firstTask = (buckets: Map<string, Task[]>): Task | null => {
 };
 
 function renderMonth(root: HTMLElement, ctx: PageCtx,
-  anchor: string, today: string, add: CalendarAdd): GridFiller {
+  anchor: string, today: string, add: CalendarAdd,
+  mobileZoom?: (next: string, m: CalMode) => void): GridFiller {
   const plugin = ctx.plugin;
   const wrap = root.createDiv({ cls: "bt-calview bt-calview-month" });
   const wd = wrap.createDiv({ cls: "bt-calview-weekdays" });
@@ -368,9 +386,11 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
     if (wdIdx === 0 || wdIdx === 6) cell.addClass("is-weekend");
 
     const num = cell.createDiv({ cls: "bt-calview-daynum", text: String(parseISO(day).getDate()) });
-    const addHere = (): void => plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label);
-    num.onclick = (e) => { e.stopPropagation(); addHere(); };
-    cell.onclick = addHere;
+    const activate = (): void => mobileZoom
+      ? mobileZoom(day, "day")
+      : plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label);
+    num.onclick = (e) => { e.stopPropagation(); activate(); };
+    cell.onclick = activate;
 
     // Aufgaben-Teil der Zelle in einem eigenen Container, der sich in einem Zug leeren lässt.
     // Nur DAS wird beim Patch neu gefüllt. Er füllt die Zelle unter der Tagesnummer aus (flex: 1),
@@ -391,6 +411,7 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
       ...blocks.map((b) => (p: HTMLElement) => renderBlockChip(p, plugin, b.block)),
       ...tasks.map((tk) => (p: HTMLElement) => renderChip(p, plugin, tk)),
     ];
+    body.dataset.count = draws.length ? String(draws.length) : "";
     const shown = shownChips(draws.length, fit);
     const list = body.createDiv({ cls: "bt-calview-chips" });
     for (const d of draws.slice(0, shown)) d(list);
@@ -620,7 +641,8 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
 
 /** Seitenleiste „Undatiert": baut das Gerüst und liefert den Füller für die Kartenliste.
  *  Von hier per Drag ins Raster; der Drop setzt `due` – die Aufgabe verschwindet dann aus der Liste. */
-function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: CalendarAdd): (tasks: Task[]) => void {
+function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: CalendarAdd,
+  closePanel?: () => void): (tasks: Task[]) => void {
   const panel = body.createDiv({ cls: "bt-calview-panel" });
   // Rückweg: eine Aufgabe aus dem Raster HIERHIN ziehen entfernt ihr Datum (setTaskDate löscht das
   // Frontmatter-Feld bei leerem Wert). Das Ziel ist der ganze Panel-Rahmen, nicht nur die Liste –
@@ -630,6 +652,18 @@ function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: Calen
   const head = panel.createDiv({ cls: "bt-calview-panel-head" });
   head.createSpan({ cls: "bt-calview-panel-title", text: t("cal_unscheduled") });
   const count = head.createSpan({ cls: "bt-calview-panel-count" });
+  if (closePanel) {
+    const close = head.createEl("button", { cls: "bt-calview-panel-close" });
+    close.setAttr("aria-label", t("btn_close"));
+    setIcon(close, "x");
+    close.onclick = closePanel;
+    panel.setAttr("role", "dialog");
+    panel.setAttr("aria-label", t("cal_unscheduled"));
+    panel.setAttr("aria-modal", "true");
+    panel.setAttr("tabindex", "-1");
+    panel.onkeydown = (e) => { if (e.key === "Escape") closePanel(); };
+    window.setTimeout(() => { if (panel.isConnected) panel.focus({ preventScroll: true }); }, 0);
+  }
   const list = panel.createDiv({ cls: "bt-calview-panel-list" });
 
   const addEl = panel.createDiv({ cls: "bt-calview-panel-add" });
@@ -658,6 +692,23 @@ function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: Calen
       dragSource(card, tk);
     }
   };
+}
+
+/** Keep sideways calendar gestures away from Obsidian's workspace navigation on touch devices.
+ * Vertical scrolling remains native; a clearly horizontal move is consumed by this view. */
+function containHorizontalGestures(el: HTMLElement): void {
+  let x = 0, y = 0;
+  el.addEventListener("touchstart", (e) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    x = touch.clientX; y = touch.clientY;
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    const dx = Math.abs(touch.clientX - x), dy = Math.abs(touch.clientY - y);
+    if (dx > 8 && dx > dy) { e.preventDefault(); e.stopPropagation(); }
+  }, { passive: false });
 }
 
 const projectBase = (p: string): string => p.split("/").pop()!.replace(/\.md$/, "");

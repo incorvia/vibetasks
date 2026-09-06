@@ -18,6 +18,19 @@ export const slugify = (s: string): string =>
 export const normalizeLabel = (s: string): string =>
   slugify(s).toLowerCase().replace(/^#/, "").replace(/\s+/g, "-");
 
+/** Labels introduced by the current edit, preserving input order. Existing labels are excluded so
+ *  assigning a label that the user deliberately hid does not silently pin it again. */
+export function newlyIntroducedLabels(labels: readonly string[], known: readonly string[]): string[] {
+  const seen = new Set(known);
+  const added: string[] = [];
+  for (const label of labels) {
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    added.push(label);
+  }
+  return added;
+}
+
 /** Basename (ohne Ordner und `.md`). Die EINE Quelle: Aufgaben verweisen über den Basename auf
  *  Projekt und Elternaufgabe, und genau diese Zeile stand vorher siebenmal im Quelltext – sechsmal
  *  wörtlich gleich, einmal als `projectName` in einer View-Datei, aus der sogar `main.ts` sie zog. */

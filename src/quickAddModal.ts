@@ -8,7 +8,7 @@ import { Modal, Notice, setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { Priority, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels } from "./taskService";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { todayStr } from "./format";
@@ -239,6 +239,7 @@ export class QuickAddModal extends Modal {
   private async submit(): Promise<void> {
     const title = this.titleValue();
     if (!title) { new Notice(t("err_enter_taskname")); return; }
+    const newLabels = newlyIntroducedLabels(this.f.labels, this.plugin.getLabels().map((label) => label.name));
     await createTaskNote(this.app, this.plugin.settings, {
       title, status: this.f.status,
       due: this.f.due, dueTime: this.f.dueTime, estimate: this.f.estimate,
@@ -247,6 +248,7 @@ export class QuickAddModal extends Modal {
       reminders: this.f.reminders, parent: this.f.parent,
       project: this.f.project,
     });
+    await this.plugin.showNewTaskLabels(newLabels);
     new Notice(t("qa_added"));
     // Für die nächste Aufgabe zurücksetzen (Projekt beibehalten).
     const project = this.f.project;

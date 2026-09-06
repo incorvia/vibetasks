@@ -2317,18 +2317,6 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     }
   }
   if (plan.estimate) meta.createSpan({ cls: "bt-chip bt-estimate" }).createSpan({ cls: "bt-meta-txt", text: plan.estimate });
-  if (!trash && isOpen(task.status)) {
-    const active = plugin.workTimer.active();
-    const timer = meta.createSpan({ cls: "bt-task-timer", attr: { role: "button", tabindex: "0" } });
-    const run = (event: Event): void => {
-      event.stopPropagation();
-      if (active?.task_id === task.id) void plugin.stopTaskTimer(); else void plugin.startTaskTimer(task);
-    };
-    setIcon(timer, active?.task_id === task.id ? "square" : "play");
-    tip(timer, active?.task_id === task.id ? "Stop timer" : "Start timer");
-    timer.onclick = run;
-    timer.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(event); } };
-  }
   if (plan.recur) meta.createSpan({ cls: "bt-chip bt-recur" });
   // Erinnerungs-Indikator: nur Icon (alarm-clock, wie der Reminder-Chip im Editor), Details im Tooltip.
   if (plan.reminders.length) {
@@ -2383,13 +2371,30 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     iconBtn(acts, "archive-restore", t("btn_restore"), () => void plugin.restoreTask(task));
     iconBtn(acts, "trash-2", t("btn_delete_forever"),
       () => confirmInline(acts, t("confirm_delete_forever_q"), () => void plugin.deleteTaskForever(task.path), () => plugin.renderAll()));
-  } else if (plan.backlink) {
-    // Rechte Zone: nur der @Projekt-Verweis (der Hauptaufgaben-Link sitzt links in der Meta-Zeile).
-    // WANN er erscheint, entscheidet rowPlan; hier steht nur, wohin der Klick führt.
+  } else if (isOpen(task.status) || plan.backlink) {
+    // Rechte Zone: kompakter Timer-Chip direkt neben dem @Projekt-Verweis. Der Timer bleibt damit
+    // gut auffindbar, nimmt aber keine eigene Meta-Zeile ein. Der Hauptaufgaben-Link sitzt links.
     const extras = row.createDiv({ cls: "bt-extras" });
-    const bl = extras.createEl("a", { cls: "bt-backlink", text: "@" + (plan.backlink.inbox ? t("nav_inbox") : plan.backlink.text) });
-    const ziel: PageRef = plan.backlink.inbox ? { kind: "project", key: INBOX_KEY } : { kind: "project", key: task.project! };
-    bl.onclick = (e) => { e.stopPropagation(); ctx.open(ziel); };
+    if (isOpen(task.status)) {
+      const active = plugin.workTimer.active();
+      const isActive = active?.task_id === task.id;
+      const label = isActive ? "Stop timer" : "Start timer";
+      const timer = extras.createSpan({ cls: "bt-task-timer", attr: { role: "button", tabindex: "0", "aria-label": label } });
+      setIcon(timer.createSpan({ cls: "bt-task-timer-ic" }), isActive ? "square" : "play");
+      timer.createSpan({ cls: "bt-task-timer-lbl", text: label });
+      tip(timer, label);
+      const run = (event: Event): void => {
+        event.stopPropagation();
+        if (isActive) void plugin.stopTaskTimer(); else void plugin.startTaskTimer(task);
+      };
+      timer.onclick = run;
+      timer.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(event); } };
+    }
+    if (plan.backlink) {
+      const bl = extras.createEl("a", { cls: "bt-backlink", text: "@" + (plan.backlink.inbox ? t("nav_inbox") : plan.backlink.text) });
+      const ziel: PageRef = plan.backlink.inbox ? { kind: "project", key: INBOX_KEY } : { kind: "project", key: task.project! };
+      bl.onclick = (e) => { e.stopPropagation(); ctx.open(ziel); };
+    }
   }
   // Klick auf die Zeile öffnet die Aufgabe (kein separater Stift – wäre redundant).
   // MIT Modifier stattdessen die NOTIZ – dieselbe Geste, die in der Seitenleiste (navItem) und
@@ -2856,7 +2861,7 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
   // gäbe es nichts zu verwalten. Angelegt wird über „Neu erstellen" im Kontextmenü – und Projekt,
   // Bereich und Label entstehen ohnehin beim Anlegen einer Aufgabe.
 
-  // Filter-Sektion (ÜBER den Labels): „+" öffnet den Filter-Editor. Rechtsklick = bearbeiten.
+  // Filter-Sektion: „+" öffnet den Filter-Editor. Rechtsklick = bearbeiten.
   const today = todayStr();
   const filters = plugin.sortFilters(flts);
   if (filters.length) {
@@ -2872,35 +2877,6 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
           count: filterBadgeCount(plugin, fl, today), countKey: "f:" + fl.path,
           active: isActive("filter", fl.path), page: { kind: "filter", key: fl.path }, onClick: () => void plugin.activateFilter(fl.path),
           onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: "filters", key: fl.path, name: fl.name, hidden: fl.hidden, color: fl.color }); m.showAtMouseEvent(e); },
-        });
-      }
-    }
-  }
-
-  // Labels-Sektion: „+" öffnet das Neu-Modal. Rechtsklick = bearbeiten.
-  //
-  // `getLabels()` zählt die Labels der AUFGABEN mit, hängt also am Index – beim Start ist der noch
-  // leer. Das ist hier trotzdem der richtige Test, denn getLabels() nimmt `knownLabels` und
-  // `visibleLabels` IMMER mit auf (beide aus den Einstellungen, sofort da). Wer Labels angeheftet
-  // oder im Register hat, sieht den Abschnitt also ohne Verzögerung; nur ein Vault, dessen Labels
-  // ausschliesslich auf Aufgaben leben, bekommt ihn eine Wimper später. Die andere Richtung –
-  // erst zeigen, dann verschwinden – kann so nicht auftreten, und genau die war 1.39.1.
-  if (plugin.getLabels().length) {
-    const labelsCollapsed = navHead(c, plugin, "labels", t("tab_labels"), t("add_label"), "", redraw,
-      async () => undefined, () => new NewItemModal(plugin, "label").open());
-    if (plugin.reorderSec === "labels") {
-      renderReorderList(c, plugin, "labels", plugin.getVisibleLabels().map((n) => ({ key: n, name: n, icon: "hash", color: plugin.getLabelColor(n) })));
-    } else if (!labelsCollapsed) {
-      for (const name of plugin.getVisibleLabels()) {
-        const count = plugin.index.byLabel(name).length;   // byLabel nutzt open() → ohne archivierte Projekte
-        navItem(c, plugin, {
-          cls: "bt-nav-label", icon: "hash", iconColor: navColor(name, plugin.getLabelColor(name)), label: name, count, countKey: "l:" + name,
-          active: isActive("label", name), page: { kind: "label", key: name }, onClick: () => void plugin.activateLabel(name),
-          onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: "labels", key: name, name, hidden: !plugin.isLabelVisible(name), color: plugin.getLabelColor(name) }); m.showAtMouseEvent(e); },
-          // Anders als bei Projekt/Bereich/Eingang wird hier nichts VERSCHOBEN, sondern ERGÄNZT:
-          // Die Aufgabe bleibt, wo sie ist, und bekommt das Label dazu. Sichtbar wird das sofort am
-          // neuen Chip in ihrer Meta-Zeile. Trägt sie es schon, bleibt der Zug folgenlos.
-          onDropTask: (task) => { if (!task.labels.includes(name)) void plugin.swapTaskLabel(task, null, name); },
         });
       }
     }
@@ -2938,6 +2914,36 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
     const projCollapsed = navHead(c, plugin, "projects", t("group_project"), t("pick_new_project"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "project").open());
     if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", unassigned), "bt-nav-project", "project");
+  }
+
+  // Labels folgen auf die vollständige Bereichs-/Projekt-Hierarchie: „+" öffnet das Neu-Modal,
+  // Rechtsklick = bearbeiten.
+  //
+  // `getLabels()` zählt die Labels der AUFGABEN mit, hängt also am Index – beim Start ist der noch
+  // leer. Das ist hier trotzdem der richtige Test, denn getLabels() nimmt `knownLabels` und
+  // `visibleLabels` IMMER mit auf (beide aus den Einstellungen, sofort da). Wer Labels angeheftet
+  // oder im Register hat, sieht den Abschnitt also ohne Verzögerung; nur ein Vault, dessen Labels
+  // ausschliesslich auf Aufgaben leben, bekommt ihn eine Wimper später. Die andere Richtung –
+  // erst zeigen, dann verschwinden – kann so nicht auftreten, und genau die war 1.39.1.
+  if (plugin.getLabels().length) {
+    const labelsCollapsed = navHead(c, plugin, "labels", t("tab_labels"), t("add_label"), "", redraw,
+      async () => undefined, () => new NewItemModal(plugin, "label").open());
+    if (plugin.reorderSec === "labels") {
+      renderReorderList(c, plugin, "labels", plugin.getVisibleLabels().map((n) => ({ key: n, name: n, icon: "hash", color: plugin.getLabelColor(n) })));
+    } else if (!labelsCollapsed) {
+      for (const name of plugin.getVisibleLabels()) {
+        const count = plugin.index.byLabel(name).length;   // byLabel nutzt open() → ohne archivierte Projekte
+        navItem(c, plugin, {
+          cls: "bt-nav-label", icon: "hash", iconColor: navColor(name, plugin.getLabelColor(name)), label: name, count, countKey: "l:" + name,
+          active: isActive("label", name), page: { kind: "label", key: name }, onClick: () => void plugin.activateLabel(name),
+          onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: "labels", key: name, name, hidden: !plugin.isLabelVisible(name), color: plugin.getLabelColor(name) }); m.showAtMouseEvent(e); },
+          // Anders als bei Projekt/Bereich/Eingang wird hier nichts VERSCHOBEN, sondern ERGÄNZT:
+          // Die Aufgabe bleibt, wo sie ist, und bekommt das Label dazu. Sichtbar wird das sofort am
+          // neuen Chip in ihrer Meta-Zeile. Trägt sie es schon, bleibt der Zug folgenlos.
+          onDropTask: (task) => { if (!task.labels.includes(name)) void plugin.swapTaskLabel(task, null, name); },
+        });
+      }
+    }
   }
 
   // Vorlagen ganz unten: „+" legt eine leere an. Ein KLICK wendet an – nicht „öffnet", wie bei den

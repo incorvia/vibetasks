@@ -1,7 +1,7 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
@@ -157,8 +157,15 @@ export class TaskModal extends Modal {
     }, 0);
   }
 
-  /** Erneuter Klick auf die bereits offene Zeile setzt den Cursor wieder in den Titel. */
-  focusTitle(): void { this.titleInput?.focus(); }
+  /** Erneuter Klick auf die bereits offene Zeile setzt den Cursor wieder in den Titel. Auf dem
+   *  Telefon verhindern wir dabei das verfruehte Browser-Scrolling gegen den noch geschlossenen
+   *  Tastatur-Viewport; `watchMobileViewport` setzt die Zeile nach dessen Resize an die richtige
+   *  Stelle. */
+  focusTitle(): void {
+    if (!this.titleInput) return;
+    this.titleInput.focus({ preventScroll: this.inline && this.compact });
+    if (this.inline && this.compact) window.requestAnimationFrame(() => this.anchorTitleInViewport());
+  }
 
   close(): void {
     if (!this.inline) { super.close(); return; }
@@ -222,7 +229,7 @@ export class TaskModal extends Modal {
       };
       this.watchMobileViewport(dismissKeyboard);
     }
-    window.setTimeout(() => title.focus(), 0);
+    window.setTimeout(() => this.focusTitle(), 0);
 
     // Beschreibung: kurzer Zusatztext im FRONTMATTER (`description`) – die einzeilige Vorschau
     // auf der Karte. Der Notiz-Body ist etwas anderes und hängt weiter unten als „Notizen".
@@ -362,7 +369,11 @@ export class TaskModal extends Modal {
    *  as a custom property and moves the dismiss control to the keyboard's upper edge. */
   private watchMobileViewport(button: HTMLElement): void {
     const viewport = window.visualViewport;
+    // Inline lebt der Knopf nicht im (abgehaengten) modalEl, sondern im Listen-Slot. Die Variable
+    // muss deshalb auf genau dem Element liegen, von dem der Knopf sie auch erben kann.
+    const viewportHost = this.inlineHost ?? this.modalEl;
     let frame = 0;
+    let settleTimer = 0;
     const update = (): void => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
@@ -371,8 +382,22 @@ export class TaskModal extends Modal {
         const keyboardInset = viewport
           ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
           : 0;
-        this.modalEl.style.setProperty("--bt-keyboard-inset", `${keyboardInset}px`);
+        viewportHost.style.setProperty("--bt-keyboard-inset", `${keyboardInset}px`);
+        viewportHost.toggleClass("bt-keyboard-open", textFocused);
         button.toggleClass("is-visible", textFocused);
+        // Autofocus runs before iOS/Android has finished opening the software keyboard. Its later
+        // visualViewport resize can leave the inline title above the newly visible area. Re-anchor
+        // only while the title itself owns focus, so scrolling through the rest of the form remains
+        // entirely under the user's control.
+        if (active === this.titleInput) {
+          this.anchorTitleInViewport();
+          // Mobile WebViews may apply one last native focus-scroll *after* reporting the keyboard's
+          // final viewport size. Correct that late movement once the animation/events go quiet.
+          window.clearTimeout(settleTimer);
+          settleTimer = window.setTimeout(() => {
+            if (document.activeElement === this.titleInput) this.anchorTitleInViewport();
+          }, 180);
+        }
       });
     };
     viewport?.addEventListener("resize", update);
@@ -382,12 +407,35 @@ export class TaskModal extends Modal {
     update();
     this.mobileViewportCleanup = () => {
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
       viewport?.removeEventListener("resize", update);
       viewport?.removeEventListener("scroll", update);
       document.removeEventListener("focusin", update);
       document.removeEventListener("focusout", update);
-      this.modalEl.style.removeProperty("--bt-keyboard-inset");
+      viewportHost.removeClass("bt-keyboard-open");
+      viewportHost.style.removeProperty("--bt-keyboard-inset");
     };
+  }
+
+  /** Put the inline editor's top border directly below the sticky page header inside the *current
+   *  visual* viewport. Anchoring the input itself is subtly wrong: the card begins a few pixels
+   *  above it, and mobile focus scrolling can consequently leave that edge clipped. */
+  private anchorTitleInViewport(): void {
+    if (!this.inline || !this.compact || !this.titleInput?.isConnected) return;
+    // WebKit can retain/apply a small scroll offset on the transplanted modal-content itself
+    // during a repeated focus cycle. It is not meant to scroll in inline mode; letting that offset
+    // survive clips the first input while the outer card remains correctly positioned.
+    this.contentEl.scrollTop = 0;
+    const scroller = this.titleInput.closest<HTMLElement>(".bt-view");
+    const anchor = this.inlineTitleRow ?? this.inlineHost ?? this.titleInput;
+    if (!scroller) { anchor.scrollIntoView({ block: "start", inline: "nearest" }); return; }
+
+    const visualTop = window.visualViewport?.offsetTop ?? 0;
+    const stickyHeader = scroller.querySelector<HTMLElement>(":scope > .bt-page-top");
+    const headerBottom = stickyHeader?.getBoundingClientRect().bottom ?? visualTop;
+    const desiredTop = Math.max(visualTop, headerBottom) + 12;
+    const delta = anchor.getBoundingClientRect().top - desiredTop;
+    if (Math.abs(delta) > 1) scroller.scrollBy({ top: delta, behavior: "auto" });
   }
 
   /** Beschreibungs-Textarea an ihren Inhalt anpassen (Auto-Grow, gedeckelt). */
@@ -841,6 +889,11 @@ export class TaskModal extends Modal {
     const title = this.titleValue();
     if (!title || this.persisted) return;
     this.persisted = true;
+    // Labels created directly on a real task should appear in the sidebar just like labels made
+    // through the dedicated New Label modal. Snapshot before writing: after the metadata-cache
+    // update they are no longer distinguishable from deliberately hidden existing labels.
+    const newLabels = this.editScope.target && this.editScope.target.type !== "task" ? []
+      : newlyIntroducedLabels(this.f.labels ?? [], this.plugin.getLabels().map((label) => label.name));
     if (this.existing) {
       const file = this.app.vault.getAbstractFileByPath(this.existing.path);
       if (file instanceof TFile) {
@@ -869,6 +922,7 @@ export class TaskModal extends Modal {
       const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null, sortOrder }, this.editScope.target);
       await this.log.flush(file);
     }
+    await this.plugin.showNewTaskLabels(newLabels);
   }
 
   /** Löschen = Aufgabe UND alle Unteraufgaben in den Papierkorb (sonst verwaisen Kinder).

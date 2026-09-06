@@ -1852,6 +1852,16 @@ export default class VibeTaskPlugin extends Plugin {
     this.renderAll();
   }
 
+  /** Pin labels that were newly created through a task editor. Kept as one settings write so a
+   *  task with several new labels updates the sidebar atomically. */
+  async showNewTaskLabels(names: readonly string[]): Promise<void> {
+    const added = [...new Set(names.filter((name) => name && !this.settings.visibleLabels.includes(name)))];
+    if (!added.length) return;
+    this.settings.visibleLabels = [...this.settings.visibleLabels, ...added];
+    await this.saveSettings();
+    this.renderAll();
+  }
+
   // ── Status-Verwaltung (user-definierbare Status) ──
   /** Mutierbare Status-Liste; materialisiert beim ersten Edit die eingebauten Defaults. */
   private statusList(): StoredStatus[] {

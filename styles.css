@@ -1814,7 +1814,7 @@ body.bt-meta-colorado {
 .bt-parent-link-ic { display: inline-flex; }
 .bt-parent-link-ic svg { width: 15px; height: 15px; }
 
-/* Rechte Gruppe: Projekt-Backlink + Stift */
+/* Rechte Gruppe: kompakter Timer-Chip + Projekt-Backlink */
 .bt-extras {
   margin-left: auto;
   align-self: flex-end;
@@ -1822,6 +1822,23 @@ body.bt-meta-colorado {
   align-items: center;
   gap: 8px;
 }
+.bt-task-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  line-height: 1.35;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bt-task-timer:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.bt-task-timer:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.bt-task-timer-ic { display: inline-flex; }
+.bt-task-timer-ic svg { width: 11px; height: 11px; }
 /* ── „Aufgabennotiz bearbeiten" – Aktion rechts in der Kommentar-Kopfzeile ──
    Sitzt an derselben Stelle wie „Erledigte ausblenden" bei den Unteraufgaben und holt Groesse,
    Farbe, Abstaende und Hover aus .bt-sec-act. Frueher ein eigener Kasten mit Hintergrund und
@@ -3069,6 +3086,13 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   margin-left: auto; font-size: 0.76em; font-weight: 600; color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+.bt-view .bt-calview-panel-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; margin: -6px -8px -6px 0; padding: 0;
+  color: var(--text-muted); background: transparent; border: 0; box-shadow: none;
+}
+.bt-view .bt-calview-panel-close:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.bt-calview-panel-close svg { width: 18px; height: 18px; }
 .bt-calview-panel-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .bt-calview-panel-empty { padding: 14px 4px; text-align: center; font-size: 0.82em; color: var(--text-faint); }
 .bt-calview-panel-card {
@@ -3104,6 +3128,63 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Zahl in der normalen Schrift des Knopfes: KEIN tabular-nums (das sind Tabellenziffern – eine
    andere Ziffernvariante) und keine abweichende Größe. */
 .bt-calview-panel-n { font-size: inherit; font-weight: 600; font-variant-numeric: normal; }
+
+/* ── Phone calendar ─────────────────────────────────────────────────────────────
+   The mobile workspace owns horizontal swipes, so the calendar never becomes a sideways canvas.
+   Multi-day timelines are rendered as a day above; month is an overview that drills into that day.
+   Unscheduled is a drawer over the calendar instead of a permanent 250px column. */
+.bt-calview-mobile { width: 100%; min-width: 0; overflow: hidden; }
+.bt-calview-mobile .bt-calview-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+  margin-bottom: 8px;
+}
+.bt-calview-mobile .bt-calview-nav { grid-column: 1; min-width: 0; }
+.bt-calview-mobile .bt-calview-title {
+  grid-column: 1 / -1; grid-row: 2; justify-self: start;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.96em;
+}
+.bt-calview-mobile .bt-calview-seg { grid-column: 2; grid-row: 1; flex: none; }
+.bt-calview-mobile .bt-calview-seg .bt-tab { min-height: 36px; padding-inline: 9px; }
+.bt-calview-mobile .bt-calview-panel-btn { min-width: 38px; justify-content: center; }
+.bt-calview-mobile .bt-calview-body { position: relative; isolation: isolate; overflow: hidden; gap: 0; }
+.bt-calview-mobile .bt-calview-week { width: 100%; touch-action: pan-y; }
+.bt-calview-mobile .bt-calview-gutter { flex-basis: 48px; }
+.bt-calview-mobile .bt-calview-dayhead { padding-block: 6px 8px; }
+.bt-calview-mobile .bt-calview-year { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bt-calview-mobile .bt-calview-mini-grid { padding: 4px; }
+.bt-calview-mobile .bt-calview-mini-title { padding: 6px 4px; }
+.bt-calview-mobile .bt-calview-cell { min-width: 0; padding: 3px 2px; align-items: center; }
+.bt-calview-mobile .bt-calview-grid { grid-auto-rows: minmax(54px, 1fr); }
+.bt-calview-mobile .bt-calview-wd { padding-inline: 2px; text-align: center; }
+.bt-calview-mobile .bt-calview-daynum { align-self: center; min-width: 24px; }
+.bt-calview-mobile .bt-calview-cell-body { width: 100%; align-items: center; overflow: visible; }
+.bt-calview-mobile .bt-calview-cell-body > * { display: none; }
+.bt-calview-mobile .bt-calview-cell-body[data-count]:not([data-count=""])::after {
+  content: attr(data-count); display: flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  color: var(--text-accent, var(--interactive-accent)); font-size: 0.68em; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.bt-calview-mobile .bt-calview-panel-scrim {
+  position: absolute; inset: 0; z-index: 20;
+  background: color-mix(in srgb, black 24%, transparent);
+}
+.bt-calview-mobile .bt-calview-panel {
+  position: absolute; z-index: 21; inset-block: 0; right: 0;
+  width: min(74vw, 340px); max-width: calc(100% - 72px); min-height: 0;
+  border-radius: 10px 0 0 10px; box-shadow: -10px 0 30px rgba(0, 0, 0, 0.18);
+  animation: bt-calview-drawer-in 160ms ease-out;
+}
+.bt-calview-mobile .bt-calview-panel-card { min-height: 48px; padding: 10px; font-size: 0.92em; }
+.bt-calview-mobile .bt-calview-panel-list { overscroll-behavior: contain; }
+@keyframes bt-calview-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (max-width: 390px) {
+  .bt-calview-mobile .bt-calview-today { padding-inline: 10px; }
+  .bt-calview-mobile .bt-calview-seg .bt-tab { padding-inline: 7px; }
+  .bt-calview-mobile .bt-calview-year { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .bt-calview-mobile .bt-calview-panel { animation: none; } }
 
 /* Kompakte Checkbox für den Kalender: dieselbe .bt-check, nur kleiner – die Chips sind ~20 px hoch.
    Alles andere (Zustände, Prioritäts-Ring, Status-Icon, Klick/Rechtsklick) erbt sie unverändert. */
@@ -3281,9 +3362,26 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-inline-editor-slot.bt-inline-mobile {
   width: 100%; max-width: none;
   border-radius: 0 0 10px 10px;
+  /* Its translateY entrance races iOS focus scrolling and makes the first keyboard open visibly
+     correct itself. Mobile focus is already enough motion feedback. */
+  animation: none;
 }
+/* A new composer has no selected task row above it to supply the top half of the card. */
+.bt-inline-editor-slot.bt-inline-mobile.bt-inline-new { border-radius: 10px; }
 .bt-inline-mobile .modal-content {
   padding-bottom: max(var(--size-4-4), env(safe-area-inset-bottom));
+}
+/* iOS can paint the focused title caret above the input's content box while bringing up the
+   keyboard. Give a new-task composer a little internal headroom only while a text field is active;
+   the card itself remains anchored beneath the page header. */
+.bt-inline-new.bt-inline-mobile.bt-keyboard-open .modal-content {
+  padding-top: 12px;
+}
+.bt-inline-new.bt-inline-mobile .bt-titel {
+  height: 40px;
+  min-height: 40px;
+  line-height: 28px;
+  box-sizing: border-box;
 }
 .bt-inline-mobile .bt-foot { flex-wrap: wrap; }
 .bt-inline-mobile .bt-project-actions { width: 100%; }
