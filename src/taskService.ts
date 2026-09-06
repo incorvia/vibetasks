@@ -395,8 +395,10 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
     return [{
       name: typeof fm?.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path, type,
       // Bereiche immer circle-small (per CSS gefüllt), unabhängig vom icon-Frontmatter.
-      // Projekte: eigenes icon-Frontmatter respektieren, sonst Default „folder".
-      icon: type === "area" ? "circle-small" : (typeof fm?.icon === "string" && fm.icon ? fm.icon : "folder"),
+      // Projekte: eigenes icon-Frontmatter respektieren, sonst das semantische Projekt-Symbol.
+      // Ein altes explizites `folder` stammt von früheren VibeTask-Versionen und wird ebenfalls
+      // als berechneter Default behandelt, damit bestehende Projekte das neue Symbol erhalten.
+      icon: type === "area" ? "circle-small" : (typeof fm?.icon === "string" && fm.icon && fm.icon !== "folder" ? fm.icon : "list-checks"),
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
       area: typeof fm?.area === "string" ? fm.area : null,

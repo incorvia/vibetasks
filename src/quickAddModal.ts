@@ -201,7 +201,7 @@ export class QuickAddModal extends Modal {
     const inbox = isInboxLink(this.f.project);   // kein Projekt ODER Verweis auf Inbox -> Eingang
     const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.f.project);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
-    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "folder"));
+    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
     this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");

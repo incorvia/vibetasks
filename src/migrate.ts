@@ -102,7 +102,7 @@ export async function runMigration(app: App, settings: VibeTaskSettings): Promis
     // Projekt-Notiz anlegen, falls fehlt.
     const projPath = normalizePath(settings.projectsFolder + "/" + slugify(projectName) + ".md");
     if (!app.vault.getAbstractFileByPath(projPath)) {
-      await app.vault.create(projPath, frontmatter({ [fieldKey("type")]: "project", id: newId("p"), status: "active", icon: "folder" }) + "\n# " + projectName + "\n");
+      await app.vault.create(projPath, frontmatter({ [fieldKey("type")]: "project", id: newId("p"), status: "active", icon: "list-checks" }) + "\n# " + projectName + "\n");
     }
 
     const lines = (await app.vault.read(list)).split("\n");

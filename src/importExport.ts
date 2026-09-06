@@ -193,7 +193,7 @@ export function toExportFilter(f: FilterItem): ExportFilter {
  * Liste (Projekt/Bereich) -> portabler Datensatz.
  *
  * `ProjItem.icon` ist das BERECHNETE Symbol, nicht das gespeicherte: Bereiche bekommen dort immer
- * `circle-small`, Projekte ohne eigenes Symbol `folder` (s. allProjItems). Diese Vorgaben werden
+ * `circle-small`, Projekte ohne eigenes Symbol `list-checks` (s. allProjItems). Diese Vorgaben werden
  * hier wieder abgezogen — sonst schriebe der Import ein Symbol in die Notiz, das der Nutzer nie
  * gesetzt hat, und aus „kein Symbol" würde dauerhaft eines.
  *
@@ -201,7 +201,7 @@ export function toExportFilter(f: FilterItem): ExportFilter {
  * Modell reicht es nicht durch (die App zeigt es dort ohnehin nicht), und dafür extra am Export
  * das Frontmatter zu lesen, lohnt den Aufwand nicht.
  */
-const BERECHNETE_SYMBOLE = new Set(["circle-small", "folder"]);
+const BERECHNETE_SYMBOLE = new Set(["circle-small", "folder", "list-checks"]);
 
 export function toExportList(p: ProjItem): ExportList {
   const icon = p.icon && !BERECHNETE_SYMBOLE.has(p.icon) ? p.icon : null;

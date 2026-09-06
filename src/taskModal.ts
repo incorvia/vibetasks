@@ -26,6 +26,8 @@ export { PRIOS, PRIO_KEY };
  *  legen (statt es zu schließen), können es mehrere sein – dann darf das oberste beim Schließen
  *  die body-Klasse nicht dem darunterliegenden wegnehmen. Ein Zähler statt eines Schalters. */
 let openModals = 0;
+/** Mobile Obsidian can mount modal chrome outside both exposed modal elements. A body-level state
+ *  is therefore the only reliable CSS scope for suppressing its redundant close control. */
 
 /** Aufgaben-Modal (randloser Titel, Chip-Reihe, Projekt-Picker, CTA).
  *  Erfasst neu oder bearbeitet/verschiebt eine bestehende Aufgabe. */
@@ -34,6 +36,7 @@ export class TaskModal extends Modal {
   private chipBar!: HTMLElement;
   private descInput: HTMLTextAreaElement | null = null;
   private projektBtn!: HTMLButtonElement;
+  private projectOpenBtn!: HTMLButtonElement;
   private titleInput!: HTMLInputElement;   // fuer unparseDue: Auslöser im Titel escapen
   private detailsWrap!: HTMLElement;
   hoverPopover: HoverPopover | null = null;   // macht das Modal zum HoverParent (native „Seitenvorschau")
@@ -66,6 +69,10 @@ export class TaskModal extends Modal {
   private inlineHost: HTMLElement | null = null;
   private inlineTitleRow: HTMLElement | null = null;
   private inlineOutside: ((e: PointerEvent) => void) | null = null;
+  /** Keep the phone editor's keyboard affordance attached to the visual viewport (just above the
+   *  software keyboard), even though the expanded editor itself remains inside the task list. */
+  private mobileViewportCleanup: (() => void) | null = null;
+  private compact = false;
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
@@ -116,6 +123,7 @@ export class TaskModal extends Modal {
     // Positionierung und Theme-Chrome nicht in der Inline-Fläche auftauchen.
     this.onOpen();
     host.addClasses(["bt-task-modal", "bt-inline-editor"]);
+    host.toggleClass("bt-inline-mobile", this.compact);
     host.toggleClass("bt-chips-icons-only", chipsCompact(this.plugin.settings));
     host.appendChild(this.contentEl);
     // Beim Bearbeiten wird nicht eine zweite Titelzeile unter die Aufgabe gesetzt: Das sichtbare
@@ -168,6 +176,11 @@ export class TaskModal extends Modal {
   onOpen(): void {
     const { contentEl, modalEl } = this;
     modalEl.addClass("bt-task-modal");
+    const noHover = typeof window !== "undefined" && typeof window.matchMedia === "function"
+      && window.matchMedia("(hover: none)").matches;
+    const compact = Platform.isMobile || noHover || document.documentElement.clientWidth <= 700;
+    this.compact = compact;
+    modalEl.toggleClass("bt-mobile", compact);
     // Klasse auf <body>, solange dieses Modal offen ist: hebt die native „Seitenvorschau" per CSS
     // über das Modal (sonst erschiene sie dahinter). Bewusst eine feste Klasse statt body:has(...) –
     // die :has-Auswertung kann einen Frame nachhinken, wodurch die Vorschau beim Hovern kurz
@@ -196,6 +209,19 @@ export class TaskModal extends Modal {
       if (!this.opts.hideProjekt) this.renderProjekt();
     };
     title.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); void this.save(); } };
+    if (compact) {
+      const dismissKeyboard = (this.inlineHost ?? modalEl).createEl("button", {
+        cls: "bt-keyboard-dismiss",
+        attr: { type: "button", "aria-label": "Dismiss keyboard" },
+      });
+      setIcon(dismissKeyboard.createSpan({ cls: "bt-keyboard-dismiss-key" }), "keyboard");
+      setIcon(dismissKeyboard.createSpan({ cls: "bt-keyboard-dismiss-arrow" }), "chevron-down");
+      dismissKeyboard.onclick = (e) => {
+        e.preventDefault();
+        (document.activeElement as HTMLElement | null)?.blur();
+      };
+      this.watchMobileViewport(dismissKeyboard);
+    }
     window.setTimeout(() => title.focus(), 0);
 
     // Beschreibung: kurzer Zusatztext im FRONTMATTER (`description`) – die einzeilige Vorschau
@@ -272,8 +298,19 @@ export class TaskModal extends Modal {
     // (hideProjekt) entfällt der Projekt-Picker – das Projekt erbt die Hauptaufgabe.
     const foot = contentEl.createDiv({ cls: "bt-foot" });
     if (!this.opts.hideProjekt) {
-      this.projektBtn = foot.createEl("button", { cls: "bt-projekt" });
+      const projectActions = foot.createDiv({ cls: "bt-project-actions" });
+      this.projektBtn = projectActions.createEl("button", { cls: "bt-projekt" });
       this.projektBtn.onclick = (e) => this.openProject(e.currentTarget as HTMLElement);
+      this.projectOpenBtn = projectActions.createEl("button", { cls: "bt-project-open" });
+      tip(this.projectOpenBtn, t("open_assigned_project"));
+      setIcon(this.projectOpenBtn, "arrow-up-right");
+      this.projectOpenBtn.onclick = () => {
+        const { bereiche, projekte } = listProjectsAndAreas(this.app);
+        const selected = [...bereiche, ...projekte].find((project) => project.name === this.f.project);
+        if (!selected) return;
+        this.close();
+        void this.plugin.activateProject(selected.path);
+      };
       this.renderProjekt();
     } else {
       foot.createDiv();   // Platzhalter links, damit die Buttons rechts bleiben
@@ -287,6 +324,8 @@ export class TaskModal extends Modal {
   }
 
   onClose(): void {
+    this.mobileViewportCleanup?.();
+    this.mobileViewportCleanup = null;
     // Auto-Speichern beim Wegklicken / Esc / X (nur mit Titel). „Cancel" verwirft bewusst.
     // persist() ist gegen Doppel-Schreiben geschützt (this.persisted) und braucht kein DOM.
     if (!this.discarding) {
@@ -303,6 +342,39 @@ export class TaskModal extends Modal {
     // Elternmodal die Klasse und seine Seitenvorschau erschiene wieder hinter dem Modal.
     if (!this.inline && --openModals <= 0) { openModals = 0; document.body.removeClass("bt-task-modal-open"); }
     this.contentEl.empty();
+  }
+
+  /** Follow iOS/Android's visual viewport while a text field is active. CSS fixed positioning is
+   *  relative to the layout viewport in some WebViews, so the measured keyboard inset is exposed
+   *  as a custom property and moves the dismiss control to the keyboard's upper edge. */
+  private watchMobileViewport(button: HTMLElement): void {
+    const viewport = window.visualViewport;
+    let frame = 0;
+    const update = (): void => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const active = document.activeElement as HTMLElement | null;
+        const textFocused = !!active?.matches("input, textarea, [contenteditable='true']");
+        const keyboardInset = viewport
+          ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+          : 0;
+        this.modalEl.style.setProperty("--bt-keyboard-inset", `${keyboardInset}px`);
+        button.toggleClass("is-visible", textFocused);
+      });
+    };
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    update();
+    this.mobileViewportCleanup = () => {
+      window.cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+      this.modalEl.style.removeProperty("--bt-keyboard-inset");
+    };
   }
 
   /** Beschreibungs-Textarea an ihren Inhalt anpassen (Auto-Grow, gedeckelt). */
@@ -648,10 +720,11 @@ export class TaskModal extends Modal {
     const { bereiche, projekte } = listProjectsAndAreas(this.app);
     const inbox = isInboxLink(this.f.project);   // kein Projekt ODER Verweis auf Inbox -> Eingang
     const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.f.project);
+    this.projectOpenBtn.toggleClass("bt-hidden", !sel);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
-    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "folder"));
+    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
-    this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
+    this.projektBtn.createSpan({ cls: "bt-projekt-lbl", text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
   }
 

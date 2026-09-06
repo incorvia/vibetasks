@@ -415,6 +415,9 @@ body {
   background: var(--background-primary);
   box-shadow: none;
 }
+.bt-inline-editor-slot.bt-task-modal.bt-inline-new { margin: 8px 0 12px; }
+.bt-task.is-editing > .bt-row-insert,
+.bt-task.is-adding-task > .bt-row-insert { display: none; }
 .bt-inline-editor .modal-content {
   max-height: none; overflow-y: visible;
   padding-top: 4px;
@@ -481,6 +484,9 @@ body {
   width: 100%; border: none; background: transparent;
   font-size: 1.25em; font-weight: 600; color: var(--text-normal);
   padding: 4px 0 2px; box-shadow: none;
+}
+.bt-task-modal .bt-keyboard-dismiss {
+  display: none;
 }
 .bt-task-modal .bt-titel::placeholder { color: var(--text-faint); font-weight: 600; }
 .bt-task-modal .bt-titel:focus { box-shadow: none; outline: none; }
@@ -857,6 +863,15 @@ body {
 }
 
 .bt-task-modal .bt-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.bt-task-modal .bt-project-actions { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.bt-task-modal .bt-project-open {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  border: 1px solid var(--background-modifier-border); border-radius: 6px;
+  background: transparent; color: var(--text-muted); box-shadow: none;
+}
+.bt-task-modal .bt-project-open:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.bt-task-modal .bt-project-open svg { width: 15px; height: 15px; }
+.bt-task-modal .bt-project-open.bt-hidden { display: none; }
 /* Bei offenem Detailbereich: volle Trennlinie ÜBER der Fußzeile (unter dem Eingabefeld),
    randlos wie .bt-chips::after. NUR wenn Details offen ist – sonst liefert die chips::after-Linie
    die Trennung zur Fußzeile schon, und es gäbe zwei Linien. `.bt-details` und `.bt-foot` sind
@@ -879,10 +894,11 @@ body {
 }
 .bt-task-modal .bt-projekt,
 .bt-tpl-modal .bt-projekt {
-  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px;
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; min-width: 0; padding: 0 10px;
   border: 1px solid var(--background-modifier-border); border-radius: 6px;
   background: transparent; color: var(--text-normal); font-size: 0.88em; font-weight: 600; cursor: pointer; box-shadow: none;
 }
+.bt-task-modal .bt-projekt-lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* `.bt-hidden` (0-1-0) verliert gegen die Knopf-Regel darueber (0-2-0) und ihr
    `display: inline-flex` – der ausgeblendete Knopf blieb dadurch stehen. Diese Zeile stellt das
    Ausblenden wieder her (0-3-0). Betrifft im Anwenden-Dialog den Projekt-Waehler: Bei „Neues
@@ -1019,14 +1035,14 @@ body {
   grid-column: 2; font-size: calc(0.9em * var(--bt-nav-scale, 1));
   font-weight: 700; color: var(--text-normal); letter-spacing: 0.01em;
 }
-.bt-nav-new {
+.bt-nav .bt-nav-app-head button.bt-nav-new {
   grid-column: 3; justify-self: end; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
+  height: 32px; min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--background-modifier-border); background: var(--background-primary);
   color: var(--text-normal); font-size: var(--font-ui-small); font-weight: 600;
   box-shadow: none; white-space: nowrap;
 }
-.bt-nav-new:hover { background: var(--background-modifier-hover); }
+.bt-nav .bt-nav-app-head button.bt-nav-new:hover { background: var(--background-modifier-hover); box-shadow: none; }
 .bt-nav-new-chevron { display: inline-flex; }
 .bt-nav-new-chevron svg { width: 15px; height: 15px; }
 .bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
@@ -1163,6 +1179,9 @@ body {
    Zwischen zwei Sektionen bleibt es überall bei 2.2em, das gliedert die Liste. */
 .bt-has-desc .bt-board-bar { margin-top: 19px; }   /* 1px enger an die Beschreibung */
 .bt-has-desc .bt-section:first-child { margin-top: calc(2.2em - 25px); }
+/* Project lists no longer have the old add row between description and first section. Restore
+   that lost vertical rhythm instead of pulling Tasks up into the description. */
+.bt-has-desc .bt-project-root > .bt-section:first-child { margin-top: 2.2em; }
 .bt-section-title {
   font-size: calc(0.9em * var(--bt-section-scale, 1)); font-weight: 700; margin: 8px 0 0;   /* Basis = Faktor der Seitenleisten-Einträge; über Einstellungen skalierbar */
   color: var(--text-normal);
@@ -1181,6 +1200,26 @@ body {
    unterschieden allein durch die Akzentfarbe des Themes. Marker-Klasse statt :has(), das eine
    breite Style-Invalidierung auslöst (gleiche Begründung wie bei annotateSubtaskTree). */
 .bt-section-title.bt-has-action { display: flex; align-items: center; }
+.bt-view .bt-board-head .bt-head-actions button.bt-page-add {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+  height: 32px; min-width: 112px; min-height: 32px; padding: 0 10px;
+  border: 1px solid var(--background-modifier-border); border-radius: 8px;
+  background: var(--background-primary); box-shadow: none;
+  color: var(--text-normal); font-size: var(--font-ui-small); font-weight: 600; cursor: pointer;
+}
+.bt-view .bt-board-head .bt-head-actions button.bt-page-add:hover,
+.bt-view .bt-board-head .bt-head-actions button.bt-page-add:focus-visible {
+  background: var(--background-modifier-hover); color: var(--text-normal); box-shadow: none; outline: none;
+}
+.bt-page-add-ic { display: inline-flex; color: var(--bt-add); }
+.bt-page-add-ic svg { width: 13px; height: 13px; }
+/* A page-header trigger lives outside the readable sizer. Keep its editor aligned with the list
+   instead of letting the inline modal's `max-width: none` stretch it across the pane. */
+.bt-view > .bt-inline-new.bt-task-modal {
+  max-width: min(var(--file-line-width, 700px), calc(100% - 80px));
+  margin-left: auto;
+  margin-right: auto;
+}
 /* Reiner Text in der Akzentfarbe – kein Rahmen, kein Hintergrund. Schrift und Größe erbt der
    Span von der Überschrift, unterschieden wird allein über die Farbe. Erst beim Hover (und
    für die Tastatur beim Fokus) kommt die dezente Fläche dazu. Das seitliche Polster gibt ihr
@@ -1540,15 +1579,15 @@ body.bt-meta-colorado {
 /* Add directly above/below a row. Manual order only (the renderer omits these in every automatic
    sort), and hidden until the row is hovered/focused so a long outline stays visually quiet. */
 .bt-row-insert {
-  position: absolute; z-index: 3; left: 28px;
+  position: absolute; z-index: 3; left: 50%;
   width: 18px; height: 18px; min-width: 18px; padding: 2px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 50%; box-shadow: none;
   color: var(--text-faint); background: var(--background-primary);
   opacity: 0; cursor: pointer;
 }
-.bt-row-insert-before { top: 0; transform: translateY(-50%); }
-.bt-row-insert-after { bottom: 0; transform: translateY(50%); }
+.bt-row-insert-before { top: 0; transform: translate(-50%, -50%); }
+.bt-row-insert-after { bottom: 0; transform: translate(-50%, 50%); }
 .bt-row-insert svg { width: 13px; height: 13px; }
 .bt-task:hover > .bt-row-insert,
 .bt-task:focus-within > .bt-row-insert,
@@ -1557,7 +1596,7 @@ body.bt-meta-colorado {
   color: var(--text-on-accent); background: var(--interactive-accent); outline: none;
 }
 @media (hover: none) {
-  .bt-task > .bt-row-insert { opacity: 0.75; }
+  .bt-task > .bt-row-insert { display: none; }
 }
 
 /* „is-open" färbt bewusst NICHT mehr um – der Badge behält in jedem Zustand denselben Grauton. */
@@ -2126,7 +2165,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 
 /* ── „Anzeige"-Knopf + Panel (pro Seite, Alternative C) ─────────────── */
 .bt-view .bt-anzeige {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 112px; min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal);
   font-size: var(--font-ui-small); font-weight: 600; box-shadow: none; white-space: nowrap;
 }
@@ -2883,8 +2922,107 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   display: inline-flex; align-items: center; gap: 6px;
 }
 @media (max-width: 700px) {
-  .bt-view .bt-page-top .bt-head-actions { right: 12px; }
+  /* Narrow desktop panes use the same compact header grammar as mobile. */
+  .bt-view .bt-sizer { max-width: calc(100% - 24px); }
+  .bt-view .bt-page-top .bt-board-head {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  }
+  .bt-view .bt-page-top .bt-board-head > h1 {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bt-view .bt-page-top .bt-head-actions {
+    position: static; width: auto; margin: 0; justify-content: flex-end; flex-wrap: nowrap;
+  }
+  .bt-view .bt-page-add-lbl, .bt-view .bt-anzeige-lbl { display: none; }
+  .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
+  .bt-view .bt-anzeige { width: 40px; min-width: 40px; padding-inline: 0; justify-content: center; }
+  .bt-view > .bt-inline-new.bt-task-modal {
+    max-width: calc(100% - 24px);
+  }
 }
+@media (pointer: coarse) {
+  .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
+  .bt-view .bt-anzeige {
+    height: 44px;
+    min-height: 44px;
+  }
+  .bt-view .bt-board-head .bt-head-actions .bt-manage-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .bt-nav .bt-nav-app-head button.bt-nav-new {
+    height: 44px;
+    min-height: 44px;
+  }
+  .bt-task-modal .bt-foot { flex-wrap: wrap; }
+  .bt-task-modal .bt-actions { margin-left: auto; }
+}
+/* Obsidian Mobile may expose a desktop-sized CSS viewport and desktop pointer capabilities.
+   JavaScript therefore marks our view explicitly with Platform.isMobile. */
+.bt-view.bt-mobile .bt-sizer { width: calc(100% - 24px); max-width: calc(100% - 24px); }
+.bt-view.bt-mobile .bt-page-top .bt-board-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+}
+.bt-view.bt-mobile .bt-page-top .bt-board-head > h1 {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-view.bt-mobile .bt-page-top .bt-head-actions {
+  position: static; width: auto; margin: 0; justify-content: flex-end; flex-wrap: nowrap;
+}
+.bt-view.bt-mobile .bt-page-add-lbl,
+.bt-view.bt-mobile .bt-anzeige-lbl { display: none; }
+.bt-view.bt-mobile .bt-board-head .bt-head-actions button.bt-page-add,
+.bt-view.bt-mobile .bt-anzeige {
+  width: 44px; min-width: 44px; height: 44px; min-height: 44px;
+  padding-inline: 0; justify-content: center;
+}
+.bt-view.bt-mobile .bt-board-head .bt-head-actions .bt-manage-btn {
+  width: 44px; height: 44px;
+}
+/* Hover-only manual insertion affordances become permanently visible on touch. The page Add
+   action is the unambiguous mobile creation path. */
+.bt-view.bt-mobile .bt-row-insert { display: none; }
+.bt-view.bt-mobile .bt-row-grip { display: none; }
+.bt-task-modal.bt-mobile .bt-foot { flex-wrap: wrap; }
+.bt-task-modal.bt-mobile .bt-project-actions { width: 100%; }
+.bt-task-modal.bt-mobile .bt-projekt { flex: 1 1 auto; }
+.bt-task-modal.bt-mobile .bt-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
+
+/* On phones the task stays in the list and expands in place, like the desktop interaction. The
+   editor is deliberately one continuous card with the selected row, not a viewport-sized modal. */
+.bt-inline-editor-slot.bt-inline-mobile {
+  width: 100%; max-width: none;
+  border-radius: 0 0 10px 10px;
+}
+.bt-inline-mobile .modal-content {
+  padding-bottom: max(var(--size-4-4), env(safe-area-inset-bottom));
+}
+.bt-inline-mobile .bt-foot { flex-wrap: wrap; }
+.bt-inline-mobile .bt-project-actions { width: 100%; }
+.bt-inline-mobile .bt-projekt { flex: 1 1 auto; }
+.bt-inline-mobile .bt-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
+.bt-inline-mobile :is(.bt-titel, .bt-beschr, .bt-st-input, .bt-log-input) {
+  scroll-margin-bottom: 180px;
+}
+
+/* Reachable keyboard control: it lives outside the scrolling editor content and follows the
+   visual viewport. The measured inset supports WebViews whose fixed elements otherwise remain
+   behind the keyboard; on browsers that resize the layout viewport it naturally resolves to 0. */
+.bt-inline-mobile .bt-keyboard-dismiss.is-visible {
+  position: fixed; z-index: 30;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(var(--bt-keyboard-inset, 0px) + 10px);
+  display: inline-flex; align-items: center; justify-content: center; gap: 1px;
+  width: 52px; height: 44px; min-height: 44px; padding: 0;
+  border: 1px solid var(--background-modifier-border); border-radius: 10px;
+  background: var(--background-primary-alt); color: var(--text-muted);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .2);
+}
+.bt-inline-mobile .bt-keyboard-dismiss:active {
+  background: var(--background-modifier-hover); color: var(--text-normal);
+}
+.bt-inline-mobile .bt-keyboard-dismiss-key svg { width: 19px; height: 19px; }
+.bt-inline-mobile .bt-keyboard-dismiss-arrow svg { width: 13px; height: 13px; }
 /* Verwaltung/Erledigt: eigener Kopf (Titel + Tabs), kein „+ Aufgabe". */
 .bt-view .bt-manage-header {
   position: sticky; top: 0; z-index: 20;

@@ -1,6 +1,6 @@
 {
   "name": "vibetask",
-  "version": "1.46.3",
+  "version": "1.46.7",
   "description": "VibeTask – Obsidian task & project system (note per task, no plugin dependencies).",
   "main": "main.js",
   "scripts": {

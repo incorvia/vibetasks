@@ -163,6 +163,9 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
     if (linked) {
       menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_open_linked_note")).setIcon("external-link")
         .onClick(() => void plugin.app.workspace.getLeaf("tab").openFile(linked)));
+    } else {
+      menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_create_linked_note")).setIcon("file-plus-2")
+        .onClick(() => void plugin.openOrCreateCollectionNote(item.key)));
     }
   }
 
@@ -186,7 +189,7 @@ export function buildItemMenu(menu: Menu, plugin: VibeTaskPlugin, item: NavMenuI
     const toArea = item.type !== "area";
     menu.addItem((m) => m.setSection("bt-edit")
       .setTitle(toArea ? t("tip_mark_area") : t("tip_unmark_area"))
-      .setIcon(toArea ? "circle-small" : "folder")   // Ziel-Icons: Bereich = circle-small, Projekt = folder
+      .setIcon(toArea ? "circle-small" : "list-checks")   // Ziel-Icons: Bereich = circle-small, Projekt = list-checks
       .onClick(() => void plugin.setProjectArea(item.key, toArea)));
   }
 
@@ -272,9 +275,9 @@ export function addCreateItems(menu: Menu, plugin: VibeTaskPlugin, includeTask =
     menu.addItem((m) => m.setTitle(t(key)).setIcon(icon).onClick(open));
   };
   if (includeTask) row("cmd_new_task", "circle-plus", () => plugin.openQuickAddHere());
-  // Icons wie in der Seitenleiste: Projekt = folder, Bereich = circle, Label = hash,
+  // Icons wie in der Seitenleiste: Projekt = list-checks, Bereich = circle, Label = hash,
   // Filter = tag (fest vergeben in filterService.toItem – nicht der Trichter „filter").
-  row("create_project", "folder", () => new NewItemModal(plugin, "project").open());
+  row("create_project", "list-checks", () => new NewItemModal(plugin, "project").open());
   row("create_area", "circle", () => new NewItemModal(plugin, "area").open());
   row("create_label", "hash", () => new NewItemModal(plugin, "label").open());
   row("create_filter", "tag", () => new FilterModal(plugin).open());

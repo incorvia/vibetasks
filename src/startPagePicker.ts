@@ -47,8 +47,8 @@ export function listStartPages(plugin: VibeTaskPlugin): StartPageOption[] {
   /** Art-Kennzeichen, bei ausgeblendeten Einträgen ergänzt. */
   const art = (basis: string, hidden: boolean): string => hidden ? basis + " · " + t("start_page_hidden") : basis;
   const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
-  for (const a of bereiche) out.push({ value: { kind: "project", key: a.path }, label: a.name, icon: a.icon || "folder", kind: art(t("kind_area"), a.hidden) });
-  for (const p of projekte) out.push({ value: { kind: "project", key: p.path }, label: p.name, icon: p.icon || "hash", kind: art(t("kind_project"), p.hidden) });
+  for (const a of bereiche) out.push({ value: { kind: "project", key: a.path }, label: a.name, icon: a.icon || "circle-small", kind: art(t("kind_area"), a.hidden) });
+  for (const p of projekte) out.push({ value: { kind: "project", key: p.path }, label: p.name, icon: p.icon || "list-checks", kind: art(t("kind_project"), p.hidden) });
   for (const fl of plugin.sortFilters(listFilters(plugin.app))) {
     out.push({ value: { kind: "filter", key: fl.path }, label: fl.name, icon: fl.icon || "filter", kind: art(t("kind_filter"), fl.hidden) });
   }

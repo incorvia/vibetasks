@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, TFile, ViewStateResult } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, Platform, TFile, ViewStateResult } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { PageCtx, PageRef, pageInfo, samePage, manageTitleKey } from "./pageCtx";
 import { dragTask, dragFromCol, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
@@ -38,6 +38,15 @@ import { tip, tipWhenClipped } from "./tooltip";
  * aufgeklapptes Unteraufgaben-Badge klappte hier mit auf.
  */
 const viewKey = (ctx: PageCtx, rest: string): string => ctx.id + "|" + rest;
+
+/** Obsidian Mobile does not consistently expose Platform.isMobile. Touch capability and the
+ * actual pane width are the reliable fallbacks for responsive preview and mobile WebViews. */
+function compactTaskUi(el: HTMLElement): boolean {
+  const view = el.closest<HTMLElement>(".bt-view");
+  const noHover = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(hover: none)").matches;
+  return Platform.isMobile || noHover || (view?.getBoundingClientRect().width ?? window.innerWidth) <= 700;
+}
 
 /** Pro Dashboard-Tab genau ein Things-artig aufgeklappter Aufgaben-Editor. Er bleibt während
  *  Index-Meldungen stehen; beim Schließen wird die inzwischen geänderte Liste nachgezogen. */
@@ -97,16 +106,24 @@ function openInlineTaskEditor(ctx: PageCtx, task: Task, row: HTMLElement): void 
  *  ein Modal, weil es absichtlich ohne sichtbaren Seitenkontext von überall erreichbar ist. */
 function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, label?: string,
   today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null,
-  insert?: { side: "before" | "after"; task: Task; beforePath: string | null }): void {
+  insert?: { side: "before" | "after"; task: Task; beforePath: string | null },
+  mount?: { inside: HTMLElement; onClose?: () => void }): void {
   const current = inlineTaskEditors.get(ctx.id);
   if (current?.path === "\0new" && current.slot.isConnected) { current.modal.focusTitle(); return; }
   if (current) closeInlineTaskEditor(ctx.id, false);
 
-  const slot = anchor.parentElement!.createDiv({ cls: "bt-sizer bt-inline-editor-slot bt-inline-new" });
-  const top = anchor.closest<HTMLElement>(".bt-page-top") ?? anchor;
+  const slotParent = mount?.inside ?? anchor.parentElement!;
+  const slot = slotParent.createDiv({ cls: "bt-sizer bt-inline-editor-slot bt-inline-new" });
+  // Page-level adders mount after the sticky header; list adders mount after their own compact
+  // bar. Treating the inner `.bt-add` as the mount point would put a 100%-wide editor inside a
+  // flex row, which is what made project creation look like a full-page form.
+  const top = anchor.closest<HTMLElement>(".bt-page-top, .bt-board-bar, .bt-section-title") ?? anchor;
   const taskRow = insert ? anchor.closest<HTMLElement>(".bt-task") : null;
-  (taskRow ?? top).insertAdjacentElement(insert?.side === "before" ? "beforebegin" : "afterend", slot);
-  anchor.addClass("is-editing");
+  if (mount) mount.inside.prepend(slot);
+  else (taskRow ?? top).insertAdjacentElement(insert?.side === "before" ? "beforebegin" : "afterend", slot);
+  // A relative new-task composer is a sibling of the existing row, not its editor. Reusing the
+  // editing class joined both cards and left the clicked + floating on their shared boundary.
+  anchor.addClass(insert ? "is-adding-task" : "is-editing");
   const modal = new TaskModal(ctx.plugin, undefined, project, {
     defaultLabel: label, defaultToday: today, defaultStatus: status,
     seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
@@ -118,9 +135,58 @@ function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, 
   inlineTaskEditors.set(ctx.id, active);
   modal.openInline(slot, () => {
     if (inlineTaskEditors.get(ctx.id) === active) inlineTaskEditors.delete(ctx.id);
-    anchor.removeClass("is-editing");
+    anchor.removeClass(insert ? "is-adding-task" : "is-editing");
     slot.remove();
+    mount?.onClose?.();
     if (!active.suppressRedraw) ctx.redraw();
+  });
+}
+
+/** The page header is the universal creation trigger. In list layout, give its editor a native
+ *  list subframe instead of leaving a modal-shaped card floating between header and content. */
+function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement, project?: string,
+  label?: string, today = false, due?: string | null): void {
+  if (ctx.opts.layout !== "list") {
+    openInlineNewTask(ctx, anchor, project, label, today, undefined, due);
+    return;
+  }
+
+  // Automatic sorting owns the final position. Manual sorting does not: because this composer is
+  // shown at the top, materialize an insertion before the first visible top-level task so saving
+  // does not contradict the place where the user added it.
+  const firstManualTask = ctx.opts.sort === "manual"
+    ? Array.from(root.querySelectorAll<HTMLElement>(".bt-task"))
+      .map((row) => row.dataset.path ? ctx.plugin.index.get(row.dataset.path) : undefined)
+      .find((task) => task && !task.parent)
+    : undefined;
+  const insert = firstManualTask
+    ? { side: "before" as const, task: firstManualTask, beforePath: firstManualTask.path }
+    : undefined;
+
+  const sections = Array.from(root.querySelectorAll<HTMLElement>(":scope > .bt-section"));
+  const existing = sections.find((sec) =>
+    sec.querySelector<HTMLElement>(":scope > .bt-section-title > .bt-section-lbl")?.textContent === t("sec_tasks"));
+  if (existing) {
+    const list = existing.querySelector<HTMLElement>(":scope > .bt-list");
+    if (list) { openInlineNewTask(ctx, anchor, project, label, today, undefined, due, undefined, insert, { inside: list }); return; }
+  }
+
+  const wasEmpty = root.hasClass("is-empty");
+  const empty = root.querySelector<HTMLElement>(":scope > .bt-empty");
+  root.removeClass("is-empty");
+  empty?.addClass("bt-hidden");
+  const sec = root.createDiv({ cls: "bt-section bt-task-compose-section" });
+  root.prepend(sec);
+  const head = sec.createEl("h6", { cls: "bt-section-title" });
+  head.createSpan({ cls: "bt-section-lbl", text: t("sec_tasks") });
+  const list = sec.createDiv({ cls: "bt-list" });
+  openInlineNewTask(ctx, anchor, project, label, today, undefined, due, undefined, insert, {
+    inside: list,
+    onClose: () => {
+      sec.remove();
+      empty?.removeClass("bt-hidden");
+      if (wasEmpty) root.addClass("is-empty");
+    },
   });
 }
 /** Alle Einträge eines Tabs verwerfen (beim Schließen bzw. beim Seitenwechsel des Tabs). */
@@ -243,13 +309,9 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
   // Heute/Demnächst: Kopf mit „Anzeige"-Knopf (leichtes Panel). Wiederkehrend: nur Titel.
   if (view === "heute" || view === "demnaechst") {
     const top = pageTop(c, ctx.opts.layout);
-    const head = top.createDiv({ cls: "bt-board-head" });
-    head.createEl("h1", { text: viewTitle(view) });
-    anzeigeButton(head.createDiv({ cls: "bt-head-actions" }), ctx);   // rechts an der Pane-Kante
-    const add = top.createDiv({ cls: "bt-add" });
-    add.createSpan({ cls: "bt-add-icon" });
-    add.createSpan({ text: t("btn_add_task") });
-    add.onclick = () => openInlineNewTask(ctx, add, undefined, undefined, view === "heute", undefined, addDue(ctx));
+    pageHeader(top, ctx, top.createEl("h1", { text: viewTitle(view) }), {
+      onAdd: (add) => openHeaderNewTask(ctx, root, add, undefined, undefined, view === "heute", addDue(ctx)),
+    });
   } else if (view !== "erledigt") {
     root.createEl("h1", { text: viewTitle(view) });   // „Erledigt" bekommt einen Kopf mit Tabs (unten)
   }
@@ -520,18 +582,6 @@ function filterEmptyState(root: HTMLElement, ctx: PageCtx): void {
     { label: t("filter_clear"), onClick: () => ctx.setCriteria({ ...DEFAULT_CRITERIA }) });
 }
 
-/** „+ Add task"-Zeile eines Boards: links der Hinzufügen-Button, rechts ein dezenter
- *  Link zurück ins ListManager (Projekte- bzw. Labels-Tab) – wie im alten VibeTask.
- *  Der Link ist optional: der Eingang ist ein Systemordner (kein normales Projekt) und
- *  bekommt daher KEINEN „Projekte"-Link. */
-function addBar(root: HTMLElement, onAdd: (anchor: HTMLElement) => void): void {
-  const bar = root.createDiv({ cls: "bt-board-bar" });
-  const add = bar.createDiv({ cls: "bt-add" });
-  add.createSpan({ cls: "bt-add-icon" });
-  add.createSpan({ text: t("btn_add_task") });
-  add.onclick = () => onAdd(add);
-}
-
 /** Projekt-Board: alle Aufgaben eines Projekts, nach Status/Datum gruppiert. */
 export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath: string): void {
   markIndexReady(ctx);
@@ -542,7 +592,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   if (ctx.embedded) c.addClass("bt-project-embed"); else c.removeClass("bt-project-embed");
   c.removeClass("bt-has-desc");   // Klassen überleben empty(); pageDesc setzt sie ggf. neu
   applyReadableWidth(c, plugin);
-  const root = c.createDiv({ cls: "bt-sizer" });
+  const root = c.createDiv({ cls: "bt-sizer bt-project-root" });
   const isInbox = projectPath === INBOX_KEY;   // eingebaute Eingang-Ansicht (keine Notiz)
   const name = isInbox ? "" : baseName(projectPath);
   // Kopf: Kebab-Menü (wie Sidebar-Rechtsklick); Eingang ist eine Systemansicht → kein Menü.
@@ -555,11 +605,11 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   const projItem: NavMenuItem | null = meta
     ? { sec: meta.type === "area" ? "areas" : "projects", key: meta.path, name: meta.name, hidden: meta.hidden, color: meta.color, type: meta.type, archived: meta.archived }
     : null;
+  const openTask = (add: HTMLElement): void => openHeaderNewTask(ctx, root, add,
+    isInbox ? undefined : name, undefined, false, addDue(ctx));
   pageHeader(top, ctx, top.createEl("h1", { text: isInbox ? t("nav_inbox") : projectDisplayName(name) }),
-    { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded });
+    { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
-  // Im Eingang neue Aufgaben OHNE Projekt anlegen (Eingang = kein Projekt), sonst im Projekt.
-  addBar(top, (add) => openInlineNewTask(ctx, add, isInbox ? undefined : name, undefined, false, undefined, addDue(ctx)));
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
@@ -571,7 +621,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
     else if (isArea) emptyState(root, "circle-small", "empty_no_area_tasks");
-    else emptyState(root, "folder", "empty_no_project_tasks");
+    else emptyState(root, "list-checks", "empty_no_project_tasks");
     return;
   }
   renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name },
@@ -589,9 +639,10 @@ export function renderLabelBoardInto(c: HTMLElement, ctx: PageCtx, label: string
   applyReadableWidth(c, plugin);
   const root = c.createDiv({ cls: "bt-sizer" });
   const top = pageTop(c, ctx.opts.layout);
-  pageHeader(top, ctx, top.createEl("h1", { cls: "bt-label-title", text: "#" + label }),
-    { menu: { sec: "labels", key: label, name: label, hidden: !plugin.isLabelVisible(label), color: plugin.getLabelColor(label) } });
-  addBar(top, (add) => openInlineNewTask(ctx, add, undefined, label, false, undefined, addDue(ctx)));
+  pageHeader(top, ctx, top.createEl("h1", { cls: "bt-label-title", text: "#" + label }), {
+    menu: { sec: "labels", key: label, name: label, hidden: !plugin.isLabelVisible(label), color: plugin.getLabelColor(label) },
+    onAdd: (add) => openHeaderNewTask(ctx, root, add, undefined, label, false, addDue(ctx)),
+  });
 
   const source = (): Task[] => ctx.filter(
     plugin.index.all().filter((tk) => tk.labels.includes(label) && !plugin.index.isProjectArchived(tk.project)));
@@ -723,9 +774,11 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
   const opts = ctx.opts;
   const top = pageTop(c, opts.layout);
   const filterItem: NavMenuItem = { sec: "filters", key: filterPath, name: filter.name, hidden: filter.hidden, color: filter.color };
-  pageHeader(top, ctx, top.createEl("h1", { text: filter.name }), { menu: filterItem });
+  pageHeader(top, ctx, top.createEl("h1", { text: filter.name }), {
+    menu: filterItem,
+    onAdd: (add) => openHeaderNewTask(ctx, root, add, undefined, undefined, false, addDue(ctx)),
+  });
   pageDesc(top, plugin, filter.description, filterItem);
-  addBar(top, (add) => openInlineNewTask(ctx, add, undefined, undefined, false, undefined, addDue(ctx)));
 
   // Kriterien filtern die Menge; renderPageBody übernimmt Layout/Sortieren/Gruppieren/Erledigte.
   const tasks = applyFilter(plugin.index, filter.criteria, opts, today);
@@ -738,16 +791,25 @@ export function renderFilterBoardInto(c: HTMLElement, ctx: PageCtx, filterPath: 
 interface HeaderOpts {
   menu?: NavMenuItem;     // Kebab: Item-Kontextmenü (Board-Variante); fehlt → kein Kebab (z. B. Eingang)
   hideTitle?: boolean;
+  onAdd?: (anchor: HTMLElement) => void;
 }
-/** Board-Überschrift: Titel + rechte Gruppe [Kebab-Menü] [Anzeige].
- *  Der Kebab öffnet dasselbe Kontextmenü wie ein Rechtsklick in der Seitenleiste – ohne die
- *  Sortier-Optionen, dafür mit „Zur …übersicht" (früher der list-plus-Kopf-Button). */
+/** Shared page header: primary action, view options, then entity-specific overflow. Linked-note
+ *  actions deliberately live in that overflow instead of claiming another permanent button. */
 function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts: HeaderOpts = {}): void {
   const plugin = ctx.plugin;
+  root.closest<HTMLElement>(".bt-view")?.toggleClass("bt-mobile", compactTaskUi(root));
   const head = root.createDiv({ cls: "bt-board-head" });
   if (opts.hideTitle) titleEl.remove();
   else head.appendChild(titleEl);
   const actions = head.createDiv({ cls: "bt-head-actions" });
+  if (opts.onAdd) {
+    const add = actions.createEl("button", { cls: "bt-page-add" });
+    add.setAttr("aria-label", t("btn_add_task"));
+    setIcon(add.createSpan({ cls: "bt-page-add-ic" }), "plus");
+    add.createSpan({ cls: "bt-page-add-lbl", text: t("btn_add_task") });
+    add.onclick = (e) => { e.stopPropagation(); opts.onAdd?.(add); };
+  }
+  anzeigeButton(actions, ctx);
   if (opts.menu) {
     const it = opts.menu;
     const kebab = actions.createEl("button", { cls: "bt-manage-btn" });
@@ -755,7 +817,6 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
     setIcon(kebab.createSpan(), "more-horizontal");
     kebab.onclick = (e) => { e.stopPropagation(); const m = new Menu(); buildItemMenu(m, plugin, it, "board"); m.showAtMouseEvent(e); };
   }
-  anzeigeButton(actions, ctx);
 }
 
 /** Kurzbeschreibung unter dem Seitentitel – die eine Zeile aus dem Frontmatter der Projekt-,

@@ -195,6 +195,7 @@ function ddRow(parent: HTMLElement, label: string, values: readonly string[], cu
 /** Anzeige-Knopf für den Seitenkopf (öffnet das Panel; Punkt/Zahl = weicht vom Standard ab). */
 export function anzeigeButton(head: HTMLElement, ctx: PageCtx): void {
   const btn = head.createEl("button", { cls: "bt-anzeige" });
+  btn.setAttr("aria-label", t("view_display"));
   setIcon(btn.createSpan({ cls: "bt-anzeige-ic" }), "sliders-horizontal");
   btn.createSpan({ cls: "bt-anzeige-lbl", text: t("view_display") });
   const o = ctx.opts;

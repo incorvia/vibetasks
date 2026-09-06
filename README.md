@@ -302,6 +302,11 @@ under `_vibetasks/projects/`, stores a `linked_note` wikilink on that record, an
 either file does not disconnect the view. Running the command again reuses the linked project instead
 of creating a duplicate. The project menu also offers **Open project record** and **Open linked note**.
 
+Projects and areas created inside VibeTask have the reverse action in their page overflow menu. **Create
+linked note** creates a regular companion note in Obsidian's configured new-note location, inserts the
+live list embed, and links it to the collection record. Once linked, the menu opens that note instead. An
+assigned project's page can also be opened directly from the task editor, beside the project picker.
+
 ## Google Calendar sync
 
 VibeTask can mirror every task that has a **due date** into Google Calendar, two-way: the **date and time** flow in both directions, while everything else (title, duration, reminders) is driven by Obsidian. It uses **your own** Google API credentials — no third-party server is involved, and your token stays in your vault.

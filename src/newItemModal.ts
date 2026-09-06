@@ -15,7 +15,7 @@ export type EditFocus = "name" | "description";
 /** Referenz auf einen bestehenden Eintrag (Bearbeiten). key = Notiz-Pfad (Projekt/Bereich) bzw. Label-Name. */
 export interface EditRef { key: string; name: string; color: string | null; visible: boolean; description?: string; area?: string | null; }
 
-const ICON: Record<NewItemKind, string> = { project: "folder", area: "circle", label: "hash" };
+const ICON: Record<NewItemKind, string> = { project: "list-checks", area: "circle", label: "hash" };
 const TITLE: Record<NewItemKind, string> = { project: "new_project_title", area: "new_area_title", label: "new_label_title" };
 const EDIT_TITLE: Record<NewItemKind, string> = { project: "edit_project_title", area: "edit_area_title", label: "edit_label_title" };
 const PH: Record<NewItemKind, string> = { project: "placeholder_project_name", area: "placeholder_area_name", label: "placeholder_label" };

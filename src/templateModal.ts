@@ -215,7 +215,7 @@ export class ApplyTemplateModal extends Modal {
     const inbox = isInboxLink(this.project);
     const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.project);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
-    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "folder"));
+    setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
     this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.project) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" });
@@ -263,4 +263,3 @@ export function promptNewTemplate(plugin: VibeTaskPlugin): void {
     void createEmptyTemplate(plugin, name).then(() => refreshTemplates(plugin));
   }).open();
 }
-

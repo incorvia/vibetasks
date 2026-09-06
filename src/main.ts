@@ -118,9 +118,13 @@ export default class VibeTaskPlugin extends Plugin {
         el.createDiv({ text: "VibeTask: expected a project view and record id" });
         return;
       }
-      const record = (await this.repository.list("project")).find((candidate) => candidate.id === input.id);
+      const [projects, areas] = await Promise.all([
+        this.repository.list("project"),
+        this.repository.list("area"),
+      ]);
+      const record = [...projects, ...areas].find((candidate) => candidate.id === input.id);
       if (!record) {
-        el.createDiv({ text: `VibeTask: project ${input.id} was not found` });
+        el.createDiv({ text: `VibeTask: project or area ${input.id} was not found` });
         return;
       }
       context.addChild(new ProjectEmbed(el, this, record.path));
@@ -1231,6 +1235,49 @@ export default class VibeTaskPlugin extends Plugin {
       return `${content}${gap}${block}\n`;
     });
     new Notice(t("notice_project_from_note"));
+  }
+
+  /** Resolve the user-facing note attached to a canonical project or area record. */
+  linkedCollectionNote(collectionPath: string): TFile | null {
+    const record = this.app.vault.getAbstractFileByPath(collectionPath);
+    if (!(record instanceof TFile)) return null;
+    const raw: unknown = this.app.metadataCache.getFileCache(record)?.frontmatter?.linked_note;
+    const link = typeof raw === "string" ? raw.match(/^\[\[([^\]|#]+)/)?.[1] : undefined;
+    return link ? this.app.metadataCache.getFirstLinkpathDest(link, collectionPath) : null;
+  }
+
+  /** Open a project/area companion note, creating and linking one when it does not exist yet. */
+  async openOrCreateCollectionNote(collectionPath: string): Promise<void> {
+    const linked = this.linkedCollectionNote(collectionPath);
+    if (linked) {
+      await this.app.workspace.getLeaf("tab").openFile(linked);
+      return;
+    }
+
+    const record = await this.repository.read(collectionPath);
+    if (!record || (record.type !== "project" && record.type !== "area")) return;
+    const title = fmTitle(record.frontmatter[titleKey()]) ?? baseName(collectionPath);
+    const id = typeof record.frontmatter.id === "string" ? record.frontmatter.id : "";
+    if (!id) return;
+
+    // An empty source path makes Obsidian use its configured default new-note location. If that
+    // points into VibeTask's private collection, fall back to the vault root: this is the user's
+    // companion note, not another collection record.
+    const preferred = this.app.fileManager.getNewFileParent("", `${slugify(title)}.md`);
+    const folder = isCollectionPath(normalizePath(`${preferred.path}/placeholder.md`)) ? "" : preferred.path;
+    const base = slugify(title);
+    let path = normalizePath(`${folder ? folder + "/" : ""}${base}.md`);
+    let suffix = 2;
+    while (this.app.vault.getAbstractFileByPath(path)) {
+      path = normalizePath(`${folder ? folder + "/" : ""}${base} ${suffix++}.md`);
+    }
+
+    const block = `\`\`\`vibetask\nview: project\nid: ${id}\n\`\`\``;
+    const note = await this.app.vault.create(path, `# ${title}\n\n${block}\n`);
+    await this.repository.update(collectionPath, { linked_note: `[[${note.path.replace(/\.md$/i, "")}]]` });
+    this.renderAll();
+    await this.app.workspace.getLeaf("tab").openFile(note);
+    new Notice(t("notice_linked_note_created"));
   }
 
   async setCollectionFolder(type: "task" | "project" | "template", folder: string): Promise<void> {

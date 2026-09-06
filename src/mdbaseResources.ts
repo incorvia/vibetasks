@@ -82,6 +82,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
   }, ["status"]),
   area: extend(common("area"), {
     status: { enum: ["active", "archived"] },
+    linked_note: { type: "string", minLength: 1 },
     gcal_sync: { type: "boolean" },
   }, ["status"]),
   filter: extend(common("filter"), {

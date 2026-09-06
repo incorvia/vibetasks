@@ -92,9 +92,10 @@ describe("Liste → Export → Frontmatter", () => {
   });
 
   it("exportiert BERECHNETE Symbole nicht – sonst entstuende beim Import eines aus dem Nichts", () => {
-    // Bereiche bekommen im Modell immer „circle-small", Projekte ohne eigenes Symbol „folder".
+    // Bereiche bekommen im Modell immer „circle-small", Projekte ohne eigenes Symbol „list-checks".
     expect(toExportList({ ...LISTE, type: "area", icon: "circle-small" }).icon).toBeNull();
     expect(toExportList({ ...LISTE, icon: "folder" }).icon).toBeNull();
+    expect(toExportList({ ...LISTE, icon: "list-checks" }).icon).toBeNull();
     expect(toExportList({ ...LISTE, icon: "sprout" }).icon).toBe("sprout");   // selbst gesetzt bleibt
   });
 

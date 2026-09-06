@@ -103,7 +103,7 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
       const sel = inbox ? undefined
         : (() => { const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
                    const n = baseName(task.project!); return [...bereiche, ...projekte].find((p) => p.name === n); })();
-      popRow(pop, inbox ? "inbox" : (sel?.icon ?? "folder"), t("menu_goto_project"),
+      popRow(pop, inbox ? "inbox" : (sel?.icon ?? "list-checks"), t("menu_goto_project"),
         () => { close(); ctx.open({ kind: "project", key: listPath }); }, false,
         inbox ? "var(--bt-nav-inbox)" : (sel?.color ?? undefined));
     }

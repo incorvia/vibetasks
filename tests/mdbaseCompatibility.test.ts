@@ -35,7 +35,7 @@ describe("bundled mdbase v0.3 resources", () => {
     expect(created.result.path).toBe("tasks/Pinned validator task.md");
     const base = { created: "2026-09-05T12:00:00Z", modified: "2026-09-05T12:00:00Z" };
     const records = [
-      { type: "area", path: "projects/Work.md", frontmatter: { ...base, type: "area", id: "01K4D9HQ2B32F6B8QKM4E9N6J6", title: "Work", status: "active" } },
+      { type: "area", path: "projects/Work.md", frontmatter: { ...base, type: "area", id: "01K4D9HQ2B32F6B8QKM4E9N6J6", title: "Work", status: "active", linked_note: "[[Notes/Work overview]]" } },
       { type: "project", path: "projects/Launch.md", frontmatter: { ...base, type: "project", id: "01K4D9HQ2B32F6B8QKM4E9N6J7", title: "Launch", status: "active", area: "[[Work]]", linked_note: "[[Notes/Launch brief]]" } },
       { type: "task", path: "tasks/Area task.md", frontmatter: { ...base, type: "task", id: "01K4D9HQ2B32F6B8QKM4E9N6J8", title: "Area task", status: "todo", project: "[[Work]]" } },
       { type: "task", path: "tasks/Project task.md", frontmatter: { ...base, type: "task", id: "01K4D9HQ2B32F6B8QKM4E9N6J9", title: "Project task", status: "todo", project: "[[Launch]]", parent: "[[Area task]]" } },
