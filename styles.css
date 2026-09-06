@@ -1045,7 +1045,15 @@ body {
 .bt-nav .bt-nav-app-head button.bt-nav-new:hover { background: var(--background-modifier-hover); box-shadow: none; }
 .bt-nav-new-chevron { display: inline-flex; }
 .bt-nav-new-chevron svg { width: 15px; height: 15px; }
-.bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
+.bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px calc(8px + var(--bt-nav-depth, 0) * 18px); border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
+.bt-nav-tree-toggle { display: inline-flex; flex: 0 0 auto; color: var(--text-faint); margin-right: -4px; }
+.bt-nav-tree-toggle svg { width: 13px; height: 13px; }
+/* The Area disclosure is an overlay, not a flex item. Otherwise Areas with children appear one
+   hierarchy level deeper than Areas without children even though both are top-level siblings. */
+.bt-nav-area { position: relative; }
+.bt-nav-area > .bt-nav-tree-toggle { position: absolute; left: 2px; margin: 0; }
+.bt-nav-child { position: relative; }
+.bt-nav-child::before { content: ""; position: absolute; left: 15px; top: -4px; bottom: -4px; border-left: 1px solid var(--background-modifier-border); }
 /* Hover & Aktiv sind aus der Akzentfarbe abgeleitet. Der Hover ist bewusst schwächer als der
    aktive Eintrag, damit beide Zustände unterscheidbar bleiben. */
 .bt-nav-item:hover { background: color-mix(in srgb, var(--interactive-accent) 10%, transparent); }
@@ -2403,6 +2411,50 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-kanban-col:hover .bt-kanban-list { scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent; }
 .bt-kanban-col:hover .bt-kanban-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg, var(--background-modifier-border)); background-clip: padding-box; }
 .bt-kanban-list::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg, var(--background-modifier-border-hover)); background-clip: padding-box; }
+
+/* Area hierarchy: status columns crossed with optional P1–P4 priority lanes. */
+.bt-area-board {
+  --bt-area-cols: 1;
+  display: grid;
+  grid-template-columns: 74px repeat(var(--bt-area-cols), minmax(240px, 1fr));
+  gap: 8px;
+  min-width: max-content;
+  overflow-x: auto;
+  padding: 10px 2px 18px;
+}
+.bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(260px, 1fr)); }
+.bt-area-board.is-flat .bt-area-board-lane { visibility: hidden; padding: 0; border: 0; }
+.bt-area-board-corner, .bt-area-board-status, .bt-area-board-lane, .bt-area-board-cell {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+.bt-area-board-corner { min-height: 42px; }
+.bt-area-board-status { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-weight: 600; }
+.bt-area-board-lane { display: flex; align-items: center; justify-content: center; padding: 10px 6px; color: var(--text-muted); font-weight: 700; }
+.bt-area-board-cell { min-height: 110px; padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+.bt-area-board-cell.is-drop { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 7%, transparent); }
+.bt-area-board-cell > .bt-task, .bt-area-project-card {
+  border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary-alt); padding: 7px;
+}
+.bt-area-board-cell > .bt-task { cursor: grab; }
+.bt-area-project-card.is-dragging { opacity: .45; }
+.bt-area-project-head { display: flex; align-items: center; gap: 7px; min-height: 32px; cursor: pointer; }
+.bt-area-project-icon, .bt-area-project-chevron { display: inline-flex; color: var(--text-muted); }
+.bt-area-project-icon svg { width: 16px; height: 16px; }
+.bt-area-project-chevron svg { width: 14px; height: 14px; }
+.bt-area-project-title { min-width: 0; flex: 1; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-area-project-status, .bt-area-project-priority, .bt-area-project-progress { font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 999px; padding: 2px 6px; }
+.bt-area-project-add { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; background: transparent; box-shadow: none; }
+.bt-area-project-add svg { width: 14px; height: 14px; }
+.bt-area-project-card-tasks, .bt-area-project-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.bt-area-project-card-tasks .bt-task { border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
+.bt-area-project-section { margin: 10px 0; border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px; }
+@media (max-width: 700px) {
+  .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
+  .bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(220px, 1fr)); }
+}
+.bt-view.bt-mobile .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
+.bt-view.bt-mobile .bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(220px, 1fr)); }
 
 /* Kanban: Spaltenkopf als Ziehgriff zum Umsortieren der Spalten (nicht Priorität/Sentinel).
    Grip-Dots-Icon als Hover-Signal: absolut im linken Kopf-Abstand -> kein Layout-Versatz. */

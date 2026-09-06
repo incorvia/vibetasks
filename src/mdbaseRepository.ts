@@ -368,7 +368,7 @@ export class MdbaseRepository extends Component {
 
   async updateStatuses(statuses: StoredStatus[]): Promise<void> {
     this.assertReady();
-    for (const type of ["task", "template"] as const) {
+    for (const type of ["task", "template", "project"] as const) {
       const path = typeResourcePath(type);
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!(file instanceof TFile)) throw new MdbaseRepositoryError("type_missing", `Missing ${path}`);
@@ -376,7 +376,7 @@ export class MdbaseRepository extends Component {
       const schema = parsed.frontmatter.schema as Record<string, unknown>;
       const value = schema.value as Record<string, unknown>;
       const properties = value.properties as Record<string, unknown>;
-      properties.status = { enum: statuses.map((status) => status.id) };
+      properties[type === "project" ? "workflow_status" : "status"] = { enum: statuses.map((status) => status.id) };
       const extension = (parsed.frontmatter["x-vibetask"] as Record<string, unknown> | undefined) ?? {};
       extension.statuses = statuses.map((status) => ({ ...status }));
       parsed.frontmatter["x-vibetask"] = extension;

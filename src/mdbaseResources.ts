@@ -75,6 +75,9 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
   }, ["status"]),
   project: extend(common("project"), {
     status: { enum: ["active", "archived"] },
+    workflow_status: { enum: DEFAULT_MDBASE_STATUSES.map((s) => s.id) },
+    priority: { enum: [...DEFAULT_PRIORITIES] },
+    priority_swimlanes: { type: "boolean" },
     icon: { type: "string" },
     area: { type: "string", minLength: 1 },
     linked_note: { type: "string", minLength: 1 },
@@ -82,6 +85,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
   }, ["status"]),
   area: extend(common("area"), {
     status: { enum: ["active", "archived"] },
+    priority_swimlanes: { type: "boolean" },
     linked_note: { type: "string", minLength: 1 },
     gcal_sync: { type: "boolean" },
   }, ["status"]),
@@ -170,7 +174,7 @@ export function typeDocument(type: RecordType): string {
   } else if (type === "project") {
     links.area = { target_type: "area", validate_exists: true, format: "wikilink" };
   }
-  const extension = type === "task" || type === "template" ? {
+  const extension = type === "task" || type === "template" || type === "project" ? {
     statuses: DEFAULT_MDBASE_STATUSES,
     priorities: [...DEFAULT_PRIORITIES],
   } : {};
@@ -183,7 +187,8 @@ export function typeDocument(type: RecordType): string {
     schema: { dialect: "json-schema-2020-12", value: DEFAULT_SCHEMAS[type] },
     collection: {
       display: { name_field: "title", description_field: "description", color_field: "color" },
-      ...(type === "task" || type === "template" ? { read_defaults: { status: "todo", priority: "normal" } } : {}),
+      ...(type === "task" || type === "template" ? { read_defaults: { status: "todo", priority: "normal" } }
+        : type === "project" ? { read_defaults: { workflow_status: "todo", priority: "normal" } } : {}),
       ...(Object.keys(links).length ? { links } : {}),
       path: { pattern: DEFAULT_PATHS[type] },
       unique: [{ field: "id", scope: "collection" }],

@@ -78,6 +78,8 @@ export interface ViewOptions {
   sortDir: SortDir;        // Richtung von Sortierung + Gruppen-Reihenfolge
   calMode: CalMode;        // nur im Kalender-Layout: Jahr/Monat/Woche/Tag
   calPanel: boolean;       // nur im Kalender-Layout: Seitenleiste „Undatiert" offen?
+  /** Area-Kanban: Priorität als zweite Achse. Fehlt = an (neue Areas und Altbestände). */
+  prioritySwimlanes?: boolean;
 }
 
 export const DEFAULT_CRITERIA: FilterCriteria = {

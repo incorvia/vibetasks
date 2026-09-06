@@ -21,8 +21,8 @@ const AUFGABE: Task = {
 };
 
 const LISTE: ProjItem = {
-  name: "Haus", path: "VibeTask/Projects/Haus.md", icon: "home", color: "#e05c4a",
-  type: "project", hidden: true, archived: true, description: "Alles rund ums Haus",
+  id: "project-1", name: "Haus", path: "VibeTask/Projects/Haus.md", icon: "home", color: "#e05c4a",
+  type: "project", hidden: true, archived: true, workflowStatus: "doing", priority: "high", description: "Alles rund ums Haus",
 };
 
 /** Frontmatter-Wert holen, egal ob der Schlüssel konfiguriert wurde. */
@@ -82,13 +82,15 @@ describe("Aufgabe → Export → Frontmatter", () => {
 describe("Liste → Export → Frontmatter", () => {
   it("bringt Symbol, Beschreibung und Ausgeblendet mit (neu in v3)", () => {
     const el = toExportList(LISTE);
-    expect(el).toEqual({ name: "Haus", type: "project", color: "#e05c4a", archived: true, icon: "home", description: "Alles rund ums Haus", hidden: true });
+    expect(el).toEqual({ name: "Haus", type: "project", color: "#e05c4a", archived: true, icon: "home", description: "Alles rund ums Haus", hidden: true, workflow_status: "doing", priority: "high" });
     const fm = importedListFrontmatter(el, "type");
     expect(fm.type).toBe("project");
     expect(fm.icon).toBe("home");
     expect(fm.description).toBe("Alles rund ums Haus");
     expect(fm.nav_hidden).toBe(true);
     expect(fm.status).toBe("archived");
+    expect(fm.workflow_status).toBe("doing");
+    expect(fm.priority).toBe("high");
   });
 
   it("exportiert BERECHNETE Symbole nicht – sonst entstuende beim Import eines aus dem Nichts", () => {
@@ -130,6 +132,8 @@ describe("Alte Exporte bleiben lesbar", () => {
     const lfm = importedListFrontmatter(d.lists[0] as ExportList, "type");
     expect(lfm.icon).toBeUndefined();
     expect(lfm.nav_hidden).toBeUndefined();
+    expect(lfm.workflow_status).toBe("todo");
+    expect(lfm.priority).toBeUndefined();
   });
 });
 

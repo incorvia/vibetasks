@@ -38,6 +38,21 @@ describe("readViewOptions – Unteraufgaben-Darstellung", () => {
   });
 });
 
+describe("Area priority swimlanes", () => {
+  it("keeps absence available as the type-specific default and persists explicit choices", () => {
+    expect(readViewOptions({}).prioritySwimlanes).toBeUndefined();
+    expect(readViewOptions({ priority_swimlanes: false }).prioritySwimlanes).toBe(false);
+    const off: Record<string, unknown> = {};
+    writeViewOptions(off, { ...DEFAULT_OPTIONS, prioritySwimlanes: false });
+    expect(off.priority_swimlanes).toBe(false);
+    const on: Record<string, unknown> = { priority_swimlanes: false };
+    writeViewOptions(on, { ...DEFAULT_OPTIONS, prioritySwimlanes: true });
+    expect(on.priority_swimlanes).toBe(true);
+    writeViewOptions(on, { ...DEFAULT_OPTIONS, prioritySwimlanes: undefined });
+    expect(on.priority_swimlanes).toBeUndefined();
+  });
+});
+
 describe("effectiveSubtasks – Vorgabe hängt am Layout", () => {
   it("nie gewählt: Liste kompakt, Board „Ausblenden“ (compact)", () => {
     // Board-Default seit 2026-07-26 bewusst „Ausblenden": Unterkarten kommen erst per

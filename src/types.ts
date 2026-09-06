@@ -240,8 +240,9 @@ export const DEFAULT_SETTINGS: VibeTaskSettings = {
  */
 export interface DeviceState {
   navCollapsed: Record<string, boolean>;  // ein-/ausgeklappte Nav-Abschnitte (labels/areas/projects)
+  projectCollapsed: Record<string, boolean>; // Projektzeilen/-karten, per stabiler Projekt-ID (Default offen)
   lastView: string;                       // zuletzt aktive Ansicht (nur für startView === "last")
   reminderLastScan: number;               // Epoch-ms des letzten gefeuerten Reminder-Scans
 }
 
-export const DEFAULT_DEVICE_STATE: DeviceState = { navCollapsed: {}, lastView: "heute", reminderLastScan: 0 };
+export const DEFAULT_DEVICE_STATE: DeviceState = { navCollapsed: {}, projectCollapsed: {}, lastView: "heute", reminderLastScan: 0 };

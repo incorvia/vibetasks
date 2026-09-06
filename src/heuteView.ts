@@ -8,7 +8,7 @@ import { takeFromBudget, repaintCount, rowsForScroll, columnFirstPaint, placehol
 import { Task, TaskStatus, NavSection, Priority } from "./types";
 import { todayStr, combineDT, dateOf, groupLabel } from "./format";
 import { openDatePicker } from "./datePicker";
-import { listProjectsAndAreas, listManaged, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists } from "./taskService";
+import { listProjectsAndAreas, listManaged, projectsInArea, tasksInArea, projectAreaName, priorityBucket, taskMatchesProjectCell, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists, ProjItem } from "./taskService";
 import { listFilters, readFilter, FilterItem } from "./filterService";
 import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
 import { FilterModal } from "./filterModal";
@@ -107,7 +107,7 @@ function openInlineTaskEditor(ctx: PageCtx, task: Task, row: HTMLElement): void 
 function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, label?: string,
   today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null,
   insert?: { side: "before" | "after"; task: Task; beforePath: string | null },
-  mount?: { inside: HTMLElement; onClose?: () => void }): void {
+  mount?: { inside: HTMLElement; onClose?: () => void }, priority?: Priority): void {
   const current = inlineTaskEditors.get(ctx.id);
   if (current?.path === "\0new" && current.slot.isConnected) { current.modal.focusTitle(); return; }
   if (current) closeInlineTaskEditor(ctx.id, false);
@@ -126,7 +126,7 @@ function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, 
   anchor.addClass(insert ? "is-adding-task" : "is-editing");
   const modal = new TaskModal(ctx.plugin, undefined, project, {
     defaultLabel: label, defaultToday: today, defaultStatus: status,
-    seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
+    seed: (due || scheduled || priority) ? { due: due ?? undefined, scheduled: scheduled ?? undefined, priority } : undefined,
     hideProjekt: !!insert?.task.parent,
     parent: insert?.task.parent ? baseName(insert.task.parent) : undefined,
     insertBefore: insert ? { parentPath: insert.task.parent, beforePath: insert.beforePath } : undefined,
@@ -145,9 +145,9 @@ function openInlineNewTask(ctx: PageCtx, anchor: HTMLElement, project?: string, 
 /** The page header is the universal creation trigger. In list layout, give its editor a native
  *  list subframe instead of leaving a modal-shaped card floating between header and content. */
 function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement, project?: string,
-  label?: string, today = false, due?: string | null): void {
+  label?: string, today = false, due?: string | null, status?: TaskStatus, priority?: Priority): void {
   if (ctx.opts.layout !== "list") {
-    openInlineNewTask(ctx, anchor, project, label, today, undefined, due);
+    openInlineNewTask(ctx, anchor, project, label, today, status, due, undefined, undefined, undefined, priority);
     return;
   }
 
@@ -168,7 +168,7 @@ function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement,
     sec.querySelector<HTMLElement>(":scope > .bt-section-title > .bt-section-lbl")?.textContent === t("sec_tasks"));
   if (existing) {
     const list = existing.querySelector<HTMLElement>(":scope > .bt-list");
-    if (list) { openInlineNewTask(ctx, anchor, project, label, today, undefined, due, undefined, insert, { inside: list }); return; }
+    if (list) { openInlineNewTask(ctx, anchor, project, label, today, status, due, undefined, insert, { inside: list }, priority); return; }
   }
 
   const wasEmpty = root.hasClass("is-empty");
@@ -180,14 +180,14 @@ function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement,
   const head = sec.createEl("h6", { cls: "bt-section-title" });
   head.createSpan({ cls: "bt-section-lbl", text: t("sec_tasks") });
   const list = sec.createDiv({ cls: "bt-list" });
-  openInlineNewTask(ctx, anchor, project, label, today, undefined, due, undefined, insert, {
+  openInlineNewTask(ctx, anchor, project, label, today, status, due, undefined, insert, {
     inside: list,
     onClose: () => {
       sec.remove();
       empty?.removeClass("bt-hidden");
       if (wasEmpty) root.addClass("is-empty");
     },
-  });
+  }, priority);
 }
 /** Alle Einträge eines Tabs verwerfen (beim Schließen bzw. beim Seitenwechsel des Tabs). */
 function dropViewKeys(id: string): void {
@@ -605,8 +605,20 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   const projItem: NavMenuItem | null = meta
     ? { sec: meta.type === "area" ? "areas" : "projects", key: meta.path, name: meta.name, hidden: meta.hidden, color: meta.color, type: meta.type, archived: meta.archived }
     : null;
-  const openTask = (add: HTMLElement): void => openHeaderNewTask(ctx, root, add,
-    isInbox ? undefined : name, undefined, false, addDue(ctx));
+  const childProjects = meta?.type === "area" ? projectsInArea(meta, listProjectsAndAreas(plugin.app).projekte) : [];
+  const openTask = (add: HTMLElement): void => {
+    if (meta?.type === "area") {
+      const menu = new Menu();
+      menu.addItem((item) => item.setTitle(t("btn_add_task")).setIcon("circle-plus")
+        .onClick(() => openHeaderNewTask(ctx, root, add, baseName(meta.path), undefined, false, addDue(ctx))));
+      menu.addItem((item) => item.setTitle(t("create_project")).setIcon("list-checks")
+        .onClick(() => new NewItemModal(plugin, "project", undefined, "name", { area: baseName(meta.path) }).open()));
+      const rect = add.getBoundingClientRect();
+      menu.showAtPosition({ x: rect.left, y: rect.bottom });
+      return;
+    }
+    openHeaderNewTask(ctx, root, add, isInbox ? undefined : name, undefined, false, addDue(ctx), meta?.workflowStatus, meta?.priority);
+  };
   pageHeader(top, ctx, top.createEl("h1", { text: isInbox ? t("nav_inbox") : projectDisplayName(name) }),
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
@@ -615,17 +627,255 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
   const source = (): Task[] => ctx.filter(isInbox
     ? plugin.index.inbox()
-    : plugin.index.all().filter((t) => t.project != null && baseName(t.project) === name));
+    : meta?.type === "area"
+      ? tasksInArea(plugin.index.all(), meta, childProjects)
+      : plugin.index.all().filter((t) => t.project != null && baseName(t.project) === name));
   const tasks = source();
-  if (!tasks.length) {
+  if (!tasks.length && !(meta?.type === "area" && childProjects.length)) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
     else if (isArea) emptyState(root, "circle-small", "empty_no_area_tasks");
     else emptyState(root, "list-checks", "empty_no_project_tasks");
     return;
   }
-  renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name },
-    () => noteHeadSig(plugin, isInbox ? null : projectPath));
+  if (meta?.type === "area" && ctx.opts.layout === "list") renderAreaList(root, ctx, meta, childProjects, source(), today);
+  else if (meta?.type === "area" && ctx.opts.layout === "board") renderAreaKanban(root, ctx, meta, childProjects, source(), today);
+  else if (meta?.type === "project" && ctx.opts.layout === "board" && ctx.opts.prioritySwimlanes === true) {
+    renderTaskSwimlaneBoard(root, ctx, source(), today, { project: name, status: meta.workflowStatus, priority: meta.priority });
+  }
+  else renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name, status: meta?.workflowStatus, priority: meta?.priority },
+      () => noteHeadSig(plugin, isInbox ? null : projectPath));
+}
+
+let draggedAreaProject: string | null = null;
+
+function shownAreaTasks(tasks: Task[], showDone: boolean): Task[] {
+  return tasks.filter((task) => isOpen(task.status) || (showDone && isDone(task.status)));
+}
+
+function projectMatchesAreaFilter(project: ProjItem, ctx: PageCtx): boolean {
+  const c = ctx.crit;
+  if (c.statuses.length && !c.statuses.includes(project.workflowStatus)) return false;
+  if (c.statusesNot.includes(project.workflowStatus)) return false;
+  const priority = priorityBucket(project.priority);
+  if (c.priorities.length && !c.priorities.some((p) => priorityBucket(p) === priority)) return false;
+  if (c.prioritiesNot.some((p) => priorityBucket(p) === priority)) return false;
+  if (c.search && !(project.name + " " + project.description).toLowerCase().includes(c.search.toLowerCase())) return false;
+  return true;
+}
+
+function hasTaskOnlyAreaCriteria(ctx: PageCtx): boolean {
+  const c = ctx.crit;
+  return c.range !== "any" || c.deadlineRange !== "any" || !!c.labels.length || !!c.labelsAll.length
+    || !!c.labelsNot.length || !!c.projects.length || !!c.projectsNot.length || c.subtaskMode !== "any";
+}
+
+function renderAreaProjectHead(parent: HTMLElement, ctx: PageCtx, project: ProjItem, allTasks: Task[], body?: HTMLElement): void {
+  const plugin = ctx.plugin;
+  const head = parent.createDiv({ cls: "bt-area-project-head", attr: { role: "button", tabindex: "0" } });
+  const collapsed = plugin.isProjectCollapsed(project.id);
+  const chev = head.createSpan({ cls: "bt-area-project-chevron" });
+  setIcon(chev, collapsed ? "chevron-right" : "chevron-down");
+  setIcon(head.createSpan({ cls: "bt-area-project-icon" }), project.icon);
+  const title = head.createSpan({ cls: "bt-area-project-title", text: project.name });
+  title.onclick = (e) => { e.stopPropagation(); ctx.open({ kind: "project", key: project.path }); };
+  head.createSpan({ cls: "bt-area-project-status", text: statusLabel(project.workflowStatus) });
+  if (priorityBucket(project.priority) !== "normal") head.createSpan({ cls: "bt-area-project-priority", text: t(PRIOS.find((p) => p.value === priorityBucket(project.priority))?.key ?? "prio_4") });
+  const progress = allTasks.filter((task) => task.project === project.path && !isTrashed(task.status));
+  if (progress.length) head.createSpan({ cls: "bt-area-project-progress", text: `${progress.filter((task) => isDone(task.status)).length}/${progress.length}` });
+  const add = head.createEl("button", { cls: "bt-area-project-add", attr: { "aria-label": t("btn_add_task") } });
+  setIcon(add, "plus");
+  add.onclick = (e) => { e.stopPropagation(); plugin.openNewTask(baseName(project.path), undefined, false, project.workflowStatus, undefined, undefined, project.priority); };
+  const toggle = (): void => {
+    const next = !plugin.isProjectCollapsed(project.id);
+    // Inline editors intentionally suppress full view redraws. Apply this interaction to the
+    // mounted section immediately as well, so collapsing still works while a task is being edited.
+    if (body) body.toggleClass("bt-hidden", next);
+    chev.empty();
+    setIcon(chev, next ? "chevron-right" : "chevron-down");
+    plugin.setProjectCollapsed(project.id, next);
+  };
+  head.onclick = toggle;
+  head.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+  if (body) body.toggleClass("bt-hidden", collapsed);
+  if (body) head.insertAdjacentElement("afterend", body);
+}
+
+function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, projects: ProjItem[], filtered: Task[], today: string): void {
+  const plugin = ctx.plugin;
+  const visible = shownAreaTasks(filtered, ctx.opts.showDone);
+  const projectPaths = new Set(projects.map((p) => p.path));
+  const direct = visible.filter((task) => task.project === area.path);
+  const invisibleProjectTasks: Task[] = [];
+  for (const project of plugin.sortProjItems("projects", projects)) {
+    const projectVisible = isOpen(project.workflowStatus) || (ctx.opts.showDone && isDone(project.workflowStatus));
+    const tasks = visible.filter((task) => task.project === project.path);
+    if (!projectVisible) { invisibleProjectTasks.push(...tasks); continue; }
+    if (!projectMatchesAreaFilter(project, ctx) || (hasTaskOnlyAreaCriteria(ctx) && !tasks.length)) {
+      invisibleProjectTasks.push(...tasks);
+      continue;
+    }
+    const sec = root.createDiv({ cls: "bt-area-project-section" });
+    const list = sec.createDiv({ cls: "bt-list bt-area-project-tasks" });
+    renderAreaProjectHead(sec, ctx, project, plugin.index.all(), list);
+    const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
+    for (const task of sortTasks(visibleRows(tasks, hosts), ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin))) {
+      // The containing project section supplies the hierarchy. Keep task depth at zero so project
+      // membership never masquerades as a task parent link; genuine subtasks still recurse below.
+      renderTask(list, ctx, task, today, 0, false, {
+        subs: effectiveSubtasks(ctx.opts), manual: ctx.opts.sort === "manual", showDone: ctx.opts.showDone,
+      });
+    }
+    annotateSubtaskTree(list);
+  }
+  const loose = [...direct, ...invisibleProjectTasks, ...visible.filter((task) => task.project && !projectPaths.has(task.project) && task.project !== area.path)];
+  if (loose.length) section(root, ctx, t("sec_tasks"), sortTasks(loose, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin)), today,
+    false, false, nestingHosts(plugin, loose, effectiveSubtasks(ctx.opts)));
+}
+
+function attachAreaCellDnd(cell: HTMLElement, ctx: PageCtx, area: ProjItem, status: TaskStatus, priority?: Priority): void {
+  cell.addEventListener("dragover", (e) => {
+    if (!dragTask() && !draggedAreaProject) return;
+    e.preventDefault();
+    cell.addClass("is-drop");
+  });
+  cell.addEventListener("dragleave", (e) => { if (!cell.contains(e.relatedTarget as Node | null)) cell.removeClass("is-drop"); });
+  cell.addEventListener("drop", (e) => {
+    e.preventDefault();
+    cell.removeClass("is-drop");
+    const projectPath = draggedAreaProject;
+    draggedAreaProject = null;
+    if (projectPath) {
+      const project = listManaged(ctx.plugin.app).active.find((p) => p.path === projectPath);
+      if (project) void ctx.plugin.updateProjectWorkflow(project.path, status, priority ?? project.priority);
+      return;
+    }
+    const path = e.dataTransfer?.getData("text/plain") || dragTask();
+    const task = path ? ctx.plugin.index.get(path) : undefined;
+    endTaskDrag();
+    if (!task) return;
+    void (async () => {
+      const children = projectsInArea(area, listProjectsAndAreas(ctx.plugin.app).projekte);
+      const belongs = task.project === area.path || children.some((p) => p.path === task.project);
+      if (!belongs) await ctx.plugin.setTaskProject(task, baseName(area.path));
+      if (task.status !== status) await ctx.plugin.setTaskStatus(task, status);
+      if (priority && priorityBucket(task.priority) !== priority) await ctx.plugin.setTaskPriority(task, priority);
+    })();
+  });
+}
+
+function renderAreaProjectCard(parent: HTMLElement, ctx: PageCtx, project: ProjItem, nested: Task[], allTasks: Task[], today: string): void {
+  const card = parent.createDiv({ cls: "bt-area-project-card", attr: { draggable: "true" } });
+  const body = card.createDiv({ cls: "bt-area-project-card-tasks" });
+  renderAreaProjectHead(card, ctx, project, allTasks, body);
+  card.addEventListener("dragstart", (e) => {
+    if ((e.target as HTMLElement).closest(".bt-task")) return;
+    draggedAreaProject = project.path;
+    e.dataTransfer?.setData("application/x-vibetask-project", project.path);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    card.addClass("is-dragging");
+  });
+  card.addEventListener("dragend", () => { draggedAreaProject = null; card.removeClass("is-dragging"); });
+  for (const task of nested) renderTask(body, ctx, task, today, 1, false, { flat: true, colId: project.workflowStatus, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone });
+}
+
+function renderAreaKanban(root: HTMLElement, ctx: PageCtx, area: ProjItem, projects: ProjItem[], filtered: Task[], today: string): void {
+  const plugin = ctx.plugin;
+  root.addClass("bt-sizer-board");
+  const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
+  const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
+  const cards = visibleRows(tasks, hosts);
+  const statuses = boardStatuses().filter((s) => s.kind === "open" || ctx.opts.showDone);
+  const lanes: { key: Priority | null; label: string }[] = ctx.opts.prioritySwimlanes === false
+    ? [{ key: null, label: "" }]
+    : PRIOS.map((p) => ({ key: p.value, label: t(p.key) }));
+  const visibleProjects = plugin.sortProjItems("projects", projects).filter((project) =>
+    statuses.some((s) => s.id === project.workflowStatus)
+    && projectMatchesAreaFilter(project, ctx)
+    && (!hasTaskOnlyAreaCriteria(ctx) || filtered.some((task) => task.project === project.path)));
+  const board = root.createDiv({ cls: "bt-area-board" + (ctx.opts.prioritySwimlanes === false ? " is-flat" : "") });
+  board.style.setProperty("--bt-area-cols", String(statuses.length));
+  board.createDiv({ cls: "bt-area-board-corner" });
+  for (const status of statuses) {
+    const head = board.createDiv({ cls: "bt-area-board-status" });
+    head.createSpan({ cls: "bt-kanban-dot" }).style.background = statusTint(status.id);
+    head.createSpan({ text: statusLabel(status.id) });
+  }
+  for (const lane of lanes) {
+    board.createDiv({ cls: "bt-area-board-lane", text: lane.label });
+    for (const status of statuses) {
+      const cell = board.createDiv({ cls: "bt-area-board-cell" });
+      attachAreaCellDnd(cell, ctx, area, status.id, lane.key ?? undefined);
+      const projectsHere = visibleProjects.filter((p) => p.workflowStatus === status.id && (!lane.key || priorityBucket(p.priority) === lane.key));
+      const nestedPaths = new Set<string>();
+      for (const project of projectsHere) {
+        const nested = cards.filter((task) => lane.key
+          ? taskMatchesProjectCell(task, project)
+          : task.project === project.path && task.status === project.workflowStatus);
+        nested.forEach((task) => nestedPaths.add(task.path));
+        renderAreaProjectCard(cell, ctx, project, nested, plugin.index.all(), today);
+      }
+      const standalone = cards.filter((task) => task.status === status.id && (!lane.key || priorityBucket(task.priority) === lane.key) && !nestedPaths.has(task.path));
+      for (const task of standalone) renderTask(cell, ctx, task, today, 0, false, { flat: true, colId: status.id, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone });
+      const add = cell.createEl("button", { cls: "bt-kanban-add" });
+      add.createSpan({ cls: "bt-add-icon" });
+      add.createSpan({ text: t("btn_add_task") });
+      add.onclick = () => plugin.openNewTask(baseName(area.path), undefined, false, status.id, undefined, undefined, lane.key ?? "normal");
+    }
+  }
+}
+
+/** Optional status × priority board for a single Project. Unlike an Area board it contains only
+ * task cards, but uses the same four displayed priority buckets and independent two-axis drag. */
+function renderTaskSwimlaneBoard(root: HTMLElement, ctx: PageCtx, filtered: Task[], today: string, add: BoardAdd): void {
+  const plugin = ctx.plugin;
+  root.addClass("bt-sizer-board");
+  const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
+  const subs = effectiveSubtasks(ctx.opts);
+  const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs));
+  const statuses = boardStatuses().filter((status) => status.kind === "open" || ctx.opts.showDone);
+  const board = root.createDiv({ cls: "bt-area-board bt-task-swimlane-board" });
+  board.style.setProperty("--bt-area-cols", String(statuses.length));
+  board.createDiv({ cls: "bt-area-board-corner" });
+  for (const status of statuses) {
+    const head = board.createDiv({ cls: "bt-area-board-status" });
+    head.createSpan({ cls: "bt-kanban-dot" }).style.background = statusTint(status.id);
+    head.createSpan({ text: statusLabel(status.id) });
+  }
+  for (const lane of PRIOS) {
+    board.createDiv({ cls: "bt-area-board-lane", text: t(lane.key) });
+    for (const status of statuses) {
+      const cell = board.createDiv({ cls: "bt-area-board-cell" });
+      cell.addEventListener("dragover", (e) => {
+        if (!dragTask()) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        cell.addClass("is-drop");
+      });
+      cell.addEventListener("dragleave", (e) => { if (!cell.contains(e.relatedTarget as Node | null)) cell.removeClass("is-drop"); });
+      cell.addEventListener("drop", (e) => {
+        e.preventDefault();
+        cell.removeClass("is-drop");
+        const path = e.dataTransfer?.getData("text/plain") || dragTask();
+        const task = path ? plugin.index.get(path) : undefined;
+        endTaskDrag();
+        if (!task) return;
+        void applyDropPage(plugin, task, add).then(async () => {
+          if (task.status !== status.id) await plugin.setTaskStatus(task, status.id);
+          if (priorityBucket(task.priority) !== lane.value) await plugin.setTaskPriority(task, lane.value);
+        });
+      });
+      const cellTasks = sortColumn(cards.filter((task) => task.status === status.id
+        && priorityBucket(task.priority) === lane.value), status.kind, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin));
+      for (const task of cellTasks) renderTask(cell, ctx, task, today, 0, false,
+        { flat: true, colId: status.id, subs, showDone: ctx.opts.showDone });
+      const addButton = cell.createEl("button", { cls: "bt-kanban-add" });
+      addButton.createSpan({ cls: "bt-add-icon" });
+      addButton.createSpan({ text: t("btn_add_task") });
+      addButton.onclick = () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
+        status.id, undefined, undefined, lane.value);
+    }
+  }
 }
 
 /** Label-Board: alle Aufgaben mit einem Label, nach Status/Datum gruppiert (wie Projekt-Board). */
@@ -874,7 +1124,7 @@ function sortColumn(list: Task[], kind: StatusKind, sort: FilterSort, dir: SortD
 // ── Generisches Spalten-Modell: das Board folgt der Gruppierung ──
 // Fundament für Status/Label/… – aktuell freigeschaltet: Status (Default) und Label.
 /** Basis-Kontext fürs „+ Aufgabe" einer Spalte (die Spalten-Dimension setzt die Spalte selbst). */
-interface BoardAdd { project?: string | null; label?: string; today?: boolean; }
+interface BoardAdd { project?: string | null; label?: string; today?: boolean; status?: TaskStatus; priority?: Priority; }
 interface BoardColumn {
   id: string;                                   // stabile Spalten-ID (Status-ID bzw. Label-Name / NO_LABEL)
   title: string;
@@ -893,7 +1143,7 @@ function statusColumns(plugin: VibeTaskPlugin, add: BoardAdd): BoardColumn[] {
     id: col.id, title: statusLabel(col.id), tint: statusTint(col.id), kind: col.kind,
     has: (tk: Task) => tk.status === col.id,
     onDrop: (tk: Task) => { if (tk.status !== col.id) void plugin.setTaskStatus(tk, col.id); },
-    onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, col.id),
+    onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, col.id, undefined, undefined, add.priority),
   }));
 }
 
@@ -907,14 +1157,14 @@ function labelColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): Boa
     id: name, title: "#" + name, tint: plugin.getLabelColor(name) ?? "var(--bt-label)", kind: "open",
     has: (tk: Task) => tk.labels.includes(name),
     onDrop: (tk: Task, fromColId: string) => void plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, name),
-    onAdd: () => plugin.openNewTask(add.project ?? undefined, name, add.today ?? false, firstOpenStatus()),
+    onAdd: () => plugin.openNewTask(add.project ?? undefined, name, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, add.priority),
   }));
   if (tasks.some((t) => t.labels.length === 0)) {
     cols.push({
       id: NO_LABEL, title: t("no_label"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => tk.labels.length === 0,
       onDrop: (tk: Task, fromColId: string) => void plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, null),
-      onAdd: () => plugin.openNewTask(add.project ?? undefined, undefined, add.today ?? false, firstOpenStatus()),
+      onAdd: () => plugin.openNewTask(add.project ?? undefined, undefined, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, add.priority),
     });
   }
   return cols;
@@ -929,7 +1179,7 @@ function priorityColumns(plugin: VibeTaskPlugin, add: BoardAdd): BoardColumn[] {
     id: p.value, title: t(p.key), tint: p.color, kind: "open",
     has: (tk: Task) => eff(tk.priority) === p.value,
     onDrop: (tk: Task) => { if (eff(tk.priority) !== p.value) void plugin.setTaskPriority(tk, p.value); },
-    onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false),
+    onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, add.status, undefined, undefined, p.value),
   }));
 }
 
@@ -937,6 +1187,7 @@ function priorityColumns(plugin: VibeTaskPlugin, add: BoardAdd): BoardColumn[] {
  *  Projekt"); Ziehen verschiebt die Aufgabe (Label/Status bleiben). */
 function projectColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
   const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
+  const byProjectName = new Map([...bereiche, ...projekte].map((p) => [p.name, p] as const));
   const colorOf = new Map(([...bereiche, ...projekte]).map((p) => [p.name, p.color] as const));
   // Nur ECHTE Projekte werden Spalten – „nicht einsortierte" (kein Projekt ODER Inbox-Verweis)
   // landen alle im einen Eingang-Bucket (unten), nie in einer eigenen Inbox-Spalte.
@@ -951,14 +1202,17 @@ function projectColumns(plugin: VibeTaskPlugin, tasks: Task[], add: BoardAdd): B
     id: name, title: projectDisplayName(name), tint: colorOf.get(name) ?? "var(--bt-nav-project)", kind: "open",
     has: (tk: Task) => !!tk.project && baseName(tk.project) === name,
     onDrop: (tk: Task) => { if (!tk.project || baseName(tk.project) !== name) void plugin.setTaskProject(tk, name); },
-    onAdd: () => plugin.openNewTask(name, add.label, add.today ?? false),
+    onAdd: () => {
+      const project = byProjectName.get(name);
+      plugin.openNewTask(name, add.label, add.today ?? false, project?.workflowStatus ?? add.status, undefined, undefined, project?.priority ?? add.priority);
+    },
   }));
   if (tasks.some((t) => isInboxLink(t.project))) {
     cols.push({
       id: NO_PROJECT, title: t("nav_inbox"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => isInboxLink(tk.project),
       onDrop: (tk: Task) => { if (!isInboxLink(tk.project)) void plugin.setTaskProject(tk, null); },   // in den Eingang = Projekt leeren
-      onAdd: () => plugin.openNewTask(undefined, add.label, add.today ?? false),
+      onAdd: () => plugin.openNewTask(undefined, add.label, add.today ?? false, add.status, undefined, undefined, add.priority),
     });
   }
   return cols;
@@ -980,7 +1234,7 @@ function dateColumns(plugin: VibeTaskPlugin, cards: Task[], today: string, field
       id: "nodate", title: t("sec_no_date"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => !dateOfTask(tk),
       onDrop: (tk: Task) => { if (dateOfTask(tk)) void plugin.setTaskDate(tk, field, ""); },   // Datum löschen
-      onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false),
+      onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, add.status, undefined, undefined, add.priority),
     };
     const d = key.slice(2);   // "d:2026-07-15" -> "2026-07-15"
     return {
@@ -988,7 +1242,7 @@ function dateColumns(plugin: VibeTaskPlugin, cards: Task[], today: string, field
       has: (tk: Task) => dateOfTask(tk) === d,
       onDrop: (tk: Task) => { if (dateOfTask(tk) !== d) void plugin.setTaskDate(tk, field, d); },
       onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
-        undefined, field === "due" ? d : undefined, field === "scheduled" ? d : undefined),
+        add.status, field === "due" ? d : undefined, field === "scheduled" ? d : undefined, add.priority),
     };
   });
 }
@@ -1788,7 +2042,8 @@ function sigLookup(ctx: PageCtx): SigLookup {
 function frameSig(ctx: PageCtx, opts: ViewOptions, headSig: string): string {
   const o = opts;
   return [
-    ctx.pageKey, headSig, o.layout, o.sort, o.sortDir, o.group, o.showDone, o.subtasks ?? "",
+    ctx.pageKey, headSig, o.layout, o.sort, o.sortDir, o.group, o.showDone, o.subtasks ?? "", o.prioritySwimlanes ?? "",
+    ctx.plugin.projectCollapseSignature(),
     effectiveSubtasks(o), todayStr(), JSON.stringify(ctx.crit), ctx.doneCollapsed, menuHoldPath() ?? "",
     // Aus der Suche angesprungen: das Hervorheben UND das Scrollen passieren beim Bauen der
     // Zeile (applyFlash). Steht ein Sprung an, muss also gebaut werden, nicht gepatcht.
@@ -1803,7 +2058,8 @@ function noteHeadSig(plugin: VibeTaskPlugin, path: string | null): string {
   if (!path) return "";
   const f = plugin.app.vault.getAbstractFileByPath(path);
   const fm = f instanceof TFile ? plugin.app.metadataCache.getFileCache(f)?.frontmatter : null;
-  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.nav_hidden ?? ""].join("~");
+  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.workflow_status ?? "",
+    fm?.priority ?? "", fm?.area ?? "", fm?.priority_swimlanes ?? "", fm?.nav_hidden ?? ""].join("~");
 }
 
 /** Einstellungen, die in JEDER Zeile stecken (und beim Patchen nicht neu gelesen würden). */
@@ -2176,6 +2432,8 @@ interface NavItemOpts {
   /** Wohin der Eintrag führt. Nur dafür da, Strg-/Mittelklick zu bedienen – der normale Klick
    *  läuft weiter über onClick (Einträge wie „Suchen" haben gar keine Seite und lassen es weg). */
   page?: PageRef;
+  depth?: number;
+  toggle?: { collapsed: boolean; onToggle: () => void };
 }
 
 /** Div klick- UND tastaturbedienbar machen (role=button/tabindex kommen vom Aufrufer):
@@ -2188,6 +2446,14 @@ function activate(el: HTMLElement, handler: () => void): void {
 /** Ein Nav-Eintrag (Div wie bisher, aber per role=button/tabindex tastaturbedienbar). */
 function navItem(c: HTMLElement, plugin: VibeTaskPlugin, o: NavItemOpts): void {
   const item = c.createDiv({ cls: "bt-nav-item" + (o.active ? " is-active" : "") + (o.cls ? " " + o.cls : ""), attr: { role: "button", tabindex: "0" } });
+  if (o.depth) item.style.setProperty("--bt-nav-depth", String(o.depth));
+  if (o.toggle) {
+    const treeToggle = item.createSpan({ cls: "bt-nav-tree-toggle", attr: { role: "button", tabindex: "0", "aria-expanded": String(!o.toggle.collapsed) } });
+    setIcon(treeToggle, o.toggle.collapsed ? "chevron-right" : "chevron-down");
+    const run = (e: Event): void => { e.preventDefault(); e.stopPropagation(); o.toggle?.onToggle(); };
+    treeToggle.onclick = run;
+    treeToggle.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") run(e); };
+  }
   const ic = item.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, o.icon); if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
   const lbl = item.createSpan({ cls: "bt-nav-lbl", text: o.label });
   // Langer Name in schmaler Leiste: Tooltip zeigt ihn ganz, statt den Nutzer die Leiste
@@ -2384,7 +2650,8 @@ function navCounts(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjLists, 
   const { bereiche, projekte } = pa;
   m.set("p:" + INBOX_KEY, plugin.index.inboxOpen().length);   // eingebauter Eingang
   for (const id of VIEW_IDS) m.set("v:" + id, navCount(plugin, id));
-  for (const p of [...bereiche, ...projekte]) m.set("p:" + p.path, plugin.index.byProject(p.path).length);
+  for (const p of bereiche) m.set("p:" + p.path, tasksInArea(plugin.index.open(), p, projekte).length);
+  for (const p of projekte) m.set("p:" + p.path, plugin.index.byProject(p.path).length);
   const today = todayStr();
   for (const fl of flts) m.set("f:" + fl.path, filterBadgeCount(plugin, fl, today));
   for (const name of plugin.getVisibleLabels()) m.set("l:" + name, plugin.index.byLabel(name).length);
@@ -2397,8 +2664,8 @@ function navCounts(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjLists, 
 /** Struktur-Signatur OHNE Zahlen: gleich = dieselben Einträge in derselben Form. */
 function navSignature(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): string {
   const { bereiche, projekte } = pa;
-  const proj = (p: { path: string; name: string; icon: string; color: string | null; hidden: boolean }): string =>
-    [p.path, p.name, p.icon, p.color, p.hidden].join("~");
+  const proj = (p: ProjItem): string =>
+    [p.path, p.name, p.icon, p.color, p.hidden, projectAreaName(p.area), p.workflowStatus, p.priority].join("~");
   return JSON.stringify({
     areas: plugin.sortProjItems("areas", bereiche).map(proj),
     projects: plugin.sortProjItems("projects", projekte).map(proj),
@@ -2431,7 +2698,7 @@ function navSignature(plugin: VibeTaskPlugin, tpls: TemplateInfo[], pa: ProjList
     templates: tpls.map((x) => [x.root.path, x.name, x.kind, x.hidden].join("~")),
     tplReady: plugin.templates.ready,
     active: JSON.stringify(plugin.activePage()),   // markiert wird die Seite des AKTIVEN Tabs
-    collapsed: ["filters", "labels", "areas", "projects", "templates"].map((id) => plugin.isNavCollapsed(id)),
+    collapsed: ["filters", "labels", "areas", "projects", "templates", ...bereiche.map((a) => "area:" + a.id)].map((id) => plugin.isNavCollapsed(id)),
     reorder: plugin.reorderSec,
     preview: plugin.colorPreview,
     locale: getLocale(),
@@ -2546,7 +2813,8 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
 
   // cls = Kategorie-Klasse (bt-nav-area / bt-nav-project) für eine gemeinsame Icon-Farbe je Gruppe.
   // Rechtsklick auf einen Eintrag öffnet das Kontextmenü (Bearbeiten, Ausblenden, Sortieren, …).
-  const projItems = (items: { name: string; path: string; icon: string; color: string | null; hidden: boolean }[], cls: string, kind: "project" | "area") => {
+  const projItems = (items: ProjItem[], cls: string, kind: "project" | "area", depth = 0,
+    toggleFor?: (p: ProjItem) => NavItemOpts["toggle"]) => {
     const sec: NavSection = kind === "area" ? "areas" : "projects";
     const visible = items.filter((x) => !x.hidden);   // in der Verwaltung ausgeblendete weglassen
     if (plugin.reorderSec === sec) {
@@ -2555,13 +2823,13 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
     }
     for (const p of visible) {
       navItem(c, plugin, {
-        cls, icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
-        count: plugin.index.byProject(p.path).length, countKey: "p:" + p.path,
+        cls, depth, toggle: toggleFor?.(p), icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
+        count: kind === "area" ? tasksInArea(plugin.index.open(), p, projekte).length : plugin.index.byProject(p.path).length, countKey: "p:" + p.path,
         active: isActive("project", p.path), page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
         onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec, key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: kind }); m.showAtMouseEvent(e); },
         // Verweise laufen über den Basename (s. setTaskProject); liegt die Aufgabe schon hier,
         // bleibt der Zug folgenlos statt die Notiz unnötig neu zu schreiben.
-        onDropTask: (task) => { if (task.project !== p.path) void plugin.setTaskProject(task, p.name); },
+        onDropTask: (task) => { if (task.project !== p.path) void plugin.setTaskProject(task, baseName(p.path)); },
       });
     }
   };
@@ -2631,14 +2899,34 @@ export function renderNavInto(c: HTMLElement, plugin: VibeTaskPlugin): void {
   if (bereiche.length) {
     const areasCollapsed = navHead(c, plugin, "areas", t("group_area"), t("pick_new_area"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "area").open());
-    if (!areasCollapsed || plugin.reorderSec === "areas") projItems(plugin.sortProjItems("areas", bereiche), "bt-nav-area", "area");
+    const orderedAreas = plugin.sortProjItems("areas", bereiche);
+    if (plugin.reorderSec === "areas") projItems(orderedAreas, "bt-nav-area", "area");
+    else if (!areasCollapsed) {
+      for (const area of orderedAreas.filter((x) => !x.hidden)) {
+        const children = plugin.sortProjItems("projects", projectsInArea(area, projekte));
+        const visibleChildren = children.filter((project) => !project.hidden);
+        const collapseKey = "area:" + area.id;
+        const collapsed = plugin.isNavCollapsed(collapseKey);
+        projItems([area], "bt-nav-area", "area", 0, visibleChildren.length ? () => ({
+          collapsed,
+          onToggle: () => void plugin.toggleNavSection(collapseKey),
+        }) : undefined);
+        if (!collapsed) projItems(children, "bt-nav-project bt-nav-child", "project", 1);
+      }
+    }
   }
 
-  // Projekte: „+" öffnet das Neu-Modal (Name + Farbe).
-  if (projekte.length) {
+  // Nur Projekte ohne gültige aktive Area bleiben im eigenen Abschnitt. Zugeordnete Projekte
+  // erscheinen ausschließlich eingerückt unter ihrer Area.
+  const activeAreas = new Set(bereiche.map((a) => baseName(a.path).toLowerCase()));
+  const unassigned = projekte.filter((p) => {
+    const area = projectAreaName(p.area);
+    return !area || !activeAreas.has(area.toLowerCase());
+  });
+  if (unassigned.length) {
     const projCollapsed = navHead(c, plugin, "projects", t("group_project"), t("pick_new_project"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "project").open());
-    if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", projekte), "bt-nav-project", "project");
+    if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", unassigned), "bt-nav-project", "project");
   }
 
   // Vorlagen ganz unten: „+" legt eine leere an. Ein KLICK wendet an – nicht „öffnet", wie bei den

@@ -3,17 +3,21 @@
 // (Name/Farbe/Sichtbarkeit ändern). Farb-Swatches inline (siehe colorSwatches).
 import { Modal, Notice, setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
-import { listProjectsAndAreas, normalizeLabel } from "./taskService";
+import { baseName, listProjectsAndAreas, normalizeLabel } from "./taskService";
 import { buildSwatchRow } from "./colorSwatches";
 import { ConfirmModal } from "./confirmModal";
 import { t } from "./i18n";
+import { Priority, TaskStatus } from "./types";
+import { boardStatuses, firstOpenStatus, statusLabel } from "./statuses";
+import { PRIOS, PRIO_KEY } from "./chips";
 
 export type NewItemKind = "project" | "area" | "label";
 /** Welches Feld beim Öffnen den Cursor bekommt. „description" kommt von der Beschreibungszeile
  *  der Seite: Wer sie anklickt, will die Beschreibung ändern – nicht den Namen. */
 export type EditFocus = "name" | "description";
 /** Referenz auf einen bestehenden Eintrag (Bearbeiten). key = Notiz-Pfad (Projekt/Bereich) bzw. Label-Name. */
-export interface EditRef { key: string; name: string; color: string | null; visible: boolean; description?: string; area?: string | null; }
+export interface EditRef { key: string; name: string; color: string | null; visible: boolean; description?: string; area?: string | null; workflowStatus?: TaskStatus; priority?: Priority; }
+export interface NewItemDefaults { area?: string | null; workflowStatus?: TaskStatus; priority?: Priority; }
 
 const ICON: Record<NewItemKind, string> = { project: "list-checks", area: "circle", label: "hash" };
 const TITLE: Record<NewItemKind, string> = { project: "new_project_title", area: "new_area_title", label: "new_label_title" };
@@ -27,6 +31,8 @@ export class NewItemModal extends Modal {
   private visible: boolean;
   private area: string | null;
   private areaInit: string | null;
+  private workflowStatus: TaskStatus;
+  private priority: Priority;
   private syncExcluded = false;              // aktueller Stand des Sync-Toggles
   private syncExcludedInit: boolean | null = null;   // Ausgangswert; null = Toggle nicht gezeigt
   private previewIc!: HTMLElement;
@@ -34,15 +40,17 @@ export class NewItemModal extends Modal {
   private descInput: HTMLTextAreaElement | null = null;
 
   constructor(private plugin: VibeTaskPlugin, private kind: NewItemKind, private edit?: EditRef,
-              private focusField: EditFocus = "name") {
+              private focusField: EditFocus = "name", defaults: NewItemDefaults = {}) {
     super(plugin.app);
     this.name = edit?.name ?? "";
     this.description = edit?.description ?? "";
     this.color = edit?.color ?? null;
     this.visible = edit ? edit.visible : true;   // beim Anlegen standardmäßig sichtbar
     const linkedArea = edit?.area?.match(/\[\[([^\]|#]+)/)?.[1] ?? edit?.area ?? null;
-    this.area = linkedArea ? linkedArea.split("/").pop()!.replace(/\.md$/i, "") : null;
+    this.area = linkedArea ? linkedArea.split("/").pop()!.replace(/\.md$/i, "") : (defaults.area ?? null);
     this.areaInit = this.area;
+    this.workflowStatus = edit?.workflowStatus ?? defaults.workflowStatus ?? firstOpenStatus();
+    this.priority = edit?.priority ?? defaults.priority ?? "normal";
   }
 
   onOpen(): void {
@@ -76,11 +84,27 @@ export class NewItemModal extends Modal {
 
     // Things-style hierarchy: a project can live in one area. Areas themselves never nest.
     if (this.kind === "project") {
+      const statusField = contentEl.createDiv({ cls: "bt-new-field" });
+      statusField.createEl("label", { text: t("chip_status") });
+      const status = statusField.createEl("select", { cls: "bt-new-input" });
+      for (const s of boardStatuses()) status.createEl("option", { value: s.id, text: statusLabel(s.id) });
+      status.value = this.workflowStatus;
+      status.onchange = () => { this.workflowStatus = status.value; };
+
+      const priorityField = contentEl.createDiv({ cls: "bt-new-field" });
+      priorityField.createEl("label", { text: t("chip_priority") });
+      const priority = priorityField.createEl("select", { cls: "bt-new-input" });
+      for (const p of PRIOS) priority.createEl("option", { value: p.value, text: t(PRIO_KEY[p.value]) });
+      priority.value = this.priority === "low" || this.priority === "lowest" ? "normal" : this.priority;
+      priority.onchange = () => { this.priority = priority.value as Priority; };
+
       const areaField = contentEl.createDiv({ cls: "bt-new-field" });
       areaField.createEl("label", { text: t("kind_area") });
       const select = areaField.createEl("select", { cls: "bt-new-input" });
       select.createEl("option", { value: "", text: "—" });
-      for (const area of listProjectsAndAreas(this.app).bereiche) select.createEl("option", { value: area.name, text: area.name });
+      for (const area of listProjectsAndAreas(this.app).bereiche) {
+        select.createEl("option", { value: baseName(area.path), text: area.name });
+      }
       select.value = this.area ?? "";
       select.onchange = () => { this.area = select.value || null; };
     }
@@ -180,7 +204,7 @@ export class NewItemModal extends Modal {
         if (this.color) await this.plugin.setLabelColor(nu, this.color);
       }
     } else {
-      await this.plugin.createProject(name, this.kind === "area", this.color, !this.visible, this.description, this.area);
+      await this.plugin.createProject(name, this.kind === "area", this.color, !this.visible, this.description, this.area, this.workflowStatus, this.priority);
     }
   }
 
@@ -197,6 +221,9 @@ export class NewItemModal extends Modal {
       if (this.syncExcludedInit !== null && this.syncExcluded !== this.syncExcludedInit) await this.plugin.setListGcalExcluded(e.key, this.syncExcluded);
       if (this.description.trim() !== (e.description ?? "").trim()) await this.plugin.setProjectDescription(e.key, this.description);
       if (this.kind === "project" && this.area !== this.areaInit) await this.plugin.assignProjectArea(e.key, this.area);
+      if (this.kind === "project" && (this.workflowStatus !== e.workflowStatus || this.priority !== e.priority)) {
+        await this.plugin.updateProjectWorkflow(e.key, this.workflowStatus, this.priority);
+      }
       // Zuletzt: Umbenennen ändert den Pfad, e.key wäre danach veraltet.
       if (name !== e.name) await this.plugin.renameProject(e.key, name);
     }

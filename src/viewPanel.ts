@@ -8,7 +8,7 @@ import { openPopover } from "./popover";
 import { ViewOptions, FilterCriteria, PageLayout, FilterSort, FilterGroup, SortDir, SubtaskDisplay, LAYOUTS, SORTS, SORT_DIRS, SUBTASK_DISPLAYS, BOARD_SUBTASK_DISPLAYS, effectiveSubtasks, hasSortDir, hasCriteria, activeFacetCount, DEFAULT_OPTIONS, DEFAULT_CRITERIA } from "./filterEngine";
 import { PANEL_STYLE, buildFacets, renderFacet, selectControl } from "./facets";
 import { FilterModal } from "./filterModal";
-import { INBOX_KEY, baseName } from "./taskService";
+import { INBOX_KEY, baseName, isAreaPath } from "./taskService";
 import { resetSubtaskToggles } from "./heuteView";
 import { t } from "./i18n";
 
@@ -111,6 +111,17 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
           (v) => { resetSubtaskToggles(ctx); apply({ subtasks: v as SubtaskDisplay }); }, subsLabelFor);
       }
 
+      if (o.layout === "board" && ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY) {
+        const area = isAreaPath(ctx.plugin.app, ctx.page.key);
+        const laneRow = pop.createDiv({ cls: "bt-panel-row" });
+        laneRow.createSpan({ cls: "bt-panel-k", text: t("filter_group_priority") });
+        const enabled = area ? o.prioritySwimlanes !== false : o.prioritySwimlanes === true;
+        const sw = laneRow.createDiv({ cls: "bt-panel-switch" + (enabled ? " is-on" : "") });
+        sw.onclick = () => apply({ prioritySwimlanes: area
+          ? (enabled ? false : undefined)
+          : (enabled ? undefined : true) });
+      }
+
       // Sortieren/Gruppieren: volle Seiten UND „Heute" (dort ersetzt eine aktive Gruppierung den
       // Überfällig/Heute-Split). „Demnächst" bleibt bewusst eine reine, ungruppierte Termin-Agenda.
       // Der Kalender hat seine Achse (das Datum) fest vorgegeben – Sortieren/Gruppieren wäre dort
@@ -208,6 +219,8 @@ export function anzeigeButton(head: HTMLElement, ctx: PageCtx): void {
     // Ein Punkt auf dem Rohwert behauptete sonst eine Abweichung, die man nicht sieht (wie
     // zuvor bei der Richtung unter „smart").
     || o.showDone !== DEFAULT_OPTIONS.showDone
+    || (ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY
+      && (isAreaPath(ctx.plugin.app, ctx.page.key) ? o.prioritySwimlanes === false : o.prioritySwimlanes === true))
     || effectiveSubtasks(o) !== effectiveSubtasks({ layout: o.layout })
     || (hasSortDir(o.sort) && o.sortDir !== DEFAULT_OPTIONS.sortDir);
   // Ein Filter VERBIRGT Aufgaben – dafür ist ein stiller Punkt zu wenig Signal: Er sähe genauso

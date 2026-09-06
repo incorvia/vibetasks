@@ -95,7 +95,7 @@ export function openEdit(plugin: VibeTaskPlugin, item: NavMenuItem, focus: EditF
   if (item.sec === "filters") { new FilterModal(plugin, item.key, undefined, focus).open(); return; }
   const kind = item.sec === "labels" ? "label" : (item.type ?? "project");
   const managed = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived).find((p) => p.path === item.key);
-  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: managed?.description ?? "", area: managed?.area ?? null }, focus).open();
+  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: managed?.description ?? "", area: managed?.area ?? null, workflowStatus: managed?.workflowStatus, priority: managed?.priority }, focus).open();
 }
 
 function setVisible(plugin: VibeTaskPlugin, sec: NavSection, key: string, visible: boolean): Promise<void> {

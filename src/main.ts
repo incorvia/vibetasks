@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArea as setProjectParentArea, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, projectAreaName, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -1191,8 +1191,8 @@ export default class VibeTaskPlugin extends Plugin {
   /** Neues Projekt (oder direkt Bereich) anlegen. Nav/Board lesen den metadataCache, der
    *  nach create erst kurz später aktualisiert wird -> einmaliger „changed"-Listener zeichnet
    *  dann neu, damit der neue Eintrag sofort in der Seitenleiste erscheint. */
-  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null): Promise<void> {
-    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description, area);
+  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<void> {
+    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description, area, workflowStatus, priority);
     const ref = this.app.metadataCache.on("changed", () => { this.app.metadataCache.offref(ref); this.renderAll(); });
     this.registerEvent(ref);
   }
@@ -1295,6 +1295,10 @@ export default class VibeTaskPlugin extends Plugin {
   async assignProjectArea(path: string, area: string | null): Promise<void> {
     this.refreshOnChange(path);
     await setProjectParentArea(this.app, path, area);
+  }
+  async updateProjectWorkflow(path: string, workflowStatus: TaskStatus, priority: Priority): Promise<void> {
+    this.refreshOnChange(path);
+    await setProjectWorkflow(this.app, path, workflowStatus, priority);
   }
   async archiveProject(path: string, archived: boolean): Promise<void> {
     this.refreshOnChange(path);
@@ -1558,6 +1562,14 @@ export default class VibeTaskPlugin extends Plugin {
         }
       });
     }
+    const managed = listManaged(this.app);
+    for (const project of [...managed.active, ...managed.archived]) {
+      if (project.type !== "project" || projectAreaName(project.area)?.toLowerCase() !== oldBase.toLowerCase()) continue;
+      const f = this.app.vault.getAbstractFileByPath(project.path);
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
+        if (projectAreaName(typeof fm.area === "string" ? fm.area : null)?.toLowerCase() === oldBase.toLowerCase()) fm.area = "[[" + newBase + "]]";
+      });
+    }
   }
   /** Aufgabe umbenannt: `parent`-Referenzen der Unteraufgaben nachziehen. */
   private async remapParentRefs(oldBase: string, newBase: string): Promise<void> {
@@ -1792,6 +1804,17 @@ export default class VibeTaskPlugin extends Plugin {
   }
   async toggleNavSection(id: string): Promise<void> { await this.setNavCollapsed(id, !this.isNavCollapsed(id)); }
 
+  isProjectCollapsed(id: string): boolean { return !!this.device.projectCollapsed[id]; }
+  projectCollapseSignature(): string {
+    return Object.keys(this.device.projectCollapsed).filter((id) => this.device.projectCollapsed[id]).sort().join("|");
+  }
+  setProjectCollapsed(id: string, collapsed: boolean): void {
+    if (this.isProjectCollapsed(id) === collapsed) return;
+    this.device.projectCollapsed[id] = collapsed;
+    this.saveDevice();
+    this.renderAll();
+  }
+
   async setLabelVisible(name: string, visible: boolean): Promise<void> {
     const has = this.settings.visibleLabels.includes(name);
     if (visible === has) return;
@@ -1835,6 +1858,12 @@ export default class VibeTaskPlugin extends Plugin {
     for (const tk of affected) {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
       if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.status = newId; });
+    }
+    const managedProjects = listManaged(this.app);
+    for (const project of [...managedProjects.active, ...managedProjects.archived]
+      .filter((p) => p.type === "project" && p.workflowStatus === oldId)) {
+      const f = this.app.vault.getAbstractFileByPath(project.path);
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.workflow_status = newId; });
     }
     await this.remapStatusRefs(oldId, newId);
     await this.commitStatuses();
@@ -1982,6 +2011,12 @@ export default class VibeTaskPlugin extends Plugin {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
       if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.status = target; });
     }
+    const managedProjects = listManaged(this.app);
+    for (const project of [...managedProjects.active, ...managedProjects.archived]
+      .filter((p) => p.type === "project" && p.workflowStatus === id)) {
+      const f = this.app.vault.getAbstractFileByPath(project.path);
+      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { fm.workflow_status = target; });
+    }
     this.settings.statuses = list.filter((x) => x.id !== id);
     await this.commitStatuses();
     if (affected.length) new Notice(t("status_reassigned", affected.length, statusLabel(target)));
@@ -1989,10 +2024,10 @@ export default class VibeTaskPlugin extends Plugin {
 
   // ── Aufgaben-Aktionen ──
   /** `due` (optional) schlägt `today`: der Kalender kann damit den angezeigten Tag vorgeben. */
-  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null): void {
+  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null, priority?: Priority): void {
     new TaskModal(this, undefined, project, {
       defaultLabel: label, defaultToday: today, defaultStatus: status,
-      seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
+      seed: (due || scheduled || priority) ? { due: due ?? undefined, scheduled: scheduled ?? undefined, priority } : undefined,
     }).open();
   }
   openEditTask(task: Task): void { new TaskModal(this, task).open(); }

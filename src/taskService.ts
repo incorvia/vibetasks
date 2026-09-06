@@ -2,7 +2,7 @@ import { App, Notice, TFile, normalizePath, stringifyYaml } from "obsidian";
 import { VibeTaskSettings, Priority, Task, TaskStatus } from "./types";
 import type { ShiftedDates } from "./templatePlan";
 import { combineDT } from "./format";
-import { firstOpenStatus, isDone, isTrashed } from "./statuses";
+import { firstOpenStatus, isDone, isKnownStatus, isTrashed } from "./statuses";
 import { findH1Line, renameHeadingLine, newTaskBody } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
 import { ScanCache } from "./scanCache";
@@ -336,8 +336,10 @@ export function listProjects(app: App): string[] {
 }
 
 export interface ProjItem {
-  name: string; path: string; icon: string; color: string | null;
+  id: string; name: string; path: string; icon: string; color: string | null;
   type: "project" | "area"; hidden: boolean; archived: boolean;
+  workflowStatus: TaskStatus;
+  priority: Priority;
   area?: string | null;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
 }
@@ -393,6 +395,7 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
     const type: "project" | "area" | null = ty === "area" ? "area" : ty === "project" ? "project" : null;
     if (!type) return [];
     return [{
+      id: typeof fm?.id === "string" && fm.id ? fm.id : f.path,
       name: typeof fm?.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path, type,
       // Bereiche immer circle-small (per CSS gefüllt), unabhängig vom icon-Frontmatter.
       // Projekte: eigenes icon-Frontmatter respektieren, sonst das semantische Projekt-Symbol.
@@ -402,6 +405,8 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
       area: typeof fm?.area === "string" ? fm.area : null,
+      workflowStatus: typeof fm?.workflow_status === "string" && isKnownStatus(fm.workflow_status) ? fm.workflow_status : firstOpenStatus(),
+      priority: (["highest", "high", "medium", "normal", "low", "lowest"] as string[]).includes(String(fm?.priority)) ? fm!.priority as Priority : "normal",
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
     }];
   }));
@@ -429,6 +434,35 @@ export function listProjectsAndAreas(app: App): ProjLists {
   return { bereiche, projekte };
 }
 
+/** Benutzerwert eines `area`-Links auf seinen Basenamen normalisieren. */
+export function projectAreaName(area: string | null | undefined): string | null {
+  if (typeof area !== "string") return null;
+  const raw = area.match(/\[\[([^\]|#]+)/)?.[1] ?? area;
+  const name = raw.trim().split("/").pop()?.replace(/\.md$/i, "") ?? "";
+  return name || null;
+}
+
+/** Aktive Kindprojekte einer Area. Verwaiste Links werden bewusst nicht zugeordnet. */
+export function projectsInArea(area: ProjItem, projects: ProjItem[]): ProjItem[] {
+  const key = baseName(area.path).toLowerCase();
+  return projects.filter((p) => p.type === "project" && !p.archived && projectAreaName(p.area)?.toLowerCase() === key);
+}
+
+/** Direkte Area-Aufgaben plus Aufgaben ihrer aktiven Kindprojekte. */
+export function tasksInArea(tasks: Task[], area: ProjItem, projects: ProjItem[]): Task[] {
+  const paths = new Set([area.path, ...projectsInArea(area, projects).map((p) => p.path)]);
+  return tasks.filter((task) => !!task.project && paths.has(task.project));
+}
+
+export const priorityBucket = (priority: Priority): Priority =>
+  priority === "low" || priority === "lowest" ? "normal" : priority;
+
+/** A project task is visually absorbed only when it occupies the same board cell. */
+export function taskMatchesProjectCell(task: Task, project: ProjItem): boolean {
+  return task.project === project.path && task.status === project.workflowStatus
+    && priorityBucket(task.priority) === priorityBucket(project.priority);
+}
+
 /** Bekannte Projekt- und Bereichsnamen – die Liste, gegen die `@Projekt` in der Texterkennung
  *  aufgelöst wird. Bewusst nur BESTEHENDE: Ein Tippfehler soll kein Projekt anlegen, sondern
  *  Text bleiben (s. parseQuickEntry). Beide Eingabe-Masken benutzen dieselbe Liste, damit
@@ -449,7 +483,7 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
  *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
-export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null): Promise<string> {
+export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);
@@ -458,7 +492,7 @@ export async function createProjectNote(app: App, settings: VibeTaskSettings, na
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
   const type = asArea ? "area" : "project";
   const now = rfc3339Now();
-  const fm: Record<string, unknown> = { type, id: newUlid(), title: base, status: "active", area: !asArea && area ? `[[${area}]]` : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
+  const fm: Record<string, unknown> = { type, id: newUlid(), title: base, status: "active", workflow_status: !asArea ? workflowStatus : undefined, priority: !asArea && priority !== "normal" ? priority : undefined, area: !asArea && area ? `[[${area}]]` : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
@@ -470,13 +504,26 @@ export async function createProjectNote(app: App, settings: VibeTaskSettings, na
 export async function setProjectType(app: App, path: string, toArea: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await updateRecord(app, file, (fm) => { fm.type = toArea ? "area" : "project"; if (toArea) delete fm.area; });
+  await updateRecord(app, file, (fm) => {
+    fm.type = toArea ? "area" : "project";
+    if (toArea) { delete fm.area; delete fm.workflow_status; delete fm.priority; }
+    else if (typeof fm.workflow_status !== "string") fm.workflow_status = firstOpenStatus();
+  });
 }
 
 export async function setProjectArea(app: App, path: string, area: string | null): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
   await updateRecord(app, file, (fm) => { if (area) fm.area = `[[${area}]]`; else delete fm.area; });
+}
+
+export async function setProjectWorkflow(app: App, path: string, workflowStatus: TaskStatus, priority: Priority): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  await updateRecord(app, file, (fm) => {
+    fm.workflow_status = workflowStatus;
+    if (priority === "normal") delete fm.priority; else fm.priority = priority;
+  });
 }
 
 /** Ist die Notiz an diesem Pfad ein Bereich (type: area)? */

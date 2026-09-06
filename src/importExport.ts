@@ -68,6 +68,8 @@ export interface ExportList {
   description?: string;
   hidden?: boolean;
   area?: string | null;
+  workflow_status?: TaskStatus;
+  priority?: Priority;
 }
 
 /** Ein gespeicherter Filter. Kriterien und Anzeige-Optionen wandern als Ganzes mit – sie
@@ -208,6 +210,7 @@ export function toExportList(p: ProjItem): ExportList {
   return {
     name: p.name, type: p.type, color: p.color, archived: p.archived,
     icon, description: p.description || "", hidden: p.hidden,
+    ...(p.type === "project" ? { workflow_status: p.workflowStatus, priority: p.priority } : {}),
     ...(p.area ? { area: p.area.match(/\[\[([^\]|#]+)/)?.[1]?.split("/").pop() ?? null } : {}),
   };
 }
@@ -260,6 +263,8 @@ export function importedListFrontmatter(list: ExportList, typeName: string): Rec
     created: now,
     modified: now,
     status: list.archived ? "archived" : "active",
+    workflow_status: list.type === "project" ? (list.workflow_status || "todo") : undefined,
+    priority: list.type === "project" && list.priority && list.priority !== "normal" ? list.priority : undefined,
     area: list.type === "project" && list.area ? `[[${list.area}]]` : undefined,
     color: list.color ?? undefined,
     icon: list.icon || undefined,
