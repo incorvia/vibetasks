@@ -1,5 +1,5 @@
 import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
-import { VibeTaskSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
+import { OpalTasksSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
 import { applyDefaults, toDelta } from "./settingsDelta";
@@ -32,7 +32,7 @@ import { nextInstance, legacyToRRule } from "./recurrence";
 import { todayStr, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
 import { tip } from "./tooltip";
-import { VibeTaskSettingTab } from "./settingsTab";
+import { OpalTasksSettingTab } from "./settingsTab";
 import { TaskSearchModal, TaskPickerModal } from "./searchModal";
 import { writeExportFile, parseExport, importData, JsonFilePickerModal, pickOsJsonFile } from "./importExport";
 import { ImportTaskNotesModal } from "./importTaskNotes";
@@ -69,14 +69,13 @@ function registerIcons(): void {
 // Der Refresh-Token ist ein Dauerzugriff auf den Google-Kalender und würde sonst über jeden
 // Sync-Dienst, jedes Backup und jede Versionshistorie mitwandern. Obsidian trennt den Speicher
 // bereits pro Vault, deshalb reicht ein Präfix je Zweck.
-const GCAL_TOKEN_KEY = "vibetask-gcal-tokens";
-const GCAL_RECONNECT_KEY = "vibetask-gcal-reconnect-notified";
-const GCAL_CACHE_KEY = "vibetask-gcal-cache";        // Abgleich-Stand (war gcal.lastSynced/syncTokens)
-const GCAL_SNAPSHOT_KEY = "vibetask-gcal-snapshot";  // Kaltstart-Termine (war gcalFeed.snapshot)
-const DEVICE_STATE_KEY = "vibetask-device";          // Geräte-Zustand (s. DeviceState in types.ts)
-
-export default class VibeTaskPlugin extends Plugin {
-  settings!: VibeTaskSettings;
+const GCAL_TOKEN_KEY = "opal_tasks-gcal-tokens";
+const GCAL_RECONNECT_KEY = "opal_tasks-gcal-reconnect-notified";
+const GCAL_CACHE_KEY = "opal_tasks-gcal-cache";        // Abgleich-Stand (war gcal.lastSynced/syncTokens)
+const GCAL_SNAPSHOT_KEY = "opal_tasks-gcal-snapshot";  // Kaltstart-Termine (war gcalFeed.snapshot)
+const DEVICE_STATE_KEY = "opal_tasks-device";          // Geräte-Zustand (s. DeviceState in types.ts)
+export default class OpalTasksPlugin extends Plugin {
+  settings!: OpalTasksSettings;
   index!: TaskIndex;
   /** Zweiter Index derselben Klasse über den Vorlagen-Ordner (s. IndexScope in taskIndex.ts).
    *  Getrennt zu halten ist der ganze Trick: Vorlagen sind für Ansichten, Zähler, Google-Sync
@@ -124,13 +123,13 @@ export default class VibeTaskPlugin extends Plugin {
     bindRepository(this.app, this.repository);
     this.addChild(this.repository);
     const collection = await this.repository.initialize();
-    this.registerMarkdownCodeBlockProcessor("vibetask", async (source, el, context) => {
+    const renderProjectEmbed = async (source: string, el: HTMLElement, context: import("obsidian").MarkdownPostProcessorContext): Promise<void> => {
       let config: unknown;
       try { config = parseYaml(source); }
-      catch { el.createDiv({ text: "VibeTask: invalid embedded-view configuration" }); return; }
+      catch { el.createDiv({ text: "Opal Tasks: invalid embedded-view configuration" }); return; }
       const input = config && typeof config === "object" && !Array.isArray(config) ? config as Record<string, unknown> : {};
       if (input.view !== "project" || typeof input.id !== "string") {
-        el.createDiv({ text: "VibeTask: expected a project view and record id" });
+        el.createDiv({ text: "Opal Tasks: expected a project view and record id" });
         return;
       }
       const [projects, areas] = await Promise.all([
@@ -139,12 +138,13 @@ export default class VibeTaskPlugin extends Plugin {
       ]);
       const record = [...projects, ...areas].find((candidate) => candidate.id === input.id);
       if (!record) {
-        el.createDiv({ text: `VibeTask: project or area ${input.id} was not found` });
+        el.createDiv({ text: `Opal Tasks: project or area ${input.id} was not found` });
         return;
       }
       if (input.section === "header") context.addChild(new ProjectHeaderEmbed(el, this, record.path));
       else context.addChild(new ProjectEmbed(el, this, record.path));
-    });
+    };
+    this.registerMarkdownCodeBlockProcessor("opal_tasks", renderProjectEmbed);
     if (collection.ready) {
       this.repository.applyDomainConfiguration(this.settings);
       this.settings.statuses = ensureStatusInvariants(this.settings.statuses);
@@ -188,15 +188,15 @@ export default class VibeTaskPlugin extends Plugin {
     this.reminderScan = this.device.reminderLastScan || Date.now();
     this.app.workspace.onLayoutReady(async () => {
       if (!collection.ready) {
-        console.error("VibeTask: mdbase collection is incompatible", collection.issues);
+        console.error("Opal Tasks: mdbase collection is incompatible", collection.issues);
         const first = collection.issues[0];
         const detail = first ? `: ${first.message}` : "";
-        new Notice(`VibeTask: mdbase collection needs attention (${collection.issues.length})${detail}`, 0);
+        new Notice(`Opal Tasks: mdbase collection needs attention (${collection.issues.length})${detail}`, 0);
       } else {
         const issues = await this.repository.scanIssues();
         if (issues.length) {
-          console.warn("VibeTask: mdbase validation diagnostics", issues);
-          new Notice(`VibeTask: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"}; files were left unchanged`);
+          console.warn("Opal Tasks: mdbase validation diagnostics", issues);
+          new Notice(`Opal Tasks: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"}; files were left unchanged`);
         }
       }
       // Vor dem Erst-Setup merken, ob es ein bestehender Nutzer ist und welche Version zuletzt lief.
@@ -219,7 +219,7 @@ export default class VibeTaskPlugin extends Plugin {
       await this.runPendingMigrations();   // Einmal-Migrationen beim ersten Start nach dem Update
       this.timeStore.rebuild();
       await this.workTimer.recover();
-      if (this.workTimer.needsResolution()) new Notice("VibeTask: multiple active timers need resolution. Run “Resolve timer conflicts”.", 0);
+      if (this.workTimer.needsResolution()) new Notice("Opal Tasks: multiple active timers need resolution. Run “Resolve timer conflicts”.", 0);
       this.scanReminders();   // Startlauf (fängt beim Öffnen kürzlich Verpasstes)
       this.seedGCalCacheIfEmpty();   // MUSS vor dem ersten Lauf stehen – sonst Massen-Push
       this.gcalSync.start();  // Auto-Push verdrahten + einmal initial abgleichen
@@ -245,10 +245,10 @@ export default class VibeTaskPlugin extends Plugin {
     // Bei „Seitenvorschau" als Quelle anmelden: erscheint dort in den Einstellungen und folgt der
     // Strg-Vorgabe des Nutzers. defaultMod:false, weil das Icon der ausdrückliche Auslöser ist –
     // ein Strg-Zwang wäre hier unnötige Reibung (auf einem Wikilink im Text gilt weiter die Vorgabe).
-    this.registerHoverLinkSource("vibetask", { display: "VibeTask", defaultMod: false });
+    this.registerHoverLinkSource("opal_tasks", { display: "Opal Tasks", defaultMod: false });
 
-    this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openVibeTask());
-    this.addSettingTab(new VibeTaskSettingTab(this.app, this));
+    this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openOpalTasks());
+    this.addSettingTab(new OpalTasksSettingTab(this.app, this));
 
     // Layout-/Tab-Wechsel: u. a. wenn Obsidian eine aufgeschobene View endlich anhängt.
     // Bewusst KEIN active-leaf-change-Redraw: der feuert auf dem fokusverschiebenden
@@ -282,7 +282,7 @@ export default class VibeTaskPlugin extends Plugin {
     // Filtern ohnehin nie anfasst). Deckt Projekt/Bereich/Filter/Aufgabe ab.
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => void this.onNoteRenamed(file, oldPath)));
 
-    this.addCommand({ id: "open", name: t("ribbon_open"), callback: () => void this.openVibeTask() });
+    this.addCommand({ id: "open", name: t("ribbon_open"), callback: () => void this.openOpalTasks() });
     for (const id of VIEW_IDS) {
       this.addCommand({ id: "open-" + id, name: t("cmd_open_view", viewTitle(id)), callback: () => void this.activateView(id) });
     }
@@ -297,7 +297,7 @@ export default class VibeTaskPlugin extends Plugin {
       checkCallback: (checking: boolean) => {
         const f = this.app.workspace.getActiveFile();
         if (!f || f.extension !== "md") return false;
-        // Nur „normale" Notizen: bereits eine Aufgabe ODER eine VibeTask-Entität
+        // Nur „normale" Notizen: bereits eine Aufgabe ODER eine Opal Tasks-Entität
         // (Projekt/Bereich/Filter) NICHT anbieten – sonst würde der Typ überschrieben.
         const type: unknown = this.app.metadataCache.getFileCache(f)?.frontmatter?.[fieldKey("type")];
         if (type === "task" || type === "project" || type === "area" || type === "filter") return false;
@@ -316,7 +316,7 @@ export default class VibeTaskPlugin extends Plugin {
           return;
         }
         void this.createProjectFromNote(file).catch((error) => {
-          console.error("VibeTask: failed to create embedded project", error);
+          console.error("Opal Tasks: failed to create embedded project", error);
           new Notice(error instanceof Error ? error.message : String(error));
         });
       },
@@ -347,8 +347,8 @@ export default class VibeTaskPlugin extends Plugin {
     });
     this.addCommand({ id: "mdbase-diagnostics", name: "Show mdbase diagnostics", callback: () => void (async () => {
       const issues = [...this.repository.status().issues, ...await this.repository.scanIssues()];
-      if (issues.length) console.warn("VibeTask: mdbase diagnostics", issues);
-      new Notice(issues.length ? `VibeTask: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"} (details in console)` : "VibeTask: mdbase collection is valid");
+      if (issues.length) console.warn("Opal Tasks: mdbase diagnostics", issues);
+      new Notice(issues.length ? `Opal Tasks: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"} (details in console)` : "Opal Tasks: mdbase collection is valid");
     })() });
     this.addCommand({ id: "export-json", name: t("cmd_export_json"), callback: () => void this.exportTasksJson() });
     this.addCommand({ id: "import-json", name: t("cmd_import_json"), callback: () => this.importTasksFromVault() });
@@ -365,7 +365,7 @@ export default class VibeTaskPlugin extends Plugin {
           new Notice(t("notice_imported", n));
           window.setTimeout(() => this.index.build(), 800);
         } catch (e) {
-          console.error("VibeTask import error", e);
+          console.error("Opal Tasks import error", e);
           new Notice(t("notice_import_failed"));
         }
       },
@@ -463,7 +463,7 @@ export default class VibeTaskPlugin extends Plugin {
   }
 
   // ── Öffnen / Navigieren ──
-  async openVibeTask(): Promise<void> {
+  async openOpalTasks(): Promise<void> {
     await this.activateNav();
     await this.openPage(this.newTabStartPage());
   }
@@ -495,7 +495,7 @@ export default class VibeTaskPlugin extends Plugin {
     return newTabPage(this.settings.startPage, this.device.lastView, (p) => this.pageExists(p));
   }
 
-  /** Beim Start: den aktiven VibeTask-Tab auf die eingestellte Seite schicken. Andere Tabs
+  /** Beim Start: den aktiven Opal Tasks-Tab auf die eingestellte Seite schicken. Andere Tabs
    *  bleiben stehen – wer sich mehrere Seiten eingerichtet hat, soll sie behalten. Bei „zuletzt
    *  benutzte" passiert gar nichts, dann gilt die wiederhergestellte Seite des Tabs. */
   private applyStartPage(): void {
@@ -1295,7 +1295,7 @@ export default class VibeTaskPlugin extends Plugin {
     }
 
     // An empty source path makes Obsidian use its configured default new-note location. If that
-    // points into VibeTask's private collection, fall back to the vault root: this is the user's
+    // points into the private Opal Tasks collection, fall back to the vault root: this is the user's
     // companion note, not another collection record.
     const preferred = this.app.fileManager.getNewFileParent("", `${slugify(title)}.md`);
     const folder = isCollectionPath(normalizePath(`${preferred.path}/placeholder.md`)) ? "" : preferred.path;
@@ -1448,7 +1448,7 @@ export default class VibeTaskPlugin extends Plugin {
       const path = await writeExportFile(this);
       new Notice(t("notice_export_done", path));
     } catch (e) {
-      console.error("VibeTask export error", e);
+      console.error("Opal Tasks export error", e);
       new Notice(t("notice_export_failed"));
     }
   }
@@ -1464,7 +1464,7 @@ export default class VibeTaskPlugin extends Plugin {
       if (r.unknownStatusTasks) new Notice(t("notice_import_unknown_status", r.unknownStatusTasks, r.unknownStatuses.join(", ")), 0);
       window.setTimeout(() => this.index.build(), 800);   // Frontmatter der neuen Notizen ist erst kurz später im Cache
     } catch (e) {
-      console.error("VibeTask JSON import error", e);
+      console.error("Opal Tasks JSON import error", e);
       new Notice(t("notice_import_failed"));
     }
   }
@@ -2168,7 +2168,7 @@ export default class VibeTaskPlugin extends Plugin {
    *
    *  Notizen, die `title:` schon führen, werden gar nicht erst angefasst. Damit ist die Migration
    *  idempotent: ein zweiter Lauf findet nichts mehr. */
-  /** Liegt die Notiz im Aufgaben-Ordner? Dann hat VibeTask sie selbst angelegt (createTaskNote
+  /** Liegt die Notiz im Aufgaben-Ordner? Dann hat Opal Tasks sie selbst angelegt (createTaskNote
    *  schreibt ausschließlich dorthin) – nur solche Notizen räumt die Titel-Migration im Body auf. */
   private isOwnTaskNote(path: string): boolean {
     return isUnderFolder(path, this.settings.itemsFolder);
@@ -2222,7 +2222,7 @@ export default class VibeTaskPlugin extends Plugin {
       // aktuellen Inhalt gesucht, kann also nicht durch verschobene Zeilennummern danebengehen.
       //
       // Entfernt wird eine Titel-Überschrift nur in EIGENEN Notizen – die liegen im Aufgaben-Ordner,
-      // dort hat VibeTask sie samt „# Titel" angelegt und bis 1.30.0 auch gepflegt. Alles
+      // dort hat Opal Tasks sie samt „# Titel" angelegt und bis 1.30.0 auch gepflegt. Alles
       // außerhalb kam von woanders (umgewandelt, von Hand geschrieben, importiert); dessen
       // Überschrift gehört dem Nutzer und bleibt stehen. Der Ordner ist ein Herkunftsnachweis,
       // die Textlänge wäre nur eine Schätzung. `hasOwnContent` bleibt als zweites Netz: auch in
@@ -2307,11 +2307,11 @@ export default class VibeTaskPlugin extends Plugin {
     }
     this.gcalCache.cleanup = cleanup;
     if (backup.length) {
-      const folder = "_vibetasks/migrations";
+      const folder = "_opal_tasks/migrations";
       if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       await this.app.vault.create(`${folder}/timing-${stamp}.json`, JSON.stringify({ version: 1, migrated_at: new Date().toISOString(), records: backup }, null, 2));
-      this.app.saveLocalStorage("vibetask-gcal-cache", this.gcalCache);
+      this.app.saveLocalStorage("opal_tasks-gcal-cache", this.gcalCache);
     }
   }
 
@@ -2398,7 +2398,7 @@ export default class VibeTaskPlugin extends Plugin {
     const body = task.title;
     try {
       if (typeof Notification !== "undefined" && !Platform.isMobile) {
-        const n = new Notification("VibeTask", { body });
+        const n = new Notification("Opal Tasks", { body });
         n.onclick = () => { window.focus(); this.openEditTask(task); };
       }
     } catch { /* Notification je nach Umgebung nicht verfügbar -> Notice reicht */ }
@@ -2739,7 +2739,7 @@ export default class VibeTaskPlugin extends Plugin {
     let order = ORDER_GAP;
     for (const kid of kids) {
       // Verschobene Daten der Vorlage, falls vorhanden – sonst die des Originals (Duplizieren
-      // bleibt bewusst datumsgetreu, s. vibetask-templates-plan „Kontext").
+      // bleibt bewusst datumsgetreu, s. opal_tasks-templates-plan „Kontext").
       const d = opts.dates?.get(kid.path);
       const copy = await createTaskNote(this.app, this.settings, {
         title: kid.title,
@@ -2844,7 +2844,7 @@ export default class VibeTaskPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const saved = (await this.loadData()) as Partial<VibeTaskSettings> | null;
+    const saved = (await this.loadData()) as Partial<OpalTasksSettings> | null;
     this.settings = applyDefaults(saved);
     // Stand der Einmal-Migrationen bestimmen, solange `saved` noch vorliegt: Nur hier ist
     // unterscheidbar, ob es GAR KEINE data.json gab (frische Installation → nichts zu migrieren)
@@ -2894,7 +2894,7 @@ export default class VibeTaskPlugin extends Plugin {
   /** Einmalige Umstellung (ab 1.37.0): `navCollapsed`, `lastView` und `reminderLastScan` lagen in
    *  data.json und wanderten damit über den Sync auf jedes Gerät. Ein Handy und ein Desktop teilen
    *  sich aber weder ihre Bildschirmaufteilung noch ihren letzten Standort (s. die Regel an
-   *  VibeTaskSettings).
+   *  OpalTasksSettings).
    *
    *  Der vorhandene Stand wird übernommen, damit auf DIESEM Gerät nichts springt. Andere Geräte
    *  starten mit aufgeklappter Seitenleiste – nichts davon ist Nutzerinhalt. Das `delete` ist
@@ -3152,7 +3152,7 @@ export default class VibeTaskPlugin extends Plugin {
   }
 
   /** Mit Google verbinden: Login (Desktop-Loopback bzw. Mobile-Device-Flow), danach Anzeige-
-   *  E-Mail holen, bei Bedarf eigenen „VibeTask"-Kalender anlegen, aktivieren, initial pushen.
+   *  E-Mail holen, bei Bedarf eigenen „Opal Tasks"-Kalender anlegen, aktivieren, initial pushen.
    *  Wirft bei Fehler (die UI zeigt die Meldung). */
   async gcalConnect(onDevicePrompt?: (p: DevicePrompt) => void): Promise<void> {
     const g = this.settings.gcal!;
@@ -3162,7 +3162,7 @@ export default class VibeTaskPlugin extends Plugin {
     try { await this.gcalAuth.setAccount(await fetchAccountEmail(this.gcalAuth)); } catch { /* optional */ }
     this.app.saveLocalStorage(GCAL_RECONNECT_KEY, null);   // Hinweis darf später wieder greifen
     // Ziel-Kalender sicherstellen: leer ODER zeigt auf einen nicht (mehr) existierenden Kalender
-    // (z. B. in Google gelöscht) -> eigenen „VibeTask"-Kalender finden/anlegen. Eine bewusst
+    // (z. B. in Google gelöscht) -> eigenen „Opal Tasks"-Kalender finden/anlegen. Eine bewusst
     // gewählte, noch existierende Wahl bleibt unangetastet. Schlägt es fehl (z. B. Recht nicht
     // bestätigt), bleibt calendarId leer -> die Settings zeigen einen deutlichen Hinweis.
     try {
@@ -3170,7 +3170,7 @@ export default class VibeTaskPlugin extends Plugin {
       if (!g.calendarId || !cals.some((c) => c.id === g.calendarId)) {
         g.calendarId = await ensureDefaultCalendar(this.gcalAuth, g.timezone);
       }
-    } catch (e) { console.warn("VibeTask: Ziel-Kalender konnte nicht sichergestellt werden", e); }
+    } catch (e) { console.warn("Opal Tasks: Ziel-Kalender konnte nicht sichergestellt werden", e); }
     g.enabled = true;
     // Termine anzeigen bei der ERSTEN Einrichtung gleich mit einschalten: Wer Google verbindet,
     // erwartet seine Termine zu sehen – sie hinter einem zweiten Schalter zu verstecken, sah nach
@@ -3185,7 +3185,7 @@ export default class VibeTaskPlugin extends Plugin {
     const erstmalig = !Object.keys(gf.calendars).length;
     if (erstmalig) {
       gf.enabled = true;
-      try { await this.gcalFeed.initDefaults(); } catch (e) { console.warn("VibeTask: Kalenderliste nicht erreichbar", e); }
+      try { await this.gcalFeed.initDefaults(); } catch (e) { console.warn("Opal Tasks: Kalenderliste nicht erreichbar", e); }
     }
     await this.saveSettings();
     this.refreshGCalStatusBar();
@@ -3211,7 +3211,7 @@ export default class VibeTaskPlugin extends Plugin {
   /** Kalenderliste für den Ziel-Kalender-Picker. */
   gcalCalendars(): Promise<CalendarInfo[]> { return listCalendars(this.gcalAuth); }
 
-  /** Eigenen „VibeTask"-Kalender anlegen (oder vorhandenen finden) und als Ziel setzen.
+  /** Eigenen „Opal Tasks"-Kalender anlegen (oder vorhandenen finden) und als Ziel setzen.
    *  Bestehende Events ziehen beim nächsten Sync via move nach. Braucht den calendar.app.created-
    *  Scope → nach Scope-Erweiterung ggf. einmal neu verbinden. Wirft bei Fehler (UI zeigt Meldung). */
   async gcalCreateDefaultCalendar(): Promise<void> {

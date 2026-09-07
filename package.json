@@ -1,7 +1,7 @@
 {
-  "name": "vibetask",
+  "name": "opal_tasks",
   "version": "1.46.7",
-  "description": "VibeTask – Obsidian task & project system (note per task, no plugin dependencies).",
+  "description": "Opal Tasks – Obsidian task & project system (note per task, no plugin dependencies).",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

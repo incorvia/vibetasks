@@ -1,6 +1,6 @@
 import { TFile, prepareFuzzySearch, sortSearchResults, renderMatches } from "obsidian";
 import type { SearchResult } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { openPopoverAt } from "./popover";
 
 /**
@@ -71,7 +71,7 @@ interface Hit { file: TFile; match: SearchResult | null }
  * `srcPath` ist eine Funktion, weil eine NEUE Aufgabe noch keine Notiz hat – der Pfad steht erst
  * beim Speichern fest, und die Wirte liefern bis dahin einen Platzhalter (s. logSrc/srcPath).
  */
-export function attachLinkSuggest(ta: HTMLTextAreaElement, plugin: VibeTaskPlugin,
+export function attachLinkSuggest(ta: HTMLTextAreaElement, plugin: OpalTasksPlugin,
                                   srcPath: () => string): void {
   let pop: HTMLElement | null = null;
   let close: (() => void) | null = null;

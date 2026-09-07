@@ -93,7 +93,7 @@ export function parseRecurrence(rule: string): Rule | null {
   return { n: opts.interval && opts.interval > 0 ? opts.interval : 1, unit };
 }
 
-/** Versteht VibeTask diese Regel überhaupt? Getrennt von `parseRecurrence`, weil eine
+/** Versteht Opal Tasks diese Regel überhaupt? Getrennt von `parseRecurrence`, weil eine
  *  komplexe RRULE gültig IST, sich aber nicht auf `{n, unit}` verkürzen lässt. */
 export function isValidRecurrence(rule: string): boolean {
   return parseEveryText(rule) !== null || parseRRuleText(rule) !== null;

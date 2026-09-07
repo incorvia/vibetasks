@@ -1,5 +1,5 @@
 import { Menu, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { Task, CalEvent, TimeBlock, agendaDate } from "./types";
@@ -341,7 +341,7 @@ function spanTitle(days: string[]): string {
 // ── Jahr: zwölf Mini-Monate ────────────────────────────────────────────────────
 /** Klick auf den Monatsnamen -> Monatsansicht, Klick auf einen Tag -> Tagesansicht. Tage mit
  *  Aufgaben sind markiert (Punkt), damit das Jahr nicht nur ein Datumsraster ist. */
-function renderYear(root: HTMLElement, plugin: VibeTaskPlugin,
+function renderYear(root: HTMLElement, plugin: OpalTasksPlugin,
   anchor: string, today: string, zoom: (next: string, m: CalMode) => void): GridFiller {
   const wrap = root.createDiv({ cls: "bt-calview bt-calview-year" });
   const cells: { day: string; el: HTMLElement }[] = [];
@@ -385,7 +385,7 @@ const CHIPS_UNMEASURED: ChipFit = { all: 3, some: 3 };
 
 /** Chip- und „+N"-Höhe am echten DOM messen – Theme, Schriftgröße und Zoom gehen so von selbst ein.
  *  Die Probe hängt kurz im Raster, ist aber per CSS aus dem Layout genommen (.bt-calview-probe). */
-function measureChips(grid: HTMLElement, plugin: VibeTaskPlugin, sample: Task): ChipMetrics {
+function measureChips(grid: HTMLElement, plugin: OpalTasksPlugin, sample: Task): ChipMetrics {
   const probe = grid.createDiv({ cls: "bt-calview-probe" });
   renderChip(probe, plugin, sample);
   const chip = probe.firstElementChild as HTMLElement | null;
@@ -519,7 +519,7 @@ function sortDay(list: Task[]): Task[] {
 }
 
 // ── Zeitraster: Woche (7 Spalten) und Tag (1 Spalte) ───────────────────────────
-function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
+function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
   days: string[], today: string, add: CalendarAdd): GridFiller {
   const wrap = root.createDiv({ cls: "bt-calview bt-calview-week" + (days.length === 1 ? " bt-calview-day" : "") });
   // Gescrollt wird der GANZE Wochenblock (wrap), nicht nur das Zeitraster: hätte das Raster eine
@@ -643,7 +643,7 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
           renderCheck(el, plugin, scheduledTask, { compact: true });
         }
         el.draggable = true;
-        el.ondragstart = (event) => { movingBlockId = b.block.id; event.dataTransfer?.setData("application/x-vibetask-time-block", b.block.id); };
+        el.ondragstart = (event) => { movingBlockId = b.block.id; event.dataTransfer?.setData("application/x-opal_tasks-time-block", b.block.id); };
         el.ondragend = () => { movingBlockId = null; };
         setBox(el);
         // Flacher Block (30 min = eine Zeile hoch): NUR der Titel. Die Uhrzeit steht ohnehin an
@@ -678,7 +678,7 @@ function renderTimeGrid(root: HTMLElement, plugin: VibeTaskPlugin,
 
 /** Seitenleiste „Undatiert": baut das Gerüst und liefert den Füller für die Kartenliste.
  *  Von hier per Drag ins Raster; der Drop setzt `due` – die Aufgabe verschwindet dann aus der Liste. */
-function renderUnscheduled(body: HTMLElement, plugin: VibeTaskPlugin, add: CalendarAdd,
+function renderUnscheduled(body: HTMLElement, plugin: OpalTasksPlugin, add: CalendarAdd,
   closePanel?: () => void): (tasks: Task[]) => void {
   const panel = body.createDiv({ cls: "bt-calview-panel" });
   // Rückweg: eine Aufgabe aus dem Raster HIERHIN ziehen entfernt ihr Datum (setTaskDate löscht das
@@ -760,7 +760,7 @@ function yToMin(clientY: number, col: HTMLElement, top?: number): number {
 }
 
 function startBlockResize(e: MouseEvent, el: HTMLElement, block: TimeBlock, startMin: number,
-  plugin: VibeTaskPlugin): void {
+  plugin: OpalTasksPlugin): void {
   e.preventDefault(); e.stopPropagation();
   const col = el.parentElement!, doc = el.ownerDocument; el.addClass("is-resizing");
   let minutes = Math.max(MIN_DUR, block.duration);
@@ -777,13 +777,13 @@ function startBlockResize(e: MouseEvent, el: HTMLElement, block: TimeBlock, star
   doc.addEventListener("mousemove", onMove); doc.addEventListener("mouseup", onUp);
 }
 
-function blockDropTarget(col: HTMLElement, plugin: VibeTaskPlugin, day: string): void {
+function blockDropTarget(col: HTMLElement, plugin: OpalTasksPlugin, day: string): void {
   col.addEventListener("dragover", (e) => { if (!dragTask() && !movingBlockId) return; e.preventDefault(); col.addClass("is-drop"); });
   col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget as Node | null)) col.removeClass("is-drop"); });
   col.addEventListener("drop", (e) => {
     e.preventDefault(); e.stopPropagation(); col.removeClass("is-drop");
     const time = hhmm(snap(yToMin(e.clientY, col)));
-    const blockId = e.dataTransfer?.getData("application/x-vibetask-time-block") || movingBlockId;
+    const blockId = e.dataTransfer?.getData("application/x-opal_tasks-time-block") || movingBlockId;
     if (blockId) { movingBlockId = null; void plugin.scheduling.moveBlock(blockId, new Date(`${day}T${time}:00`)); return; }
     const path = e.dataTransfer?.getData("text/plain") || dragTask(); endTaskDrag();
     const task = path ? plugin.index.get(path) : null; if (!task) return;
@@ -793,7 +793,7 @@ function blockDropTarget(col: HTMLElement, plugin: VibeTaskPlugin, day: string):
 
 // ── Chips, Drag & Drop ─────────────────────────────────────────────────────────
 /** Kompakter Aufgaben-Chip (Monatszelle, Ganztägig-Zeile, „+N“-Popover). */
-function renderChip(parent: HTMLElement, plugin: VibeTaskPlugin, task: Task): void {
+function renderChip(parent: HTMLElement, plugin: OpalTasksPlugin, task: Task): void {
   const chip = parent.createDiv({ cls: "bt-calview-chip" });
   decorate(chip, plugin, task);
   renderCheck(chip, plugin, task, { compact: true });   // Klick = erledigt, Rechtsklick = Status-Menü
@@ -805,7 +805,7 @@ function renderChip(parent: HTMLElement, plugin: VibeTaskPlugin, task: Task): vo
   dragSource(chip, task);
 }
 
-function renderBlockChip(parent: HTMLElement, plugin: VibeTaskPlugin, block: TimeBlock): void {
+function renderBlockChip(parent: HTMLElement, plugin: OpalTasksPlugin, block: TimeBlock): void {
   const chip = parent.createDiv({ cls: "bt-calview-chip bt-time-block-chip" });
   const scheduledTask = blockKind(block) === "task_schedule" && block.scope.type === "task"
     ? plugin.index.getById(block.scope.id) : undefined;
@@ -876,7 +876,7 @@ function renderEventChip(parent: HTMLElement, de: DayEvent): void {
 }
 
 /** Gemeinsames Verhalten von Chip und Zeitblock: Farbe, Erledigt-Zustand, Klick. */
-function decorate(el: HTMLElement, plugin: VibeTaskPlugin, task: Task): void {
+function decorate(el: HTMLElement, plugin: OpalTasksPlugin, task: Task): void {
   el.dataset.path = task.path;
   if (task.path === menuHoldPath()) el.addClass("bt-menu-hold");   // offenes Kontextmenü hält das Hover
   if (isDone(task.status)) el.addClass("is-done");
@@ -903,7 +903,7 @@ function dragSource(el: HTMLElement, task: Task): void {
  * dragover feuert bei jeder Mausbewegung – deshalb wird der Geist nur bewegt, nicht neu gebaut,
  * und nur dann angefasst, wenn sich die gerastete Minute tatsächlich geändert hat.
  */
-function attachGhost(col: HTMLElement, plugin: VibeTaskPlugin): void {
+function attachGhost(col: HTMLElement, plugin: OpalTasksPlugin): void {
   let ghost: HTMLElement | null = null;
   let lastMin = -1;
   let colTop = 0;                                     // Spalten-Oberkante, EINMAL je Drag gemessen
@@ -939,7 +939,7 @@ function attachGhost(col: HTMLElement, plugin: VibeTaskPlugin): void {
 }
 
 /** Drop-Ziel: `dueOf` liefert den neuen due-Wert („YYYY-MM-DD“ oder mit „THH:mm“). */
-function dropTarget(el: HTMLElement, plugin: VibeTaskPlugin,
+function dropTarget(el: HTMLElement, plugin: OpalTasksPlugin,
   dueOf: (task: Task, ev: DragEvent) => string, page: CalendarAdd = {}): void {
   el.addEventListener("dragover", (e) => {
     if (!dragTask()) return;                               // nur unsere Aufgaben – aus Kalender, Liste ODER Board

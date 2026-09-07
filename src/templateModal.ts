@@ -1,6 +1,6 @@
 import { Modal, Notice, setIcon } from "obsidian";
 import { PromptModal } from "./confirmModal";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { baseName, isInboxLink, listProjectsAndAreas } from "./taskService";
 import { openPopover, popRow } from "./popover";
 import { openDatePicker } from "./datePicker";
@@ -20,7 +20,7 @@ import { t, projectDisplayName } from "./i18n";
 
 /** Vorlagen-Auswahl (Kommandopalette). Leitet auf den Anwenden-Dialog weiter. */
 export class PickTemplateModal extends Modal {
-  constructor(private plugin: VibeTaskPlugin, private defaultProject: string | null = null) { super(plugin.app); }
+  constructor(private plugin: OpalTasksPlugin, private defaultProject: string | null = null) { super(plugin.app); }
 
   onOpen(): void {
     const { contentEl, modalEl } = this;
@@ -63,7 +63,7 @@ export class ApplyTemplateModal extends Modal {
   private startBtn!: HTMLButtonElement;
   private endBtn!: HTMLButtonElement;
 
-  constructor(private plugin: VibeTaskPlugin, private tpl: TemplateInfo, defaultProject: string | null = null) {
+  constructor(private plugin: OpalTasksPlugin, private tpl: TemplateInfo, defaultProject: string | null = null) {
     super(plugin.app);
     // Vorbelegung, in dieser Reihenfolge: das Projekt, das sich die Vorlage gemerkt hat – sonst
     // die Seite, von der aus der Dialog geöffnet wurde – sonst der Eingang.
@@ -258,7 +258,7 @@ export class ApplyTemplateModal extends Modal {
 }
 
 /** „+ Vorlage erstellen": Name abfragen, leere Vorlage anlegen, Seitenleiste nachziehen. */
-export function promptNewTemplate(plugin: VibeTaskPlugin): void {
+export function promptNewTemplate(plugin: OpalTasksPlugin): void {
   new PromptModal(plugin.app, { title: t("create_template"), placeholder: t("placeholder_taskname") }, (name) => {
     void createEmptyTemplate(plugin, name).then(() => refreshTemplates(plugin));
   }).open();

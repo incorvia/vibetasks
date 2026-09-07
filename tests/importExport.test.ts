@@ -4,7 +4,7 @@ import { parseExport } from "../src/importExport";
 describe("parseExport", () => {
   it("accepts a valid export and preserves tasks", () => {
     const data = {
-      format: "vibetask", version: 1, exportedAt: "2026-07-05T00:00:00Z",
+      format: "opal_tasks", version: 1, exportedAt: "2026-07-05T00:00:00Z",
       taskCount: 1, labels: ["work"], tasks: [{ id: "t1", title: "A", labels: [] }],
     };
     const parsed = parseExport(JSON.stringify(data));
@@ -15,7 +15,7 @@ describe("parseExport", () => {
 
   it("preserves the lists manifest (with area type)", () => {
     const data = {
-      format: "vibetask", version: 2, exportedAt: "2026-07-05T00:00:00Z", taskCount: 0,
+      format: "opal_tasks", version: 2, exportedAt: "2026-07-05T00:00:00Z", taskCount: 0,
       lists: [{ name: "Abos", type: "area", color: null, archived: false }], labels: [], tasks: [],
     };
     const parsed = parseExport(JSON.stringify(data));
@@ -25,6 +25,6 @@ describe("parseExport", () => {
 
   it("rejects invalid JSON", () => { expect(parseExport("{not json")).toBeNull(); });
   it("rejects a wrong format tag", () => { expect(parseExport(JSON.stringify({ format: "other", tasks: [] }))).toBeNull(); });
-  it("rejects a missing tasks array", () => { expect(parseExport(JSON.stringify({ format: "vibetask" }))).toBeNull(); });
+  it("rejects a missing tasks array", () => { expect(parseExport(JSON.stringify({ format: "opal_tasks" }))).toBeNull(); });
   it("rejects a non-object", () => { expect(parseExport("42")).toBeNull(); });
 });

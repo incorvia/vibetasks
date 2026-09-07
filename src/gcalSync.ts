@@ -39,12 +39,12 @@ export class GCalHttpError extends Error {
 }
 
 const API = "https://www.googleapis.com/calendar/v3";
-const SYNC_SOURCE = "vibetask";
+const SYNC_SOURCE = "opal_tasks";
 const DEBOUNCE_MS = 2000;
 const POLL_MS = 5 * 60 * 1000;   // periodischer Pull, damit Google-Änderungen auch ohne lokale Edits kommen
-export const DEFAULT_CALENDAR_NAME = "VibeTask";
+export const DEFAULT_CALENDAR_NAME = "Opal Tasks";
 
-// ── Persistierte Sync-Einstellungen (Unter-Objekt von VibeTaskSettings) ────
+// ── Persistierte Sync-Einstellungen (Unter-Objekt von OpalTasksSettings) ────
 /** Ein abgeglichener Stand pro Aufgabe. `s` = Push-Änderungserkennung;
  *  `d`/`t` = letzter gemeinsamer Datumsstand (Basis des 3-Wege-Konflikts). Bewusst kurze Feldnamen: Davon liegen pro Vault hunderte
  *  im Cache. `c` ist ein Index in `GCalCache.cals` – eine Google-Kalender-ID ist rund 90 Zeichen
@@ -90,7 +90,7 @@ export function calIndex(cache: GCalCache, calendarId: string): number {
  * Teilnehmer, Farbe. Googles eigene Empfehlung für diesen Fall lautet „get, dann update" –
  * genau das tut diese Funktion.
  *
- * **`recurrence` ist die eine Ausnahme** und wird bewusst NICHT übernommen: VibeTask
+ * **`recurrence` ist die eine Ausnahme** und wird bewusst NICHT übernommen: Opal Tasks
  * wiederholt über neue Aufgaben, nicht über Serien. Bliebe eine in Google angelegte Serie
  * stehen, verschöbe eine Datumsänderung an der Aufgabe die ganze Serie – zwei
  * Wiederholungsmodelle auf einem Termin. Für dieses eine Feld bleibt es wie bisher.
@@ -314,7 +314,7 @@ export async function fetchAccountEmail(auth: GCalAuth): Promise<string | null> 
   return (cal?.id as string) ?? null;
 }
 
-/** Eigenen „VibeTask"-Kalender finden oder anlegen (kleiner Blast-Radius). */
+/** Eigenen „Opal Tasks"-Kalender finden oder anlegen (kleiner Blast-Radius). */
 export async function ensureDefaultCalendar(auth: GCalAuth, timezone: string): Promise<string> {
   const existing = (await listCalendars(auth)).find((c) => c.summary === DEFAULT_CALENDAR_NAME);
   if (existing) return existing.id;
@@ -653,7 +653,7 @@ export class GCalSync {
         }
       }
       } catch (e) {
-        console.error("VibeTask: GCal-Push fehlgeschlagen", task.title, e);
+        console.error("Opal Tasks: GCal-Push fehlgeschlagen", task.title, e);
         pushError ??= e instanceof Error ? e.message : String(e);   // Fehler merken, mit nächster Aufgabe weiter
       }
     }

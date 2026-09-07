@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ColorComponent, ExtraButtonComponent } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { ChipId, ChipTier, ChipSurface, MetaColorKey, DEFAULT_SETTINGS } from "./types";
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
 import { StartPageModal, listStartPages, startPageLabel } from "./startPagePicker";
@@ -14,7 +14,7 @@ import { CalendarTaskColorMode } from "./calendarTaskColor";
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
 /** README-Abschnitt mit der Google-Kalender-Einrichtung (statt nur zur Console zu verlinken). */
-const GCAL_GUIDE_URL = "https://github.com/incorvia/vibetasks#google-calendar-sync";
+const GCAL_GUIDE_URL = "https://github.com/incorvia/opal_tasks#google-calendar-sync";
 
 /** Pointer-basiertes Ziehen einer Chip-Zeile ZWISCHEN den drei Tier-Zonen (Maus + Touch,
  *  Popout-sicher über row.ownerDocument). Beim Loslassen ruft onDrop() – der Aufrufer liest
@@ -67,8 +67,8 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
 }
 
 /** Einstellungen (imperativ; funktioniert auch auf App-Versionen < 1.13.0). */
-export class VibeTaskSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: VibeTaskPlugin) {
+export class OpalTasksSettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: OpalTasksPlugin) {
     super(app, plugin);
   }
 
@@ -269,7 +269,7 @@ export class VibeTaskSettingTab extends PluginSettingTab {
 
     // Akzentfarbe – eigenständige Design-Einstellung ÜBER der Meta-Theme-Sektion (thematisch getrennt: der
     // Akzent wirkt auf das ganze Plugin – Buttons/Links/Auswahl –, nicht nur auf die Meta-Zeile). Überschreibt
-    // die Obsidian-Akzentfarbe NUR innerhalb von VibeTask; Default/Reset = Obsidian-Akzent. Immer editierbar.
+    // die Obsidian-Akzentfarbe NUR innerhalb von Opal Tasks; Default/Reset = Obsidian-Akzent. Immer editierbar.
     {
       let accentPicker!: ColorComponent;
       const s = new Setting(containerEl).setName(t("set_color_accent")).setDesc(t("set_color_accent_desc"))
@@ -509,7 +509,7 @@ export class VibeTaskSettingTab extends PluginSettingTab {
     };
     this.gcalStatusUnsub = p.gcalSync.onStatus(renderStatus);   // ruft cb sofort mit aktuellem Stand
 
-    // Ziel-Kalender + (nur wenn in Google noch KEIN „VibeTask"-Kalender existiert) eine Tipp-Zeile
+    // Ziel-Kalender + (nur wenn in Google noch KEIN „Opal Tasks"-Kalender existiert) eine Tipp-Zeile
     // zum Anlegen. Kalenderliste EINMAL laden und den ganzen Abschnitt daraus aufbauen.
     const calHost = containerEl.createDiv();
     void (async () => {
@@ -523,7 +523,7 @@ export class VibeTaskSettingTab extends PluginSettingTab {
           dd.setValue(g.calendarId);
           dd.onChange((v) => { g.calendarId = v; void p.saveSettings(); void p.gcalSync.syncNow(); });
         });
-      // Tipp/Anlegen nur, wenn geprüft UND noch kein eigener VibeTask-Kalender existiert.
+      // Tipp/Anlegen nur, wenn geprüft UND noch kein eigener Opal Tasks-Kalender existiert.
       if (ok && !cals.some((c) => c.summary === DEFAULT_CALENDAR_NAME)) {
         new Setting(calHost).setName(t("gcal_tip_create")).setDesc(t("gcal_tip_create_desc"))
           .addButton((b) => b.setButtonText(t("gcal_create_calendar_btn")).setCta()
@@ -564,7 +564,7 @@ export class VibeTaskSettingTab extends PluginSettingTab {
   /**
    * „Termine anzeigen" (read-only). Getrennt vom Sync-Schalter: „nur anzeigen, nichts schreiben" ist
    * ein vollwertiger Zustand. Kalenderliste – Farbpunkt links, Auge rechts (statt
-   * Häkchen). Der eigene VibeTask-Sync-Kalender taucht gar nicht erst auf (gcalFeed filtert ihn).
+   * Häkchen). Der eigene Opal Tasks-Sync-Kalender taucht gar nicht erst auf (gcalFeed filtert ihn).
    */
   private renderGCalFeed(containerEl: HTMLElement, redraw: () => void): void {
     const p = this.plugin;

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { toDelta, applyDefaults, deepEqual, EFFECTIVE_DEFAULTS } from "../src/settingsDelta";
 import { DEFAULT_STATUSES } from "../src/statuses";
-import { VibeTaskSettings } from "../src/types";
+import { OpalTasksSettings } from "../src/types";
 
 /** Wie eine Einstellung im Betrieb aussieht: Standardwerte, darüber die Datei. */
-const geladen = (datei: Record<string, unknown>): VibeTaskSettings =>
-  applyDefaults(datei as Partial<VibeTaskSettings>);
+const geladen = (datei: Record<string, unknown>): OpalTasksSettings =>
+  applyDefaults(datei as Partial<OpalTasksSettings>);
 
 describe("deepEqual", () => {
   it("vergleicht Werte, nicht Verweise", () => {
@@ -118,7 +118,7 @@ describe("Hin und zurück – die Eigenschaft, auf die es ankommt", () => {
   for (const [name, datei] of Object.entries(faelle)) {
     it(`verliert nichts: ${name}`, () => {
       const vorher = geladen(datei);
-      const nachher = applyDefaults(toDelta(vorher) as Partial<VibeTaskSettings>);
+      const nachher = applyDefaults(toDelta(vorher) as Partial<OpalTasksSettings>);
       expect(nachher).toEqual(vorher);
     });
   }
@@ -139,7 +139,7 @@ describe("abgelöste Schlüssel aus früheren Fassungen", () => {
   it("werden beim Laden entfernt und nie wieder geschrieben", () => {
     const datei: Record<string, unknown> = {
       chipOrder: ["due"], chipTiers: { due: "shown" }, titleProperty: "titel",
-      showParentMarker: true, areasFolder: "VibeTask/Areas",
+      showParentMarker: true, areasFolder: "Opal Tasks/Areas",
     };
     const s = geladen(datei);
     const d = toDelta(s);
@@ -231,7 +231,7 @@ describe("Rundlauf für jede Sammlung, ausgehend von einer leeren data.json", ()
       const s = geladen({}) as unknown as Record<string, unknown>;
       const neu = ergaenzen(s[key]);
       s[key] = neu;
-      const datei = toDelta(s as unknown as VibeTaskSettings);
+      const datei = toDelta(s as unknown as OpalTasksSettings);
       expect(datei[key], key + " fehlt in der Datei").toEqual(neu);
       expect((geladen(datei)as unknown as Record<string, unknown>)[key], key + " überlebt den Neustart nicht").toEqual(neu);
     });
@@ -252,7 +252,7 @@ describe("Rundlauf für jede Sammlung, ausgehend von einer leeren data.json", ()
       if (!Array.isArray(def)) continue;
       const s = geladen({}) as unknown as Record<string, unknown>;
       (s[key] as unknown[]).push(typeof def[0] === "object" && def.length ? { probe: true } : "probe");
-      expect(toDelta(s as unknown as VibeTaskSettings)[key], key).toEqual(s[key]);
+      expect(toDelta(s as unknown as OpalTasksSettings)[key], key).toEqual(s[key]);
       expect((geladen({}) as unknown as Record<string, unknown>)[key], key + " (Standard verunreinigt)")
         .toEqual((EFFECTIVE_DEFAULTS as unknown as Record<string, unknown>)[key]);
     }

@@ -151,7 +151,7 @@ export type MetaColorKey =
  * Geschmacksfrage.
  * ═════════════════════════════════════════════════════════════════════════════
  */
-export interface VibeTaskSettings {
+export interface OpalTasksSettings {
   itemsFolder: string;
   projectsFolder: string;   // Projekte UND Bereiche liegen hier (Bereich = type:area)
   filtersFolder: string;    // gespeicherte Filter (type: filter) liegen hier
@@ -222,12 +222,12 @@ export interface VibeTaskSettings {
  * `statuses` und `fieldNames` gehören ebenfalls zu den Standardwerten, stehen aber in
  * settingsDelta.ts: types.ts darf statuses.ts nicht importieren (Zirkelbezug).
  */
-export const DEFAULT_SETTINGS: VibeTaskSettings = {
-  itemsFolder: "_vibetasks/tasks",
-  projectsFolder: "_vibetasks/projects",
-  filtersFolder: "_vibetasks/filters",
-  templatesFolder: "_vibetasks/templates",
-  attachmentsFolder: "_vibetasks/attachments",
+export const DEFAULT_SETTINGS: OpalTasksSettings = {
+  itemsFolder: "_opal_tasks/tasks",
+  projectsFolder: "_opal_tasks/projects",
+  filtersFolder: "_opal_tasks/filters",
+  templatesFolder: "_opal_tasks/templates",
+  attachmentsFolder: "_opal_tasks/attachments",
   knownLabels: [],
   visibleLabels: [],
   labelColors: {},
@@ -252,7 +252,7 @@ export const DEFAULT_SETTINGS: VibeTaskSettings = {
 
 /**
  * Geräte-Zustand. Liegt im lokalen Speicher (app.saveLocalStorage), NICHT in data.json –
- * siehe die Regel an VibeTaskSettings. Ein Objekt unter EINEM Schlüssel, damit nicht für
+ * siehe die Regel an OpalTasksSettings. Ein Objekt unter EINEM Schlüssel, damit nicht für
  * jeden Wert ein eigener Eintrag entsteht.
  *
  * Alles hier ist entbehrlich: Geht es verloren, startet das Gerät mit aufgeklappter

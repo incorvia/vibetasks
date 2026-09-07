@@ -24,7 +24,7 @@ const DEVICE_ENDPOINT = "https://oauth2.googleapis.com/device/code";
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 
 /** calendar.events = Events schreiben; calendar.readonly = Kalenderliste/Anzeige;
- *  calendar.app.created = eigenen „VibeTask"-Sekundärkalender anlegen/verwalten (schmales Recht,
+ *  calendar.app.created = eigenen „Opal Tasks"-Sekundärkalender anlegen/verwalten (schmales Recht,
  *  kein Zugriff auf fremde Kalender-Verwaltung). */
 export const GCAL_SCOPE =
   "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.app.created";
@@ -275,7 +275,7 @@ export class GCalAuth {
             state,
             access_type: "offline",
             prompt: "consent",   // erzwingt refresh_token auch bei erneutem Login
-            hl: "en",            // keep Google's OAuth UI consistent with VibeTask's default UI
+            hl: "en",            // keep Google's OAuth UI consistent with the default Opal Tasks UI
           });
           window.open(authUrl);
         });
@@ -341,10 +341,10 @@ function sleep(ms: number): Promise<void> {
 /** Schlichte Abschluss-Seite im Browser nach dem Loopback-Redirect. */
 function loopbackPage(ok: boolean): string {
   const msg = ok
-    ? "✅ VibeTask is now connected to Google Calendar."
+    ? "✅ Opal Tasks is now connected to Google Calendar."
     : "⚠️ Sign-in failed. Please try again in Obsidian.";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>VibeTask</title><style>
+<title>Opal Tasks</title><style>
 body{font-family:system-ui,sans-serif;background:#1e1e1e;color:#eee;display:flex;
 min-height:100vh;align-items:center;justify-content:center;margin:0}
 div{max-width:28rem;text-align:center;line-height:1.5;padding:2rem}

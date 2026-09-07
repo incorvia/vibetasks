@@ -3,7 +3,7 @@
 // type:filter-Notiz, Bearbeiten = bestehende aktualisieren. Facetten sind implizit UND;
 // mehrere Werte je Facette ODER (kein Bool-Operator im UI, bewusste Vereinfachung).
 import { Modal, Notice } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { todayStr } from "./format";
 import { EditFocus } from "./newItemModal";
 import { t } from "./i18n";
@@ -33,7 +33,7 @@ export class FilterModal extends Modal {
   /** `preset` = Vorbelegung für einen NEUEN Filter: „Als Filter speichern" im Anzeige-Panel
    *  reicht damit den Ansichtsfilter der Seite herein (s. viewPanel.presetFor). Beim Bearbeiten
    *  gewinnt die Notiz – dort ist nichts vorzubelegen. */
-  constructor(private plugin: VibeTaskPlugin, editPath?: string, preset?: FilterCriteria, private focusField: EditFocus = "name") {
+  constructor(private plugin: OpalTasksPlugin, editPath?: string, preset?: FilterCriteria, private focusField: EditFocus = "name") {
     super(plugin.app);
     this.editPath = editPath ?? null;
     const existing = editPath ? readFilter(plugin.app, editPath, plugin.settings.defaultCalendarView) : null;

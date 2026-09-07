@@ -19,7 +19,7 @@ describe("normalizeFieldName – eine vertippte Einstellung darf nie Daten treff
     }
   });
 
-  it("sperrt die festen Felder von VibeTask und Obsidian", () => {
+  it("sperrt die festen Felder von Opal Tasks und Obsidian", () => {
     for (const reserved of ["status", "due", "project", "parent", "labels", "id", "description", "tags", "aliases", "STATUS"]) {
       expect(normalizeFieldName("type", reserved)).toBe("type");
       expect(normalizeFieldName("title", reserved)).toBe("title");
@@ -75,7 +75,7 @@ describe("Feldnamen-Registry", () => {
   });
 });
 
-describe("isEntityValue – welche Werte gehören VibeTask", () => {
+describe("isEntityValue – welche Werte gehören Opal Tasks", () => {
   it("erkennt die vier eigenen Werte", () => {
     for (const v of ["task", "project", "area", "filter"]) expect(isEntityValue(v)).toBe(true);
   });
@@ -86,7 +86,7 @@ describe("isEntityValue – welche Werte gehören VibeTask", () => {
 });
 
 describe("isTypeRenameTarget – welche Notizen ein type-Wechsel umschreibt", () => {
-  it("nimmt alle vier VibeTask-Werte mit", () => {
+  it("nimmt alle vier Opal Tasks-Werte mit", () => {
     for (const v of ["task", "project", "area", "filter"])
       expect(isTypeRenameTarget({ type: v }, "type", "bt_type")).toBe(true);
   });
@@ -109,7 +109,7 @@ describe("isTypeRenameTarget – welche Notizen ein type-Wechsel umschreibt", ()
 
 /**
  * Das Label-Feld ist seit 1.42.0 konfigurierbar – vor allem, damit es auf `tags` zeigen kann.
- * Dann sind VibeTask-Labels echte Obsidian-Tags, und fremde Programme (TaskForge) finden sie.
+ * Dann sind Opal Tasks-Labels echte Obsidian-Tags, und fremde Programme (TaskForge) finden sie.
  */
 describe("Label-Feldname", () => {
   it("erlaubt `tags` NUR fürs Label-Feld", () => {
@@ -133,7 +133,7 @@ describe("Label-Feldname", () => {
     expect(normalizeFieldName("type", "labels")).toBe("type");
   });
 
-  it("bleibt gegen die FESTEN Felder gesperrt – die schreibt VibeTask selbst", () => {
+  it("bleibt gegen die FESTEN Felder gesperrt – die schreibt Opal Tasks selbst", () => {
     for (const fest of ["status", "due", "project", "recurrence", "aliases"]) {
       expect(normalizeFieldName("labels", fest), fest).toBe("labels");
     }

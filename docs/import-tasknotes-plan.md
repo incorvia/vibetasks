@@ -1,7 +1,7 @@
 # Umsetzungsplan: „Import from TaskNotes"
 
 ## Kontext
-TaskNotes (callumalpass) ist der Marktführer und nutzt dieselbe Grundstruktur wie VibeTask:
+TaskNotes (callumalpass) ist der Marktführer und nutzt dieselbe Grundstruktur wie Opal Tasks:
 **eine Markdown-Notiz pro Aufgabe mit Frontmatter**. Damit ist eine Migration reines
 Frontmatter-Ummappen und ein starker Wachstumshebel (Wechselkosten → nahe null).
 Ziel: ein eingebauter, nicht-destruktiver, idempotenter Import.
@@ -17,10 +17,10 @@ Ziel: ein eingebauter, nicht-destruktiver, idempotenter Import.
 - Recurrence: iCalendar RRULE (RFC 5545), z. B. `FREQ=WEEKLY;BYDAY=FR`, plus `recurrence_anchor`.
 - Quellen: https://tasknotes.dev/core-concepts/ , https://tasknotes.dev/spec/02-model-and-mapping/
 
-## Feld-Mapping → VibeTask (`type: task`)
-| TaskNotes | VibeTask | Hinweis |
+## Feld-Mapping → Opal Tasks (`type: task`)
+| TaskNotes | Opal Tasks | Hinweis |
 |---|---|---|
-| `title` | `# Titel` (H1) | VibeTask liest Titel aus der Überschrift |
+| `title` | `# Titel` (H1) | Opal Tasks liest Titel aus der Überschrift |
 | Body | Beschreibung (Body nach H1) | 1:1 |
 | Task-Tag | `type: task` | nur getaggte Notizen importieren |
 | `status` | `status` (Registry `statuses.ts`) | Status-Map; `completed_values` → „done" |
@@ -42,7 +42,7 @@ in Beschreibung), `timeEntries`, `complete_instances`, `blockedBy`, `reminders` 
 ### Neues Modul `src/importTaskNotes.ts`
 - `readTaskNotesMapping(app)` — TaskNotes' `data.json` (Field-Mapping + Task-Tag) lesen, sonst Defaults.
 - `scanTaskNotes(app, opts)` — Task-Notizen per Tag/Ordner finden, Frontmatter über `metadataCache`.
-- `mapRecord(record, mapping, statusMap, prioMap)` — → VibeTask-Task-Record inkl. `external_id`.
+- `mapRecord(record, mapping, statusMap, prioMap)` — → Opal Tasks-Task-Record inkl. `external_id`.
 - `rruleToRecurrence(rrule)` — `FREQ`/`INTERVAL` → `"every N unit"`, sonst `null` + Original in Beschreibung.
 
 ### Wiederverwendung `importExport.ts`

@@ -1,5 +1,5 @@
 import { App, FuzzySuggestModal, FuzzyMatch, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { PageRef, StartPage } from "./pageCtx";
 import { entityIcon } from "./entityPresentation";
 import { VIEW_IDS, VIEW_ICON, viewTitle } from "./heuteView";
@@ -37,7 +37,7 @@ export interface StartPageOption {
  *  „Heute" samt Hinweis in den Einstellungen.
  *
  *  Verwaltungsseiten fehlen ebenfalls – sie zeigen keine Aufgaben. */
-export function listStartPages(plugin: VibeTaskPlugin): StartPageOption[] {
+export function listStartPages(plugin: OpalTasksPlugin): StartPageOption[] {
   const out: StartPageOption[] = [
     { value: "last", label: t("set_start_view_last"), icon: "history", kind: "" },
     { value: { kind: "project", key: INBOX_KEY }, label: t("nav_inbox"), icon: "inbox", kind: t("kind_view") },
@@ -66,7 +66,7 @@ export function listStartPages(plugin: VibeTaskPlugin): StartPageOption[] {
  * auseinanderlaufen zu lassen war ein Fehler – ein ausgeblendetes Projekt fehlte in der Liste,
  * galt aber als vorhanden, und die Zeile behauptete fälschlich, es gäbe die Seite nicht mehr.
  */
-export function startPageLabel(plugin: VibeTaskPlugin, setting: StartPage | undefined | null):
+export function startPageLabel(plugin: OpalTasksPlugin, setting: StartPage | undefined | null):
   { label: string; icon: string; missing: boolean } {
   if (setting === "last") return { label: t("set_start_view_last"), icon: "history", missing: false };
   if (!isRef(setting)) return { label: viewTitle("heute"), icon: VIEW_ICON.heute, missing: false };

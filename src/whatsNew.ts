@@ -1,5 +1,5 @@
 import { Modal, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { t } from "./i18n";
 
 interface Highlight { icon: string; title: string; desc: string; }
@@ -7,12 +7,12 @@ interface Highlight { icon: string; title: string; desc: string; }
 /** „Neu in dieser Version"-Modal – einmalig nach einem Versionswechsel gezeigt (siehe main.ts).
  *  Die Highlights beziehen sich auf die aktuell veröffentlichte Version. */
 export class WhatsNewModal extends Modal {
-  constructor(private plugin: VibeTaskPlugin) { super(plugin.app); }
+  constructor(private plugin: OpalTasksPlugin) { super(plugin.app); }
 
   onOpen(): void {
     const { contentEl, modalEl } = this;
     modalEl.addClass("bt-whatsnew");
-    contentEl.createDiv({ cls: "bt-wn-eyebrow", text: "VibeTask " + this.plugin.manifest.version });
+    contentEl.createDiv({ cls: "bt-wn-eyebrow", text: "Opal Tasks " + this.plugin.manifest.version });
     contentEl.createEl("h2", { cls: "bt-wn-title", text: t("whatsnew_title") });
 
     // Gezeigt wird, was seit dem LETZTEN Modal sichtbar dazugekommen ist. Die Link-

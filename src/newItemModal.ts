@@ -2,7 +2,7 @@
 // + Live-Vorschau. Ohne editRef = Anlegen (Schalter Default AN); mit editRef = Bearbeiten
 // (Name/Farbe/Sichtbarkeit ändern). Farb-Swatches inline (siehe colorSwatches).
 import { Modal, Notice, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { baseName, listProjectsAndAreas, normalizeLabel } from "./taskService";
 import { buildSwatchRow } from "./colorSwatches";
 import { ConfirmModal } from "./confirmModal";
@@ -40,7 +40,7 @@ export class NewItemModal extends Modal {
   private previewNm!: HTMLElement;
   private descInput: HTMLTextAreaElement | null = null;
 
-  constructor(private plugin: VibeTaskPlugin, private kind: NewItemKind, private edit?: EditRef,
+  constructor(private plugin: OpalTasksPlugin, private kind: NewItemKind, private edit?: EditRef,
               private focusField: EditFocus = "name", defaults: NewItemDefaults = {}) {
     super(plugin.app);
     this.name = edit?.name ?? "";

@@ -5,7 +5,7 @@
 // horizontale Icon-Buttons brauchen und die Optik der Modal-Popovers hier fortgeführt wird.
 // Alle Aktionen rufen bestehende Plugin-Methoden; das Menü ist reine Verdrahtung.
 import { setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { Task } from "./types";
 import { openPopover, openPopoverAt, popRow } from "./popover";
@@ -32,7 +32,7 @@ function iconButton(row: HTMLElement, label: string, active: boolean, onClick: (
  *  Änderung sofort ins Frontmatter schreibt. Das Menü bleibt dabei offen (verschachteltes
  *  Popover wie beim Anzeige-Panel) – so bleibt der Anker lebendig, auch wenn der Nutzer im
  *  Popover weiter zum absoluten Datums-Picker springt. */
-function openReminderEditor(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement): void {
+function openReminderEditor(plugin: OpalTasksPlugin, task: Task, anchor: HTMLElement): void {
   const host: ChipHost = {
     plugin, app: plugin.app,
     f: { reminders: [...task.reminders], due: task.due, dueTime: task.dueTime },
@@ -46,7 +46,7 @@ function openReminderEditor(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElem
 
 /** Projekt-Picker zum VERSCHIEBEN (ohne Neuanlage-Zeilen): Eingang + Bereiche + Projekte,
  *  aktueller Eintrag markiert. Ein Klick schreibt das Projekt und schließt Picker UND Menü. */
-function openMovePicker(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement, done: () => void): void {
+function openMovePicker(plugin: OpalTasksPlugin, task: Task, anchor: HTMLElement, done: () => void): void {
   const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
   const cur = task.project && !isInboxLink(task.project) ? baseName(task.project) : null;
   openPopover(anchor, (pop, close) => {
@@ -67,7 +67,7 @@ function openMovePicker(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement,
  * sections. This anchored action replaces cross-column drag by making both hidden axes directly
  * selectable. It deliberately excludes the cancelled status: trash remains a destructive action
  * in the task menu rather than an innocent-looking board move. */
-export function openBoardMoveMenu(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement): void {
+export function openBoardMoveMenu(plugin: OpalTasksPlugin, task: Task, anchor: HTMLElement): void {
   openPopover(anchor, (pop, close) => {
     pop.addClasses(["bt-picker", "bt-board-move-menu"]);
     pop.createDiv({ cls: "bt-pop-head", text: t("chip_status") });

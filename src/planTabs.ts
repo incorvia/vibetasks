@@ -1,6 +1,6 @@
 import { App, TFile, WorkspaceLeaf, moment } from "obsidian";
 import type { PageRef } from "./pageCtx";
-import type { VibeTaskSettings } from "./types";
+import type { OpalTasksSettings } from "./types";
 import { INBOX_KEY } from "./taskService";
 
 /**
@@ -43,7 +43,7 @@ const isPlanTabId = (v: unknown): v is PlanTabId => typeof v === "string" && (PL
  * Unbekannte und doppelte Einträge fallen weg, fehlende hängen HINTEN an und sind AUS: Ein
  * Update darf niemandem ungefragt einen weiteren Tab in seinen Split stellen.
  */
-export function readPlanTabs(settings: VibeTaskSettings): PlanTab[] {
+export function readPlanTabs(settings: OpalTasksSettings): PlanTab[] {
   const seen = new Set<PlanTabId>();
   const out: PlanTab[] = [];
   for (const raw of Array.isArray(settings.planTabs) ? settings.planTabs : []) {
@@ -72,7 +72,7 @@ export function readPlanTabs(settings: VibeTaskSettings): PlanTab[] {
  * `!== false` statt `=== true`: nie gewählt bedeutet ja, ohne dass der Wert in data.json stehen
  * muss (dasselbe Muster wie calPanel).
  */
-export const forceListLeft = (settings: VibeTaskSettings): boolean => settings.planForceList !== false;
+export const forceListLeft = (settings: OpalTasksSettings): boolean => settings.planForceList !== false;
 
 /** Die Notiz der Seite: Projekt, Bereich oder gespeicherter Filter. Bei diesen dreien IST der
  *  `key` der Pfad ihrer Notiz. Alles andere hat keine – ein Label ist ein Name, der Eingang und
@@ -188,7 +188,7 @@ export function planTabAvailable(app: App, page: PageRef, id: PlanTabId): boolea
  * sonst keinen Inhalt und der Befehl täte scheinbar nichts. Einen Kalender hat jede Seite,
  * die den Befehl überhaupt anbietet.
  */
-export function activePlanTabs(app: App, settings: VibeTaskSettings, page: PageRef): PlanTabId[] {
+export function activePlanTabs(app: App, settings: OpalTasksSettings, page: PageRef): PlanTabId[] {
   const on = readPlanTabs(settings)
     .filter((e) => e.on)
     .map((e) => e.id)

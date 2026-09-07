@@ -210,9 +210,9 @@ export class TimerService extends Component {
   private listeners = new Set<() => void>();
   constructor(private app: App, private store: TimeStore) {
     super();
-    const storedDevice: unknown = app.loadLocalStorage("vibetask-timer-device");
+    const storedDevice: unknown = app.loadLocalStorage("opal_tasks-timer-device");
     this.deviceId = typeof storedDevice === "string" ? storedDevice : newUlid();
-    app.saveLocalStorage("vibetask-timer-device", this.deviceId);
+    app.saveLocalStorage("opal_tasks-timer-device", this.deviceId);
   }
   onload(): void {
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {

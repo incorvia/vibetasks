@@ -1,5 +1,5 @@
 import { Modal, TFile } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import type { WorkSession } from "./types";
 import { formatDuration } from "./format";
 
@@ -8,7 +8,7 @@ const sessionMinutes = (s: WorkSession) => Math.round((s.elapsed ?? (s.ended_at 
 
 export class TimeDashboardModal extends Modal {
   private from = day(new Date()); private to = this.from; private currentHierarchy = false;
-  constructor(private plugin: VibeTaskPlugin) { super(plugin.app); }
+  constructor(private plugin: OpalTasksPlugin) { super(plugin.app); }
   onOpen(): void { this.draw(); }
   onClose(): void { this.contentEl.empty(); }
 

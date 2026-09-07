@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readPlanTabs, PlanTab, PLAN_TAB_IDS } from "../src/planTabs";
-import { VibeTaskSettings, DEFAULT_SETTINGS } from "../src/types";
+import { OpalTasksSettings, DEFAULT_SETTINGS } from "../src/types";
 
-const mit = (planTabs?: unknown): VibeTaskSettings =>
-  ({ ...DEFAULT_SETTINGS, planTabs } as unknown as VibeTaskSettings);
+const mit = (planTabs?: unknown): OpalTasksSettings =>
+  ({ ...DEFAULT_SETTINGS, planTabs } as unknown as OpalTasksSettings);
 
 const ids = (t: PlanTab[]): string[] => t.map((e) => e.id);
 const an = (t: PlanTab[]): string[] => t.filter((e) => e.on).map((e) => e.id);

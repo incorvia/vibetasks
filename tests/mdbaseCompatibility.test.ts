@@ -13,7 +13,7 @@ afterEach(async () => {
 
 describe("bundled mdbase v0.3 resources", () => {
   it("open and validate with the pinned upstream implementation", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vibetask-mdbase-"));
+    const root = await mkdtemp(join(tmpdir(), "opal_tasks-mdbase-"));
     roots.push(root);
     await mkdir(join(root, "_types"));
     await writeFile(join(root, "mdbase.yaml"), mdbaseConfigDocument());

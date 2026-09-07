@@ -23,7 +23,7 @@ export interface ProjectIdentity {
   color?: string | null;
 }
 
-/** Shared identity used wherever a linked note points back into the VibeTask representation. */
+/** Shared identity used wherever a linked note points back into the Opal Tasks representation. */
 export function renderProjectIdentity(
   parent: HTMLElement,
   project: ProjectIdentity,

@@ -1,5 +1,5 @@
 import { App, Notice, TFile, normalizePath, stringifyYaml } from "obsidian";
-import { VibeTaskSettings, Priority, Task, TaskStatus } from "./types";
+import { OpalTasksSettings, Priority, Task, TaskStatus } from "./types";
 import type { ShiftedDates } from "./templatePlan";
 import { combineDT } from "./format";
 import { firstOpenStatus, isDone, isKnownStatus, isTrashed } from "./statuses";
@@ -241,7 +241,7 @@ export interface DuplicateOpts {
 }
 
 /** Neue Aufgaben-Notiz anlegen (kollisionssicherer Dateiname). */
-export async function createTaskNote(app: App, settings: VibeTaskSettings, f: TaskFields, target?: NoteTarget): Promise<TFile> {
+export async function createTaskNote(app: App, settings: OpalTasksSettings, f: TaskFields, target?: NoteTarget): Promise<TFile> {
   const folder = target?.folder ?? settings.itemsFolder;
   await ensureFolder(app, folder);
   const slug = slugify(f.title);
@@ -318,7 +318,7 @@ export function copyTaskLink(app: App, path: string): void {
   const file = encodeURIComponent(path.replace(/\.md$/, ""));
   navigator.clipboard.writeText(`obsidian://open?vault=${vault}&file=${file}`)
     .then(() => new Notice(t("msg_link_copied")))
-    .catch((err) => { console.error("VibeTask: copy link failed", err); new Notice(t("msg_link_copy_failed")); });
+    .catch((err) => { console.error("Opal Tasks: copy link failed", err); new Notice(t("msg_link_copy_failed")); });
 }
 
 /**
@@ -491,7 +491,7 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 }
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen zurück. */
-export async function createProjectNote(app: App, settings: VibeTaskSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
+export async function createProjectNote(app: App, settings: OpalTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);

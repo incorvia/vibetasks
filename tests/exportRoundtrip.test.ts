@@ -10,18 +10,18 @@ import { ProjItem } from "../src/taskService";
  */
 
 const AUFGABE: Task = {
-  id: "t-abc", path: "VibeTask/Items/Test.md", title: "Test", titleInFm: true,
+  id: "t-abc", path: "Opal Tasks/Items/Test.md", title: "Test", titleInFm: true,
   status: "doing", priority: "high",
   due: "2026-08-20", dueTime: "09:30", estimate: 45, scheduled: null, scheduledTime: null,
   duration: null, start: null, sortOrder: 2110,
-  project: "VibeTask/Projects/Haus.md", parent: "VibeTask/Items/Eltern.md",
+  project: "Opal Tasks/Projects/Haus.md", parent: "Opal Tasks/Items/Eltern.md",
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
   created: "2026-07-01T08:00:00", completed: null, cancelled: null, externalId: "ext-1",
 };
 
 const LISTE: ProjItem = {
-  id: "project-1", name: "Haus", path: "VibeTask/Projects/Haus.md", icon: "home", color: "#e05c4a",
+  id: "project-1", name: "Haus", path: "Opal Tasks/Projects/Haus.md", icon: "home", color: "#e05c4a",
   type: "project", hidden: true, archived: true, workflowStatus: "doing", priority: "high", description: "Alles rund ums Haus",
 };
 
@@ -114,7 +114,7 @@ describe("Liste → Export → Frontmatter", () => {
 
 describe("Alte Exporte bleiben lesbar", () => {
   const alt = JSON.stringify({
-    format: "vibetask", version: 2, exportedAt: "2026-01-01", taskCount: 1,
+    format: "opal_tasks", version: 2, exportedAt: "2026-01-01", taskCount: 1,
     lists: [{ name: "Alt", type: "project", color: null, archived: false }],
     labels: [],
     tasks: [{ id: "t-1", title: "Alt", status: "todo", priority: "normal", labels: [], created: "2026-01-01" }],
@@ -185,7 +185,7 @@ describe("Body über die Rundreise", () => {
 
 describe("Filter über die Rundreise", () => {
   const filter = {
-    name: "Diese Woche", path: "VibeTask/Filters/Diese Woche.md", icon: "tag",
+    name: "Diese Woche", path: "Opal Tasks/Filters/Diese Woche.md", icon: "tag",
     color: "#39a", hidden: true, description: "Alles bis Sonntag",
     criteria: { labels: ["ui"] } as never, options: { layout: "list" } as never,
   };

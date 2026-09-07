@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applyDropPage, DropPage } from "../src/taskDrag";
 import { Task } from "../src/types";
-import type VibeTaskPlugin from "../src/main";
+import type OpalTasksPlugin from "../src/main";
 
 // Abwerfen heißt „gehört jetzt hierher" – dieselbe Bedeutung, die das Ziehen auf einen
 // Seitenleisten-Eintrag im Plugin schon hat. Nötig wurde das erst mit dem Planungs-Split: Vorher
@@ -21,7 +21,7 @@ function fakePlugin() {
       calls.push("label+" + add + " -" + (remove ?? "(nichts)"));
       return Promise.resolve();
     },
-  } as unknown as VibeTaskPlugin;
+  } as unknown as OpalTasksPlugin;
   return { plugin, calls };
 }
 

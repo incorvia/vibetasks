@@ -4,8 +4,8 @@
 // Sichtbarkeits-/Reihenfolge-Logik (chipOrder/chipTiers). Beide Modale rendern über CHIPS und
 // nutzen dieselben Picker – keine Duplikate mehr.
 import { App, Platform, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
-import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, VibeTaskSettings } from "./types";
+import type OpalTasksPlugin from "./main";
+import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, OpalTasksSettings } from "./types";
 import { formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf } from "./format";
 import { boardStatuses, statusLabel, statusIcon, statusTint, firstOpenStatus, isTrashed } from "./statuses";
 import { openDatePicker, parseDuration } from "./datePicker";
@@ -32,7 +32,7 @@ import { parseQuickEntry } from "./quickEntry";
  * EINE Quelle für alles, was am Kompakt-Modus hängt (CSS-Klasse, Tooltips, ARIA-Labels) –
  * sonst laufen die drei auseinander und ein Chip verliert seinen zugänglichen Namen.
  */
-export const chipsCompact = (settings: VibeTaskSettings): boolean =>
+export const chipsCompact = (settings: OpalTasksSettings): boolean =>
   settings.chipsIconsOnly || Platform.isMobile;
 
 // 4 Stufen (P1 rot / P2 orange / P3 blau / P4 = ohne). Label-Keys via t().
@@ -81,7 +81,7 @@ export interface ChipFields {
 /** Brücke Modal ⇄ Chip: liefert Feldzustand + Callbacks, die pro Modal unterschiedlich sind
  *  (Status live schreiben, Datum „pinnen", Details-Sektion toggeln, Parent-Ausschluss …). */
 export interface ChipHost {
-  plugin: VibeTaskPlugin;
+  plugin: OpalTasksPlugin;
   app: App;
   f: ChipFields;
   surface: ChipSurface;                   // eigene Chip-Konfiguration je Fläche (Editor/Schnelleingabe)
@@ -442,25 +442,25 @@ export const DEFAULT_CHIP_PROFILES: Record<ChipSurface, ChipProfile> = {
 };
 
 /** Konfigurations-Profil einer Fläche (eigenes gespeichertes ODER der Ersteinrichtungs-Default). */
-export function chipProfile(settings: VibeTaskSettings, surface: ChipSurface): ChipProfile {
+export function chipProfile(settings: OpalTasksSettings, surface: ChipSurface): ChipProfile {
   return settings.chipProfiles?.[surface] ?? DEFAULT_CHIP_PROFILES[surface];
 }
 
 /** Aufgelöste Chip-Reihenfolge der Fläche: gespeicherte Reihenfolge, um fehlende Ids (kanonisch) ergänzt. */
-export function resolveChipOrder(settings: VibeTaskSettings, surface: ChipSurface): ChipId[] {
+export function resolveChipOrder(settings: OpalTasksSettings, surface: ChipSurface): ChipId[] {
   const saved = chipProfile(settings, surface).order ?? [];
   const seen = new Set(saved.filter((id) => CHIP_IDS.includes(id)));
   return [...saved.filter((id) => CHIP_IDS.includes(id)), ...CHIP_IDS.filter((id) => !seen.has(id))];
 }
 
 /** Sichtbarkeits-Stufe eines Chips auf der Fläche (fehlt = "shown" -> unverändertes Default-Verhalten). */
-export function chipTierOf(settings: VibeTaskSettings, surface: ChipSurface, id: ChipId): ChipTier {
+export function chipTierOf(settings: OpalTasksSettings, surface: ChipSurface, id: ChipId): ChipTier {
   return chipProfile(settings, surface).tiers?.[id] ?? "shown";
 }
 
 /** Soll der Chip inline in der Leiste stehen? shown = immer; onValue = nur mit Wert; hidden = nie.
  *  Gilt in Kompakt- UND Normalmodus gleich (gesetzte Werte bleiben immer sichtbar). */
-export function isInline(settings: VibeTaskSettings, surface: ChipSurface, id: ChipId, set: boolean): boolean {
+export function isInline(settings: OpalTasksSettings, surface: ChipSurface, id: ChipId, set: boolean): boolean {
   const tier = chipTierOf(settings, surface, id);
   return tier === "shown" || (tier === "onValue" && set);
 }
@@ -543,9 +543,9 @@ export function renderValueChip(bar: HTMLElement, host: ChipHost, c: ChipDef, se
   if (set) { const x = chip.createSpan({ cls: "bt-chip-x" }); setIcon(x, "x"); x.onclick = (e) => { e.stopPropagation(); c.clear(host); host.rerender(); }; }
 }
 
-/** Obsidian-Einstellungen beim VibeTask-Tab öffnen („Aufgabenaktionen bearbeiten"). */
+/** Obsidian-Einstellungen beim Opal Tasks-Tab öffnen („Aufgabenaktionen bearbeiten"). */
 export function openChipSettings(app: App): void {
   const s = (app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
   s?.open();
-  s?.openTabById("vibetask");
+  s?.openTabById("opal_tasks");
 }

@@ -14,7 +14,7 @@
  * (das Ziel sucht die Aufgabe über ihren Pfad im Index, nicht über die Quell-Liste).
  */
 
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { Task } from "./types";
 import { isInboxLink, baseName } from "./taskService";
 
@@ -67,7 +67,7 @@ export interface DropPage { project?: string | null; label?: string }
  * Schreibt NUR, wenn sich wirklich etwas ändert – ein Zug innerhalb derselben Seite (der Normalfall)
  * fasst die Notiz nicht an.
  */
-export async function applyDropPage(plugin: VibeTaskPlugin, task: Task, page: DropPage): Promise<void> {
+export async function applyDropPage(plugin: OpalTasksPlugin, task: Task, page: DropPage): Promise<void> {
   if (page.label && !task.labels.includes(page.label)) await plugin.swapTaskLabel(task, null, page.label);
   if (page.project === undefined) return;                    // Seite ohne Projekt-Dimension
   // Eingang und „gar kein Projekt" sind derselbe Zustand (null) – so trifft der Vergleich unten

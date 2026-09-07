@@ -22,8 +22,8 @@ describe("ensureLinkedProjectEmbeds", () => {
     expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("Text"));
   });
 
-  it("is idempotent and recognizes the old project block as the task list", () => {
-    const old = "# Launch\n\nText\n\n```vibetask\nview: project\nid: p-1\n```\n";
+  it("is idempotent and recognizes a pre-section project block as the task list", () => {
+    const old = "# Launch\n\nText\n\n```opal_tasks\nview: project\nid: p-1\n```\n";
     const once = ensureLinkedProjectEmbeds(old, "p-1");
     expect((once.match(/section: header/g) ?? [])).toHaveLength(1);
     expect((once.match(/section: tasks/g) ?? [])).toHaveLength(0);

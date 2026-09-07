@@ -5,7 +5,7 @@
 // ausgeblendete Chips + „Aufgabenaktionen bearbeiten". Nach dem Anlegen bleibt das Modal offen
 // (Multi-Add / Brain-Dump). Der ⤢-Button öffnet den vollen Editor mit allem Übernommenen.
 import { Modal, Notice, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { Priority, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
 import { createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels } from "./taskService";
@@ -35,7 +35,7 @@ export class QuickAddModal extends Modal {
 
   /** `opts` belegt die Schnellerfassung aus dem Kontext der aufrufenden Seite vor – genauso wie
    *  der „+ Aufgabe"-Knopf unter dem Seitentitel (Label-Seite -> Label, Heute -> heute, …). */
-  constructor(private plugin: VibeTaskPlugin, project?: string,
+  constructor(private plugin: OpalTasksPlugin, project?: string,
               opts: { label?: string; due?: string | null; today?: boolean } = {}) {
     super(plugin.app);
     this.defaultProject = project ?? null;   // kein Default-Projekt -> Eingang

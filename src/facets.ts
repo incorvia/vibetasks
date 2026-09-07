@@ -11,7 +11,7 @@
 // Die Zeilen-Klassen kommen als `RowStyle` von außen: Modal und Panel haben verschiedene
 // Abstände, aber dasselbe Bedienelement.
 import { setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { Priority } from "./types";
 import { openPopover } from "./popover";
 import { FilterCriteria, FacetId, MatchMode, RANGES, FILTER_PRIORITIES, SUBTASK_FILTERS, SubtaskFilter, FilterRange, orphanKeys } from "./filterEngine";
@@ -179,7 +179,7 @@ const staleOpts = (keys: readonly string[]): FacetOption[] => keys.map((k) => ({
  * bietet das Panel nur die OFFENEN Phasen an (inklusive eigener). Der Editor eines gespeicherten
  * Filters behält alle: „zeig mir alles Abgebrochene" ist dort eine sinnvolle Frage.
  */
-export function buildFacets(plugin: VibeTaskPlugin, ids: readonly FacetId[],
+export function buildFacets(plugin: OpalTasksPlugin, ids: readonly FacetId[],
   get: () => FilterCriteria, set: (patch: Partial<FilterCriteria>) => void,
   statusScope: "open" | "all" = "all"): FacetDef[] {
   const out: FacetDef[] = [];

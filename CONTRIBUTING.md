@@ -1,6 +1,6 @@
-# Contributing to VibeTask
+# Contributing to Opal Tasks
 
-Thanks for your interest in improving VibeTask!
+Thanks for your interest in improving Opal Tasks!
 
 ## Pull requests are not accepted
 
@@ -11,10 +11,10 @@ as described below.
 ## Ideas and bug reports are welcome — through issues
 
 **Ideas are welcome as feature requests through
-[GitHub issues](https://github.com/incorvia/vibetasks/issues).** Bugs, too.
+[GitHub issues](https://github.com/incorvia/opal_tasks/issues).** Bugs, too.
 
-- Search [existing issues](https://github.com/incorvia/vibetasks/issues) first.
-- For **bugs**, include: VibeTask version, Obsidian version, OS/platform (desktop or
+- Search [existing issues](https://github.com/incorvia/opal_tasks/issues) first.
+- For **bugs**, include: Opal Tasks version, Obsidian version, OS/platform (desktop or
   mobile), steps to reproduce, and what you expected vs. what happened. A screenshot or a
   short screen recording helps a lot.
 - For **feature requests**, describe the problem you're trying to solve, not just the
@@ -33,10 +33,10 @@ npm run build     # type-check + production bundle
 ```
 
 The plugin's source lives in `src/` and bundles to `main.js`. To try a build in a real
-vault, work directly inside a test vault's `.obsidian/plugins/vibetask/` folder (the
+vault, work directly inside a test vault's `.obsidian/plugins/opal_tasks/` folder (the
 [Hot-Reload plugin](https://github.com/pjeby/hot-reload) picks up rebuilds automatically),
 or copy `main.js`, `manifest.json` and `styles.css` into that folder and reload Obsidian.
 
 ## License
 
-VibeTask is released under the [MIT License](LICENSE).
+Opal Tasks is released under the [MIT License](LICENSE).

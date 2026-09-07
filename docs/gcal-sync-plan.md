@@ -1,7 +1,7 @@
 Ist# Umsetzungsplan: „Google Kalender – Zwei-Wege-Sync" (Alternative B)
 
 ## Kontext
-VibeTask ist **eine Markdown-Notiz pro Aufgabe mit Frontmatter** (`type: task`, gelesen über
+Opal Tasks ist **eine Markdown-Notiz pro Aufgabe mit Frontmatter** (`type: task`, gelesen über
 `TaskIndex`/`metadataCache`) — dasselbe Modell wie TaskNotes. Die Event-Identität gehört daher in
 die **Notiz** (Frontmatter), nicht ins Google-Event. Ziel: nativer, plattformübergreifender
 Zwei-Wege-Sync **ohne** externe Python/systemd-Abhängigkeit (ersetzt das alte Sidecar-Script).
@@ -30,7 +30,7 @@ Plugin-weiter State in `data.json` (nicht pro Notiz):
 > deadlines. The task mapping below documents the retired pre-migration design only.
 
 ## Legacy Task ↔ Event-Mapping
-| VibeTask | Google-Event | Hinweis |
+| Opal Tasks | Google-Event | Hinweis |
 |---|---|---|
 | `# Titel` (H1) | `summary` | via `TaskIndex` (`cache.headings[0]`) |
 | `due` + `dueTime` (+ `duration`) | `start`/`end` | mit `dueTime` → `dateTime` (Zeitblock, `duration` Min., Default 60); ohne → `date` (Ganztags) |
@@ -103,7 +103,7 @@ Google Kalender
  ● Verbunden als avni.bilgin@gmail.com            [ Abmelden ]
  Zuletzt synchronisiert: vor 2 Min                [ Jetzt synchronisieren ]
  ──────────────────────────────────────────────────────────────
- Ziel-Kalender                    [ VibeTask ▾ ]
+ Ziel-Kalender                    [ Opal Tasks ▾ ]
  Aufgaben mit Datum synchronisieren                      [✔]
  Automatisch synchronisieren                             [✔]
  ▸ Erweitert
@@ -115,12 +115,12 @@ Google Kalender
 ```
 Die **Standardfläche = 3 Zeilen** (Kalender, ein Toggle, Auto-Sync). Alles Feinkörnige unter
 „Erweitert" (zugeklappt). Imperativer Settings-Tab (minAppVersion, siehe
-[[vibetask-settings-declarative-api]]).
+[[opal_tasks-settings-declarative-api]]).
 
-### 3. Ziel-Kalender — eigener „VibeTask"-Kalender (kleiner Blast-Radius)
-Beim ersten Verbinden Default = eigener Kalender „VibeTask" (anlegen falls fehlt), nicht der
+### 3. Ziel-Kalender — eigener „Opal Tasks"-Kalender (kleiner Blast-Radius)
+Beim ersten Verbinden Default = eigener Kalender „Opal Tasks" (anlegen falls fehlt), nicht der
 Hauptkalender — ein Bug kann so nie den privaten Kalender beschädigen. Dropdown aus
-`calendarList.list` erlaubt jeden anderen + „＋ Kalender ‚VibeTask' anlegen".
+`calendarList.list` erlaubt jeden anderen + „＋ Kalender ‚Opal Tasks' anlegen".
 
 ### 4. Sync-Umfang — global an, pro Liste ausschließbar (Entscheidung)
 - Globaler Toggle „Aufgaben mit Datum synchronisieren" = **an**.

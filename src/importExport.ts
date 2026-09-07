@@ -1,6 +1,6 @@
 import { App, FuzzySuggestModal, TFile, normalizePath } from "obsidian";
-import type VibeTaskPlugin from "./main";
-import { VibeTaskSettings, Priority, TaskStatus, Task, TimeLog } from "./types";
+import type OpalTasksPlugin from "./main";
+import { OpalTasksSettings, Priority, TaskStatus, Task, TimeLog } from "./types";
 import { ensureFolder, slugify, newId, createProjectNote, listManaged, baseName, ProjItem } from "./taskService";
 import { titleKey, newTaskBody, findH1LineInBody } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
@@ -13,7 +13,7 @@ import { repositoryFor, rfc3339Now } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { migratedDeadline } from "./timingMigration";
 
-const EXPORT_FORMAT = "vibetask";
+const EXPORT_FORMAT = "opal_tasks";
 const EXPORT_VERSION = 4;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
@@ -283,7 +283,7 @@ export function makeImportData(lists: ExportList[], labels: string[], tasks: Exp
  * wird über `cachedRead`: für einen ausdrücklich angestoßenen Export ist ein Durchgang durch die
  * Aufgaben-Dateien vertretbar, und der Cache trägt die meisten davon ohnehin schon.
  */
-async function buildExportData(plugin: VibeTaskPlugin): Promise<ExportData> {
+async function buildExportData(plugin: OpalTasksPlugin): Promise<ExportData> {
   const tasks: ExportTask[] = [];
   for (const tk of plugin.index.all()) {
     const f = plugin.app.vault.getAbstractFileByPath(tk.path);
@@ -306,24 +306,24 @@ async function buildExportData(plugin: VibeTaskPlugin): Promise<ExportData> {
   };
 }
 
-/** Export in eine .json-Datei im Vault (neben dem VibeTask-Ordner). Gibt den Pfad zurück. */
-export async function writeExportFile(plugin: VibeTaskPlugin): Promise<string> {
+/** Export in eine .json-Datei im Vault (neben dem Opal Tasks-Ordner). Gibt den Pfad zurück. */
+export async function writeExportFile(plugin: OpalTasksPlugin): Promise<string> {
   const { app, settings } = plugin;
   const data = await buildExportData(plugin);
   const parts = settings.itemsFolder.split("/");
-  const base = parts.length > 1 ? parts.slice(0, -1).join("/") : settings.itemsFolder;   // z. B. „VibeTask"
+  const base = parts.length > 1 ? parts.slice(0, -1).join("/") : settings.itemsFolder;   // z. B. „Opal Tasks"
   await ensureFolder(app, base);
   const d = new Date();
   const z = (n: number): string => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
-  let dest = normalizePath(`${base}/vibetask-export-${stamp}.json`);
+  let dest = normalizePath(`${base}/opal_tasks-export-${stamp}.json`);
   let n = 2;
-  while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(`${base}/vibetask-export-${stamp} ${n}.json`); n++; if (n > 200) break; }
+  while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(`${base}/opal_tasks-export-${stamp} ${n}.json`); n++; if (n > 200) break; }
   await app.vault.create(dest, JSON.stringify(data, null, 2));
   return dest;
 }
 
-/** Rohtext als VibeTask-Export parsen. null, wenn Format/Struktur nicht passt. */
+/** Rohtext als Opal Tasks-Export parsen. null, wenn Format/Struktur nicht passt. */
 export function parseExport(raw: string): ExportData | null {
   let obj: unknown;
   try { obj = JSON.parse(raw); } catch { return null; }
@@ -336,7 +336,7 @@ export function parseExport(raw: string): ExportData | null {
 /** Eine importierte Aufgabe als Notiz schreiben. Übertragen wird, was `ExportTask` führt – NICHT
  *  der Notiz-Body und nicht die Definitionen eigener Status; beides ist in importExport.ts oben
  *  benannt. („Verlustfrei" stand hier einmal und war schon damals nicht wahr.) */
-async function writeImportedTask(app: App, settings: VibeTaskSettings, et: ExportTask): Promise<void> {
+async function writeImportedTask(app: App, settings: OpalTasksSettings, et: ExportTask): Promise<void> {
   await ensureFolder(app, settings.itemsFolder);
   const slug = slugify(et.title);
   let dest = normalizePath(settings.itemsFolder + "/" + slug + ".md");
@@ -349,7 +349,7 @@ async function writeImportedTask(app: App, settings: VibeTaskSettings, et: Expor
 }
 
 /** Eine importierte Liste mit KORREKTEM Typ (Projekt/Bereich) + Farbe/Archiv-Status anlegen. */
-async function writeImportedList(app: App, settings: VibeTaskSettings, list: ExportList): Promise<void> {
+async function writeImportedList(app: App, settings: OpalTasksSettings, list: ExportList): Promise<void> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(list.name);
@@ -374,7 +374,7 @@ function existingListNames(app: App): Set<string> {
 
 /** Import: fehlende Projekte/Bereiche + Labels anlegen, Aufgaben schreiben.
  *  Dedup über id UND externalId → erneuter Import derselben Datei erzeugt keine Duplikate. */
-export async function importData(plugin: VibeTaskPlugin, data: ExportData): Promise<ImportResult> {
+export async function importData(plugin: OpalTasksPlugin, data: ExportData): Promise<ImportResult> {
   const { app, settings } = plugin;
   const existing = plugin.index.all();
   const seenIds = new Set(existing.map((t) => t.id));

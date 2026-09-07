@@ -57,7 +57,7 @@ zweiten Fall entsteht keine Hülle.
 ## Vault-Layout
 
 ```
-VibeTask/Templates/
+_opal_tasks/templates/
 ├── Urlaub vorbereiten/
 │   ├── Urlaub vorbereiten.md     type: template · template_of: task     ← Wurzel
 │   ├── Reisepass prüfen.md       type: template · parent: [[Urlaub vorbereiten]]
@@ -92,7 +92,7 @@ im eigenen Ordner auf — der Unterordner beseitigt die Zweideutigkeit, statt si
 ## Umsetzung
 
 ### Stufe 0 — Fundament ✅
-- `types.ts`: `templatesFolder` (Default `VibeTask/Templates`)
+- `types.ts`: `templatesFolder` (Default `_opal_tasks/templates`)
 - `fieldNames.ts`: `ENTITY_VALUES` um `"template"` erweitert — **sonst ließe ein Wechsel des
   `type`-Feldnamens die Vorlagen zurück** und sie würden lautlos unsichtbar
 - `taskIndex.ts`: `IndexScope` / `TASK_SCOPE` / `TEMPLATE_SCOPE`, `isExcluded` → `inScope`

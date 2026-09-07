@@ -1,5 +1,5 @@
 import { Modal, Notice } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import type { TimeBlock, TimeBlockKind, TimeBlockMode, TimeBlockSelector, TimeScope, TimeScopeType } from "./types";
 import { parseDuration } from "./datePicker";
 import { formatDuration } from "./format";
@@ -8,7 +8,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const localInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 export class TimeBlockModal extends Modal {
-  constructor(private plugin: VibeTaskPlugin, private initialStart: Date, private initialScope?: TimeScope, private existing?: TimeBlock,
+  constructor(private plugin: OpalTasksPlugin, private initialStart: Date, private initialScope?: TimeScope, private existing?: TimeBlock,
     private kind: TimeBlockKind = existing?.kind ?? "allocation") { super(plugin.app); }
 
   onOpen(): void {

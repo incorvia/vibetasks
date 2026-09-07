@@ -2,7 +2,7 @@ import { stringifyYaml } from "obsidian";
 import type { StoredStatus } from "./types";
 
 export const MDBASE_SPEC_VERSION = "0.3.0";
-export const MDBASE_COLLECTION_ROOT = "_vibetasks";
+export const MDBASE_COLLECTION_ROOT = "_opal_tasks";
 export const MDBASE_TYPES_FOLDER = "_types";
 export const RECORD_TYPES = ["task", "project", "area", "filter", "template", "time_log", "timer_state"] as const;
 export type RecordType = (typeof RECORD_TYPES)[number];
@@ -186,8 +186,8 @@ export function isCollectionPath(path: string): boolean {
 export function mdbaseConfigDocument(): string {
   return stringifyYaml({
     spec_version: MDBASE_SPEC_VERSION,
-    name: "VibeTask",
-    description: "Local-first task and project collection managed by VibeTask",
+    name: "Opal Tasks",
+    description: "Local-first task and project collection managed by Opal Tasks",
     settings: {
       types_folder: MDBASE_TYPES_FOLDER,
       validation: "warn",
@@ -214,7 +214,7 @@ export function typeDocument(type: RecordType): string {
     kind: "mdbase.type",
     name: type,
     version: 1,
-    description: `VibeTask ${type} record`,
+    description: `Opal Tasks ${type} record`,
     match: { where: { type } },
     schema: { dialect: "json-schema-2020-12", value: DEFAULT_SCHEMAS[type] },
     collection: {
@@ -229,7 +229,7 @@ export function typeDocument(type: RecordType): string {
       on_create: { set: { id: { ulid: true }, created: { now: true }, modified: { now: true } } },
       on_update: { set: { modified: { now: true } } },
     },
-    "x-vibetask": extension,
+    "x-opal_tasks": extension,
   };
   return `---\n${stringifyYaml(frontmatter)}---\n`;
 }

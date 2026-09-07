@@ -3,7 +3,7 @@
 // Bei einer neuen Aufgabe (noch keine Datei) werden die Einträge im Speicher gepuffert und beim
 // Anlegen über flush() in den Notiz-Body geschrieben; bei bestehender Aufgabe live (persistLog).
 import { App, TFile, Notice, setIcon, normalizePath, MarkdownRenderer, Component, FuzzySuggestModal } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import { LogEntry, writeLog, nowLogTs, formatLogTime } from "./detailLog";
 import { ensureFolder } from "./taskService";
 import { t } from "./i18n";
@@ -29,7 +29,7 @@ export class DetailLogView {
   private wrap!: HTMLElement;
   private collapsed = false;   // Sektion zugeklappt (nur für die Lebensdauer des Modals)
 
-  constructor(private app: App, private plugin: VibeTaskPlugin, private host: DetailLogHost) {}
+  constructor(private app: App, private plugin: OpalTasksPlugin, private host: DetailLogHost) {}
 
   mount(wrap: HTMLElement): void { this.wrap = wrap; this.render(); }
   setEntries(entries: LogEntry[]): void { this.entries = entries; }
@@ -196,7 +196,7 @@ export class DetailLogView {
         await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
         new Notice(t("msg_image_copied"));
       } catch (err) {
-        console.error("VibeTask: copy image failed", err);
+        console.error("Opal Tasks: copy image failed", err);
         new Notice(t("msg_image_copy_failed"));
       }
     };

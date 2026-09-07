@@ -3,13 +3,13 @@ import { Priority, Task, TaskStatus } from "../src/types";
 import { ProjItem, priorityBucket, projectAreaName, projectsInArea, taskMatchesProjectCell, tasksInArea } from "../src/taskService";
 
 const item = (name: string, type: "project" | "area", extra: Partial<ProjItem> = {}): ProjItem => ({
-  id: name, name, path: `_vibetasks/projects/${name}.md`, icon: type === "area" ? "circle-small" : "list-checks",
+  id: name, name, path: `_opal_tasks/projects/${name}.md`, icon: type === "area" ? "circle-small" : "list-checks",
   color: null, type, hidden: false, archived: false, workflowStatus: "todo", priority: "normal",
   description: "", ...extra,
 });
 
 const task = (id: string, project: string | null, status: TaskStatus = "todo", priority: Priority = "normal"): Task => ({
-  id, path: `_vibetasks/tasks/${id}.md`, title: id, titleInFm: true, status, priority,
+  id, path: `_opal_tasks/tasks/${id}.md`, title: id, titleInFm: true, status, priority,
   due: null, dueTime: null, scheduled: null, scheduledTime: null, duration: null, start: null,
   project, parent: null, labels: [], description: "", recurrence: null, recurBasis: "due", reminders: [],
   sortOrder: null, created: "", completed: null, cancelled: null, externalId: null,
@@ -23,7 +23,7 @@ describe("Area hierarchy", () => {
   });
 
   it("returns only active projects assigned to the Area", () => {
-    const area = item("Work area", "area", { path: "_vibetasks/projects/Work.md" });
+    const area = item("Work area", "area", { path: "_opal_tasks/projects/Work.md" });
     const child = item("Launch", "project", { area: "[[Work]]" });
     const orphan = item("Home", "project", { area: "[[Missing]]" });
     const archived = item("Old", "project", { area: "[[Work]]", archived: true });
@@ -33,7 +33,7 @@ describe("Area hierarchy", () => {
   it("rolls direct Area tasks together with child-project tasks", () => {
     const area = item("Work", "area");
     const child = item("Launch", "project", { area: "[[Work]]" });
-    const tasks = [task("direct", area.path), task("child", child.path), task("other", "_vibetasks/projects/Home.md")];
+    const tasks = [task("direct", area.path), task("child", child.path), task("other", "_opal_tasks/projects/Home.md")];
     expect(tasksInArea(tasks, area, [child]).map((t) => t.id)).toEqual(["direct", "child"]);
   });
 

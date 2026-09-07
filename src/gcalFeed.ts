@@ -35,7 +35,7 @@ import { t } from "./i18n";
  * zeigen. „Nur anzeigen, nichts schreiben" ist ein vollwertiger Zustand.
  */
 
-const POLL_MS = 5 * 60 * 1000;    // ruhiger Refresh – nur wenn eine VibeTask-Ansicht sichtbar ist
+const POLL_MS = 5 * 60 * 1000;    // ruhiger Refresh – nur wenn eine Opal Tasks-Ansicht sichtbar ist
 const PAD_DAYS = 7;               // Rand je Monatsfenster (Termine über die Monatsgrenze)
 // ► MAX_MONTHS und MAX_STORE hängen am Vorschau-Regler (`upcomingMonths`, 1–12 Monate) und
 //   dürfen NICHT einzeln zurückgesetzt werden – beide Deckel würden den Regler still aushebeln:
@@ -45,7 +45,7 @@ const MAX_MONTHS = 13;            // Deckel je Anfrage; 12 Monate Horizont über
 const MAX_STORE = 12000;          // Notbremse gegen fette Kalender (Speicher); deckt 12 Monate × mehrere Kalender
 const SNAPSHOT_MAX = 500;         // Deckel für den geräte-lokalen Kaltstart-Cache
 
-// ── Persistierte Einstellungen (Unter-Objekt von VibeTaskSettings) ─────────
+// ── Persistierte Einstellungen (Unter-Objekt von OpalTasksSettings) ─────────
 export interface GCalFeedSettings {
   enabled: boolean;                      // Termine anzeigen
   calendars: Record<string, boolean>;    // calendarId -> sichtbar
@@ -107,7 +107,7 @@ export interface GCalFeedHost {
    *  da – einmal als Aufgabe, einmal als ihr eigenes gepushtes Event. */
   syncCalendarId(): string;
   persist(): Promise<void>;
-  /** Ist gerade eine VibeTask-Ansicht sichtbar? Ein Timer für eine Ansicht, die niemand ansieht,
+  /** Ist gerade eine Opal Tasks-Ansicht sichtbar? Ein Timer für eine Ansicht, die niemand ansieht,
    *  ist verschwendete Quota und Akku. */
   isVisible(): boolean;
 }

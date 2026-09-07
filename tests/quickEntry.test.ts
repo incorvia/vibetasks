@@ -41,8 +41,8 @@ describe("parseQuickEntry – Estimate", () => {
 
 describe("parseQuickEntry – @Projekt (nur bestehende)", () => {
   it("ordnet ein bestehendes Projekt zu und entfernt @Name aus dem Titel", () => {
-    const r = parseQuickEntry("Readme schreiben @VibeTask", ["VibeTask"]);
-    expect(r.project).toBe("VibeTask");
+    const r = parseQuickEntry("Readme schreiben @Opal Tasks", ["Opal Tasks"]);
+    expect(r.project).toBe("Opal Tasks");
     expect(r.title).toBe("Readme schreiben");
   });
   it("trifft den längsten Namen zuerst (Mehrwort vor Teilwort)", () => {
@@ -52,20 +52,20 @@ describe("parseQuickEntry – @Projekt (nur bestehende)", () => {
     expect(r.title).toBe("Backup");
   });
   it("übernimmt die kanonische Schreibweise (case-insensitiv)", () => {
-    expect(parseQuickEntry("x @vibetask", ["VibeTask"]).project).toBe("VibeTask");
+    expect(parseQuickEntry("x @opal tasks", ["Opal Tasks"]).project).toBe("Opal Tasks");
   });
   it("ordnet NICHT zu, wenn das Projekt nicht existiert (Text bleibt stehen)", () => {
-    const r = parseQuickEntry("mail @Unbekannt", ["VibeTask"]);
+    const r = parseQuickEntry("mail @Unbekannt", ["Opal Tasks"]);
     expect(r.project).toBeNull();
     expect(r.title).toBe("mail @Unbekannt");
   });
   it("verwechselt @HH:MM nicht mit einem Projekt", () => {
-    const r = parseQuickEntry("Termin @07:30", ["VibeTask"]);
+    const r = parseQuickEntry("Termin @07:30", ["Opal Tasks"]);
     expect(r.project).toBeNull();
     expect(r.time).toBe("07:30");
   });
   it("ohne Projektliste ist project null", () => {
-    expect(parseQuickEntry("Aufgabe @VibeTask").project).toBeNull();
+    expect(parseQuickEntry("Aufgabe @Opal Tasks").project).toBeNull();
   });
 });
 
@@ -225,8 +225,8 @@ describe("parseQuickEntry – wörtlich per \\wort", () => {
   });
 
   it("wirkt auch auf Labels, Priorität und @Projekt", () => {
-    const r = parseQuickEntry("Notiz \\#kein-label \\p1 \\@VibeTask", ["VibeTask"]);
-    expect(r.title).toBe("Notiz #kein-label p1 @VibeTask");
+    const r = parseQuickEntry("Notiz \\#kein-label \\p1 \\@Opal Tasks", ["Opal Tasks"]);
+    expect(r.title).toBe("Notiz #kein-label p1 @Opal Tasks");
     expect(r.tags).toEqual([]);
     expect(r.priority).toBeNull();
     expect(r.project).toBeNull();

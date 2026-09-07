@@ -2,12 +2,12 @@ export type ProjectEmbedSection = "header" | "tasks";
 
 /** The code block stays intentionally tiny: the stable record id survives either note being renamed. */
 export function projectEmbedBlock(id: string, section: ProjectEmbedSection): string {
-  return `\`\`\`vibetask\nview: project\nsection: ${section}\nid: ${id}\n\`\`\``;
+  return `\`\`\`opal_tasks\nview: project\nsection: ${section}\nid: ${id}\n\`\`\``;
 }
 
 function hasProjectSection(content: string, id: string, section: ProjectEmbedSection): boolean {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const blocks = content.match(/```vibetask\s*\n[\s\S]*?```/g) ?? [];
+  const blocks = content.match(/```opal_tasks\s*\n[\s\S]*?```/g) ?? [];
   return blocks.some((block) => {
     if (!new RegExp(`^id:\\s*${escaped}\\s*$`, "m").test(block)) return false;
     if (!/^view:\s*project\s*$/m.test(block)) return false;

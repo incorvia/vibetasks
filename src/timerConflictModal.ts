@@ -1,8 +1,8 @@
 import { Modal } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 
 export class TimerConflictModal extends Modal {
-  constructor(private plugin: VibeTaskPlugin) { super(plugin.app); }
+  constructor(private plugin: OpalTasksPlugin) { super(plugin.app); }
   onOpen(): void { this.draw(); }
   private draw(): void {
     const el = this.contentEl; el.empty(); el.createEl("h2", { text: "Resolve timer conflict" });

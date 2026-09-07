@@ -14,12 +14,12 @@ const inGoogle = (over: Record<string, unknown> = {}): Record<string, unknown> =
   ...over,
 });
 
-/** Was VibeTask aus der Aufgabe baut (eventBody) – die fünf Dinge, die es kennt. */
+/** Was Opal Tasks aus der Aufgabe baut (eventBody) – die fünf Dinge, die es kennt. */
 const ours = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   summary: "Zahnarzt (verschoben)",
   start: { date: "2026-10-04" }, end: { date: "2026-10-05" },
   reminders: { useDefault: true },
-  extendedProperties: { private: { syncSource: "vibetask", btTaskId: "t-1" } },
+  extendedProperties: { private: { syncSource: "opal_tasks", btTaskId: "t-1" } },
   ...over,
 });
 
@@ -39,7 +39,7 @@ describe("mergeEventBody – in Google Ergänztes darf ein Push nicht löschen",
     expect(m.start).toEqual({ date: "2026-10-04" });
     expect(m.end).toEqual({ date: "2026-10-05" });
     expect(m.reminders).toEqual({ useDefault: true });
-    expect(m.extendedProperties).toEqual({ private: { syncSource: "vibetask", btTaskId: "t-1" } });
+    expect(m.extendedProperties).toEqual({ private: { syncSource: "opal_tasks", btTaskId: "t-1" } });
   });
 
   it("ersetzt start/end GANZ statt zu verschmelzen – sonst „Invalid start time“", () => {
@@ -52,7 +52,7 @@ describe("mergeEventBody – in Google Ergänztes darf ein Push nicht löschen",
     expect(m.end).toEqual({ dateTime: "2026-10-04T10:30:00+02:00", timeZone: "Europe/Berlin" });
   });
 
-  it("übernimmt eine in Google angelegte Serie NICHT – VibeTask wiederholt über Aufgaben", () => {
+  it("übernimmt eine in Google angelegte Serie NICHT – Opal Tasks wiederholt über Aufgaben", () => {
     const m = mergeEventBody(inGoogle({ recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"] }), ours());
     expect(m).not.toHaveProperty("recurrence");
   });

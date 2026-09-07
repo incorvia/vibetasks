@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseLine } from "../src/migrate";
 
-describe("parseLine – alte VibeTask-Zeile zerlegen", () => {
+describe("parseLine – alte Opal Tasks-Zeile zerlegen", () => {
   it("offene Aufgabe mit Label, Fälligkeit, Priorität, Wiederholung", () => {
     const r = parseLine("- [ ] #task Milch kaufen #einkauf 📅 2026-06-20 🔼 🔁 every week");
     expect(r).not.toBeNull();

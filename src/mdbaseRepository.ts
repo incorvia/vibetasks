@@ -14,7 +14,7 @@ import {
   typeDocument,
   typeResourcePath,
 } from "./mdbaseResources";
-import type { StoredStatus, VibeTaskSettings } from "./types";
+import type { StoredStatus, OpalTasksSettings } from "./types";
 
 export type ValidationSeverity = "error" | "warn";
 export interface ValidationIssue {
@@ -267,7 +267,7 @@ export class MdbaseRepository extends Component {
           message: error instanceof Error ? error.message : String(error),
         }],
       };
-      console.error("VibeTask: mdbase initialization failed", error);
+      console.error("Opal Tasks: mdbase initialization failed", error);
       return this.status();
     }
   }
@@ -337,7 +337,7 @@ export class MdbaseRepository extends Component {
 
   domainConfiguration(): MdbaseDomainConfiguration {
     const task = this.typeDocuments.get("task");
-    const extension = task?.["x-vibetask"] as Record<string, unknown> | undefined;
+    const extension = task?.["x-opal_tasks"] as Record<string, unknown> | undefined;
     const statuses = Array.isArray(extension?.statuses)
       ? extension.statuses.filter((entry): entry is StoredStatus => {
           if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
@@ -357,7 +357,7 @@ export class MdbaseRepository extends Component {
     return { statuses, priorities, paths };
   }
 
-  applyDomainConfiguration(settings: VibeTaskSettings): void {
+  applyDomainConfiguration(settings: OpalTasksSettings): void {
     const config = this.domainConfiguration();
     const folder = (pattern: string | undefined): string | null => {
       if (!pattern) return null;
@@ -383,9 +383,9 @@ export class MdbaseRepository extends Component {
       const value = schema.value as Record<string, unknown>;
       const properties = value.properties as Record<string, unknown>;
       properties[type === "project" ? "workflow_status" : "status"] = { enum: statuses.map((status) => status.id) };
-      const extension = (parsed.frontmatter["x-vibetask"] as Record<string, unknown> | undefined) ?? {};
+      const extension = (parsed.frontmatter["x-opal_tasks"] as Record<string, unknown> | undefined) ?? {};
       extension.statuses = statuses.map((status) => ({ ...status }));
-      parsed.frontmatter["x-vibetask"] = extension;
+      parsed.frontmatter["x-opal_tasks"] = extension;
       await this.app.vault.modify(file, serializeDocument(parsed.frontmatter, parsed.body));
       this.typeDocuments.set(type, parsed.frontmatter);
     }
@@ -420,7 +420,7 @@ export class MdbaseRepository extends Component {
   }
 
   private assertReady(): void {
-    if (!this.initResult.ready) throw new MdbaseRepositoryError("collection_not_ready", "VibeTask's mdbase collection is not ready", this.initResult.issues);
+    if (!this.initResult.ready) throw new MdbaseRepositoryError("collection_not_ready", "The Opal Tasks mdbase collection is not ready", this.initResult.issues);
   }
 
   async read(path: string): Promise<CollectionRecord | null> {
@@ -492,7 +492,7 @@ export class MdbaseRepository extends Component {
     return this.app.vault.create(path, serializeDocument(frontmatter, input.body ?? ""));
   }
 
-  /** Add canonical VibeTask metadata to an existing Markdown file without touching its body. */
+  /** Add canonical Opal Tasks metadata to an existing Markdown file without touching its body. */
   async adopt(path: string, type: RecordType, patch: Record<string, unknown>): Promise<CollectionRecord> {
     this.assertReady();
     const normalizedPath = normalizePath(path);
@@ -518,7 +518,7 @@ export class MdbaseRepository extends Component {
   async mutate(path: string, change: (frontmatter: Record<string, unknown>) => void, options: UpdateRecordOptions = {}): Promise<CollectionRecord> {
     this.assertReady();
     const before = await this.read(path);
-    if (!before) throw new MdbaseRepositoryError("record_not_found", `No VibeTask record at ${path}`);
+    if (!before) throw new MdbaseRepositoryError("record_not_found", `No Opal Tasks record at ${path}`);
     if (options.ifRevision && before.revision !== options.ifRevision) throw new MdbaseRepositoryError("revision_conflict", `${path} changed since it was read`);
     const candidate = { ...before.frontmatter };
     change(candidate);
@@ -594,7 +594,7 @@ export function bindRepository(app: App, repository: MdbaseRepository): void {
 
 export function repositoryFor(app: App): MdbaseRepository {
   const repository = REPOSITORIES.get(app);
-  if (!repository) throw new MdbaseRepositoryError("repository_unbound", "VibeTask repository is not initialized");
+  if (!repository) throw new MdbaseRepositoryError("repository_unbound", "Opal Tasks repository is not initialized");
   return repository;
 }
 

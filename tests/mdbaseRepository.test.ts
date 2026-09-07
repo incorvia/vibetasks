@@ -81,10 +81,10 @@ describe("MdbaseRepository", () => {
     expect((await repository.initialize()).created).toEqual([]);
 
     await repository.create({
-      type: "task", path: "_vibetasks/tasks/One.md", body: "User markdown\n",
+      type: "task", path: "_opal_tasks/tasks/One.md", body: "User markdown\n",
       frontmatter: { title: "One", status: "todo", custom: { keep: true } },
     });
-    const before = await repository.read("_vibetasks/tasks/One.md");
+    const before = await repository.read("_opal_tasks/tasks/One.md");
     expect(before?.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     await repository.update(before!.path, { priority: "high" }, { ifRevision: before!.revision });
     const after = await repository.read(before!.path);
@@ -102,35 +102,35 @@ describe("MdbaseRepository", () => {
     expect((await repository.scanIssues()).some((issue) => issue.code === "schema.minLength")).toBe(true);
     expect(fake.contents.get(after!.path)).toBe(external);
 
-    await repository.rename(after!.path, "_vibetasks/tasks/Renamed.md");
-    expect(await repository.read("_vibetasks/tasks/Renamed.md")).not.toBeNull();
-    await repository.trash("_vibetasks/tasks/Renamed.md");
-    expect(await repository.read("_vibetasks/tasks/Renamed.md")).toBeNull();
+    await repository.rename(after!.path, "_opal_tasks/tasks/Renamed.md");
+    expect(await repository.read("_opal_tasks/tasks/Renamed.md")).not.toBeNull();
+    await repository.trash("_opal_tasks/tasks/Renamed.md");
+    expect(await repository.read("_opal_tasks/tasks/Renamed.md")).toBeNull();
   });
 
   it("blocks incompatible type definitions without overwriting them", async () => {
     const fake = fakeApp();
-    await fake.vault.createFolder("_vibetasks");
-    fake.put("_vibetasks/mdbase.yaml", 'spec_version: "0.3.0"\nsettings: {"types_folder":"_types","validation":"warn","explicit_type_keys":["type"],"include_subfolders":true}\n');
-    await fake.vault.createFolder("_vibetasks/_types");
-    fake.put("_vibetasks/_types/task.md", "---\nkind: \"mdbase.type\"\nname: \"task\"\nschema: {\"dialect\":\"json-schema-2020-12\",\"value\":{\"type\":\"object\"}}\n---\nmanual body\n");
-    const original = fake.contents.get("_vibetasks/_types/task.md");
+    await fake.vault.createFolder("_opal_tasks");
+    fake.put("_opal_tasks/mdbase.yaml", 'spec_version: "0.3.0"\nsettings: {"types_folder":"_types","validation":"warn","explicit_type_keys":["type"],"include_subfolders":true}\n');
+    await fake.vault.createFolder("_opal_tasks/_types");
+    fake.put("_opal_tasks/_types/task.md", "---\nkind: \"mdbase.type\"\nname: \"task\"\nschema: {\"dialect\":\"json-schema-2020-12\",\"value\":{\"type\":\"object\"}}\n---\nmanual body\n");
+    const original = fake.contents.get("_opal_tasks/_types/task.md");
     const repository = new MdbaseRepository(fake.app);
     const result = await repository.initialize();
     expect(result.ready).toBe(false);
     expect(result.issues.some((issue) => issue.code === "type.canonical_fields")).toBe(true);
-    expect(fake.contents.get("_vibetasks/_types/task.md")).toBe(original);
+    expect(fake.contents.get("_opal_tasks/_types/task.md")).toBe(original);
     await expect(repository.create({ type: "task", path: "x.md", frontmatter: { title: "x", status: "todo" } }))
       .rejects.toBeInstanceOf(MdbaseRepositoryError);
   });
 
   it("reports initialization failures instead of taking down the plugin", async () => {
     const fake = fakeApp();
-    await fake.vault.createFolder("_vibetasks");
-    fake.put("_vibetasks/mdbase.yaml", 'spec_version: "0.3.0"\n');
+    await fake.vault.createFolder("_opal_tasks");
+    fake.put("_opal_tasks/mdbase.yaml", 'spec_version: "0.3.0"\n');
     const read = fake.vault.read;
     fake.vault.read = async (file: FakeFile) => {
-      if (file.path === "_vibetasks/mdbase.yaml") throw new Error("Cannot read collection config");
+      if (file.path === "_opal_tasks/mdbase.yaml") throw new Error("Cannot read collection config");
       return read(file);
     };
 
@@ -148,7 +148,7 @@ describe("MdbaseRepository", () => {
     const fake = fakeApp();
     const createFolder = fake.vault.createFolder;
     fake.vault.createFolder = async (path: string) => {
-      if (path === "_vibetasks") throw new Error("Folder already exists.");
+      if (path === "_opal_tasks") throw new Error("Folder already exists.");
       await createFolder(path);
     };
 
@@ -171,7 +171,7 @@ describe("MdbaseRepository", () => {
     expect(result.issues).toEqual([]);
   });
 
-  it("treats notes outside _vibetasks as unrelated to the collection", async () => {
+  it("treats notes outside _opal_tasks as unrelated to the collection", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);
     await repository.initialize();
@@ -192,7 +192,7 @@ describe("MdbaseRepository", () => {
     const repository = new MdbaseRepository(fake.app);
     await repository.initialize();
     await expect(repository.create({
-      type: "area", path: "_vibetasks/projects/Nested.md",
+      type: "area", path: "_opal_tasks/projects/Nested.md",
       frontmatter: { title: "Nested", status: "active", area: "[[Other]]" },
     })).rejects.toMatchObject({ code: "validation_failed" });
   });

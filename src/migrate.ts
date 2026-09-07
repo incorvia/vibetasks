@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath, stringifyYaml } from "obsidian";
-import { VibeTaskSettings, TaskStatus, Priority } from "./types";
+import { OpalTasksSettings, TaskStatus, Priority } from "./types";
 import { todayIso } from "./taskService";
 import { titleKey } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
@@ -19,7 +19,7 @@ interface ParsedLine {
   detailsBase: string | null;
 }
 
-/** Eine VibeTask-Aufgabenzeile zerlegen (Spiegel von parseTaskLine). Exportiert für Tests. */
+/** Eine Opal Tasks-Aufgabenzeile zerlegen (Spiegel von parseTaskLine). Exportiert für Tests. */
 export function parseLine(line: string): ParsedLine | null {
   const cb = line.match(/^\s*- \[(.)\]\s?/);
   if (!cb) return null;
@@ -87,7 +87,7 @@ async function detailBody(app: App, base: string): Promise<string> {
 /** Importiert alle Aufgaben aus Tasks/Lists/ in Frontmatter-Notizen. Idempotent
  *  (existiert die Zieldatei schon, wird sie übersprungen). Liefert die Anzahl neu
  *  angelegter Aufgaben. */
-export async function runMigration(app: App, settings: VibeTaskSettings): Promise<number> {
+export async function runMigration(app: App, settings: OpalTasksSettings): Promise<number> {
   await ensureFolder(app, settings.itemsFolder);
   await ensureFolder(app, settings.projectsFolder);
 

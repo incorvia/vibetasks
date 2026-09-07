@@ -1,5 +1,5 @@
 import { Component, MarkdownRenderChild, setIcon } from "obsidian";
-import type VibeTaskPlugin from "./main";
+import type OpalTasksPlugin from "./main";
 import type { PageCtx, PageRef } from "./pageCtx";
 import { filterTasks, hasCriteria } from "./filterEngine";
 import { todayStr } from "./format";
@@ -23,7 +23,7 @@ export class ProjectEmbed extends MarkdownRenderChild {
   private unsubscribe: (() => void) | null = null;
   private renderComponent: Component | null = null;
 
-  constructor(containerEl: HTMLElement, private plugin: VibeTaskPlugin, private projectPath: string) {
+  constructor(containerEl: HTMLElement, private plugin: OpalTasksPlugin, private projectPath: string) {
     super(containerEl);
   }
 
@@ -85,7 +85,7 @@ export class ProjectEmbed extends MarkdownRenderChild {
 export class ProjectHeaderEmbed extends MarkdownRenderChild {
   private unsubscribe: (() => void) | null = null;
 
-  constructor(containerEl: HTMLElement, private plugin: VibeTaskPlugin, private projectPath: string) {
+  constructor(containerEl: HTMLElement, private plugin: OpalTasksPlugin, private projectPath: string) {
     super(containerEl);
   }
 

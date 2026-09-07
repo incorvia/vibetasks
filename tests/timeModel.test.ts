@@ -12,7 +12,7 @@ const block = (over: Partial<TimeBlock> = {}): TimeBlock => ({
 
 describe("time model", () => {
   it("uses year-partitioned canonical daily paths", () => {
-    expect(timeLogPath("2026-09-06")).toBe("_vibetasks/time/2026/2026-09-06.md");
+    expect(timeLogPath("2026-09-06")).toBe("_opal_tasks/time/2026/2026-09-06.md");
   });
 
   it("renders a cross-midnight block on both days without splitting its identity", () => {
