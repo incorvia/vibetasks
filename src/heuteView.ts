@@ -2380,30 +2380,12 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     iconBtn(acts, "archive-restore", t("btn_restore"), () => void plugin.restoreTask(task));
     iconBtn(acts, "trash-2", t("btn_delete_forever"),
       () => confirmInline(acts, t("confirm_delete_forever_q"), () => void plugin.deleteTaskForever(task.path), () => plugin.renderAll()));
-  } else if (isOpen(task.status) || plan.backlink) {
-    // Rechte Zone: kompakter Timer-Chip direkt neben dem @Projekt-Verweis. Der Timer bleibt damit
-    // gut auffindbar, nimmt aber keine eigene Meta-Zeile ein. Der Hauptaufgaben-Link sitzt links.
-    const extras = row.createDiv({ cls: "bt-extras" });
-    if (isOpen(task.status)) {
-      const active = plugin.workTimer.active();
-      const isActive = active?.task_id === task.id;
-      const label = isActive ? "Stop timer" : "Start timer";
-      const timer = extras.createSpan({ cls: "bt-task-timer", attr: { role: "button", tabindex: "0", "aria-label": label } });
-      setIcon(timer.createSpan({ cls: "bt-task-timer-ic" }), isActive ? "square" : "play");
-      timer.createSpan({ cls: "bt-task-timer-lbl", text: label });
-      tip(timer, label);
-      const run = (event: Event): void => {
-        event.stopPropagation();
-        if (isActive) void plugin.stopTaskTimer(); else void plugin.startTaskTimer(task);
-      };
-      timer.onclick = run;
-      timer.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(event); } };
-    }
-    if (plan.backlink) {
-      const bl = extras.createEl("a", { cls: "bt-backlink", text: "@" + (plan.backlink.inbox ? t("nav_inbox") : plan.backlink.text) });
-      const ziel: PageRef = plan.backlink.inbox ? { kind: "project", key: INBOX_KEY } : { kind: "project", key: task.project! };
-      bl.onclick = (e) => { e.stopPropagation(); ctx.open(ziel); };
-    }
+  } else if (plan.backlink) {
+    // Project context is metadata too, so it participates in the same wrapping flow as dates,
+    // estimates, labels and the timer instead of competing with the title for row width.
+    const bl = meta.createEl("a", { cls: "bt-backlink", text: "@" + (plan.backlink.inbox ? t("nav_inbox") : plan.backlink.text) });
+    const ziel: PageRef = plan.backlink.inbox ? { kind: "project", key: INBOX_KEY } : { kind: "project", key: task.project! };
+    bl.onclick = (e) => { e.stopPropagation(); ctx.open(ziel); };
   }
   // Klick auf die Zeile öffnet die Aufgabe (kein separater Stift – wäre redundant).
   // MIT Modifier stattdessen die NOTIZ – dieselbe Geste, die in der Seitenleiste (navItem) und

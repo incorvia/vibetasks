@@ -89,8 +89,8 @@ describe("Fälligkeit", () => {
 });
 
 describe("Estimate", () => {
-  it("zeigt Aufwand mit Tilde und lässt alte Planungsfelder unsichtbar", () => {
-    expect(plan(aufgabe({ estimate: 90 })).estimate).toBe("~1h30m");
+  it("shows effort without its NLP marker and keeps legacy scheduling fields hidden", () => {
+    expect(plan(aufgabe({ estimate: 90 })).estimate).toBe("1h30m");
     expect(plan(aufgabe({ scheduled: "2026-08-01" })).deadline).toBeNull();
   });
 });

@@ -114,12 +114,12 @@ export function formatDuration(min: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-/** Compact effort notation used by task estimates (Amazing Marvin compatible). */
+/** Compact effort label. The leading `~` belongs to quick-entry syntax, not display text. */
 export function formatEstimate(min: number): string {
   const whole = Math.max(0, Math.round(min));
-  if (whole < 60) return `~${whole}m`;
+  if (whole < 60) return `${whole}m`;
   const hours = Math.floor(whole / 60), minutes = whole % 60;
-  return `~${hours}h${minutes ? `${minutes}m` : ""}`;
+  return `${hours}h${minutes ? `${minutes}m` : ""}`;
 }
 
 /** "past" | "today" | "future" – steuert die Datumsfarbe (nur Datums-Teil). */

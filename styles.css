@@ -645,8 +645,7 @@ body {
 }
 .bt-task.is-editing::before,
 .bt-task.is-editing::after { display: none; }
-.bt-task.is-editing > .bt-body > :is(.bt-desc, .bt-meta),
-.bt-task.is-editing > .bt-extras { display: none; }
+.bt-task.is-editing > .bt-body > :is(.bt-desc, .bt-meta) { display: none; }
 .bt-task .bt-inline-row-title {
   display: block; width: 100%; height: auto; min-height: 0;
   margin: 0; padding: 0; border: 0; border-radius: 0;
@@ -1597,7 +1596,7 @@ body {
 .bt-check.bt-check-x:hover::after { display: none; }              /* kein Häkchen-Hover */
 /* Konfigurierbare VibeTask-Meta-Farben. Defaults auf `body` (niedrige Spezifität) – der Nutzer
    überschreibt sie per Einstellung (applyColors setzt Inline-Vars auf body, gewinnen dann). --bt-meta-
-   gray auf body, damit ihn auch der @Projekt-Backlink (in .bt-extras) erbt. --bt-dist-far = Icon-Grau. */
+   gray auf body, damit ihn auch der @Projekt-Backlink in der Meta-Zeile erbt. --bt-dist-far = Icon-Grau. */
 body {
   --bt-meta-gray: color-mix(in srgb, var(--text-faint) 40%, var(--text-muted) 60%);
   --bt-dist-overdue: var(--bt-overdue);
@@ -1650,6 +1649,9 @@ body {
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   -webkit-mask-position: center; mask-position: center;
 }
+
+/* Estimate uses the hourglass glyph; without a mask the generic chip pseudo-element is a square. */
+.bt-estimate::before { -webkit-mask-image: var(--bt-hourglass); mask-image: var(--bt-hourglass); }
 
 /* Fälligkeit – Kalender-Icon + Farbe je Zeitbezug */
 .bt-due::before { -webkit-mask-image: var(--bt-calendar); mask-image: var(--bt-calendar); }
@@ -1809,31 +1811,6 @@ body.bt-meta-colorado {
 .bt-parent-link-ic { display: inline-flex; }
 .bt-parent-link-ic svg { width: 15px; height: 15px; }
 
-/* Rechte Gruppe: kompakter Timer-Chip + Projekt-Backlink */
-.bt-extras {
-  margin-left: auto;
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.bt-task-timer {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-size: 0.78em;
-  line-height: 1.35;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.bt-task-timer:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.bt-task-timer:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.bt-task-timer-ic { display: inline-flex; }
-.bt-task-timer-ic svg { width: 11px; height: 11px; }
 /* ── „Aufgabennotiz bearbeiten" – Aktion rechts in der Kommentar-Kopfzeile ──
    Sitzt an derselben Stelle wie „Erledigte ausblenden" bei den Unteraufgaben und holt Groesse,
    Farbe, Abstaende und Hover aus .bt-sec-act. Frueher ein eigener Kasten mit Hintergrund und
@@ -1871,6 +1848,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-view, .bt-add, .bt-task-modal, .bt-pop {
   --bt-calendar: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='4' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
   --bt-clock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E");
+  --bt-hourglass: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 22h14M5 2h14M17 22v-4.2c0-1.1-.4-2.1-1.2-2.8L12 12l-3.8 3A3.6 3.6 0 0 0 7 17.8V22M7 2v4.2c0 1.1.4 2.1 1.2 2.8L12 12l3.8-3A3.6 3.6 0 0 0 17 6.2V2'/%3E%3C/svg%3E");
   --bt-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3Cpath d='M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16'/%3E%3Cpath d='M8 16H3v5'/%3E%3C/svg%3E");
   --bt-tag: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='4' x2='20' y1='9' y2='9'/%3E%3Cline x1='4' x2='20' y1='15' y2='15'/%3E%3Cline x1='10' x2='8' y1='3' y2='21'/%3E%3Cline x1='16' x2='14' y1='3' y2='21'/%3E%3C/svg%3E");
   --bt-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
@@ -2069,15 +2047,18 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-kanban-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
 .bt-kanban-title { font-weight: 600; font-size: var(--font-ui-small); color: var(--text-normal); }
 .bt-kanban-count { margin-left: auto; color: var(--text-faint); font-size: var(--font-ui-smaller); }
-/* scrollbar-gutter: stable reserviert den (10px-)Leistenplatz IMMER -> kein Reflow, alle Spalten
-   gleich; padding-left 10px balanciert den rechten Gutter -> Karten symmetrisch, Zahl bündig. */
-.bt-kanban-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 40px; overflow-y: auto; padding-left: 10px; scrollbar-gutter: stable; }
+/* Keep a real inset on both sides even on systems with overlay scrollbars, where the reserved
+   scrollbar gutter can be zero. This prevents cards from touching the column's right edge. */
+.bt-kanban-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 40px; overflow-y: auto; padding-inline: 10px; scrollbar-gutter: stable; }
 
 /* Karten: kompakte Kacheln statt Listenzeilen (keine Trennlinie, eigener Rahmen). */
 .bt-kanban-list .bt-task {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 10px; row-gap: 6px;
   background: var(--background-primary); border: 1px solid var(--bt-line-faint);
   border-radius: 8px; padding: 8px 10px; cursor: grab;
 }
+.bt-kanban-list .bt-task > .bt-check { grid-column: 1; grid-row: 1; }
+.bt-kanban-list .bt-task > .bt-body { grid-column: 2; grid-row: 1; }
 .bt-kanban-list .bt-task:hover, .bt-kanban-list .bt-task.bt-menu-hold { background: var(--background-primary); border-color: var(--bt-line); }
 .bt-kanban-list .bt-task::after { display: none; }
 .bt-kanban-list .bt-task:active { cursor: grabbing; }
@@ -2647,6 +2628,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-add { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; background: transparent; box-shadow: none; }
 .bt-area-project-add svg { width: 14px; height: 14px; }
 .bt-area-project-card-tasks, .bt-area-project-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.bt-area-project-card-tasks.bt-hidden, .bt-area-project-tasks.bt-hidden { display: none; }
 .bt-area-project-card-tasks .bt-task { border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
 /* The project card border already closes the group; avoid a second line beneath its final task.
    Subtasks use ::after for their elbow connector, so only suppress their separate bottom border. */
