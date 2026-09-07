@@ -13,7 +13,7 @@ import { openDatePicker, quickDates } from "./datePicker";
 import { CHIPS, PRIOS, PRIO_KEY, ChipHost } from "./chips";
 import { listProjectsAndAreas, isInboxLink, copyTaskLink, openTaskNote, ProjItem, baseName, INBOX_KEY } from "./taskService";
 import { ConfirmModal } from "./confirmModal";
-import { isTrashed } from "./statuses";
+import { boardStatuses, isTrashed, statusIcon, statusLabel, statusTint } from "./statuses";
 import { combineDT } from "./format";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
@@ -60,6 +60,31 @@ function openMovePicker(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement,
     };
     group(t("group_area"), bereiche);
     group(t("group_project"), projekte);
+  });
+}
+
+/** Mobile boards expose only one status column, and swimlanes expose one status with priority
+ * sections. This anchored action replaces cross-column drag by making both hidden axes directly
+ * selectable. It deliberately excludes the cancelled status: trash remains a destructive action
+ * in the task menu rather than an innocent-looking board move. */
+export function openBoardMoveMenu(plugin: VibeTaskPlugin, task: Task, anchor: HTMLElement): void {
+  openPopover(anchor, (pop, close) => {
+    pop.addClasses(["bt-picker", "bt-board-move-menu"]);
+    pop.createDiv({ cls: "bt-pop-head", text: t("chip_status") });
+    for (const status of boardStatuses()) {
+      popRow(pop, statusIcon(status.id), statusLabel(status.id), () => {
+        close();
+        if (task.status !== status.id) void plugin.setTaskStatus(task, status.id);
+      }, task.status === status.id, statusTint(status.id));
+    }
+    pop.createDiv({ cls: "bt-plus-sep" });
+    pop.createDiv({ cls: "bt-pop-head", text: t("chip_priority") });
+    for (const priority of PRIOS) {
+      popRow(pop, "circle", t(priority.key), () => {
+        close();
+        if (PRIO_KEY[task.priority] !== priority.key) void plugin.setTaskPriority(task, priority.value);
+      }, PRIO_KEY[task.priority] === priority.key, priority.color);
+    }
   });
 }
 

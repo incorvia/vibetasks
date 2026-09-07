@@ -11,6 +11,13 @@ import { FilterModal } from "./filterModal";
 import { INBOX_KEY, baseName, isAreaPath } from "./taskService";
 import { resetSubtaskToggles } from "./heuteView";
 import { t } from "./i18n";
+import { CAL_MODES } from "./calendarModel";
+
+export interface MobilePageMenuOptions {
+  title: string;
+  description: () => string;
+  onMore?: (anchor: HTMLElement) => void;
+}
 
 /** Kontextabhängige Gruppierungs-Optionen: die auf dieser Seite redundante ausblenden
  *  (auf einer Projektseite ist „Liste" sinnlos -> „Label"; auf einer Label-Seite umgekehrt). */
@@ -34,9 +41,9 @@ function presetFor(page: PageRef, c: FilterCriteria): FilterCriteria {
   return { ...c };
 }
 
-export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
+export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: MobilePageMenuOptions): void {
   const page = pageInfo(ctx.page);
-  if (page.tier === "none") return;
+  if (page.tier === "none" && !pageMenu) return;
   const facets = facetsFor(ctx.page);
   // Klappzustand gilt für DIESE Panel-Sitzung (bewusst nicht gespeichert): „Filter" beginnt
   // offen, sobald die Seite gefiltert ist – dann ist es die Auskunft, die man sucht.
@@ -60,7 +67,18 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
     const render = (): void => {
       pop.empty();
       pop.addClass("bt-view-panel");
+      pop.toggleClass("bt-mobile-page-menu", !!pageMenu);
       critCount = null;
+
+      if (pageMenu) {
+        const identity = pop.createDiv({ cls: "bt-mobile-menu-identity" });
+        const closeBtn = identity.createEl("button", { cls: "bt-mobile-menu-close", attr: { "aria-label": t("btn_close") } });
+        setIcon(closeBtn, "x");
+        closeBtn.onclick = close;
+        identity.createDiv({ cls: "bt-mobile-menu-title", text: pageMenu.title });
+        const description = pageMenu.description().trim();
+        if (description) identity.createDiv({ cls: "bt-mobile-menu-desc", text: description });
+      }
 
       /** Abschnitts-Überschrift, klappbar, mit Zähler rechts. Liefert, ob der Rumpf zu zeichnen ist. */
       const cap = (text: string, sec: "arrange" | "filter", n: number): boolean => {
@@ -73,11 +91,32 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
         return openSec[sec];
       };
 
-      const seg = pop.createDiv({ cls: "bt-tabs bt-layout-toggle" });
-      for (const l of LAYOUTS) {
-        const b = seg.createEl("button", { cls: "bt-tab" + (o.layout === l ? " is-active" : ""), text: t("layout_" + l) });
-        b.onclick = () => applyLayout(l);
+      if (page.tier !== "none") {
+        if (pageMenu) pop.createDiv({ cls: "bt-mobile-menu-section", text: t("panel_layout") });
+        const seg = pop.createDiv({ cls: "bt-tabs bt-layout-toggle" });
+        const layoutIcon: Record<PageLayout, string> = { list: "list", calendar: "calendar-days", board: "columns-3" };
+        for (const l of LAYOUTS) {
+          const b = seg.createEl("button", { cls: "bt-tab" + (o.layout === l ? " is-active" : "") });
+          if (pageMenu) setIcon(b.createSpan({ cls: "bt-mobile-menu-row-ic" }), layoutIcon[l]);
+          b.createSpan({ text: t("layout_" + l) });
+          if (pageMenu && o.layout === l) setIcon(b.createSpan({ cls: "bt-mobile-menu-check" }), "check");
+          b.onclick = () => applyLayout(l);
+        }
       }
+
+      if (pageMenu && o.layout === "calendar") {
+        pop.createDiv({ cls: "bt-mobile-menu-section", text: t("layout_calendar") });
+        const ranges = pop.createDiv({ cls: "bt-mobile-menu-options" });
+        // Week remains a desktop option; a seven-column time grid is too compressed on a phone.
+        for (const m of CAL_MODES.filter((value) => value !== "week").slice().reverse()) {
+          const b = ranges.createEl("button", { cls: "bt-mobile-menu-option" + (o.calMode === m ? " is-active" : "") });
+          b.createSpan({ text: t("cal_mode_" + m) });
+          if (o.calMode === m) setIcon(b.createSpan({ cls: "bt-mobile-menu-check" }), "check");
+          b.onclick = () => apply({ calMode: m });
+        }
+      }
+
+      if (pageMenu && page.tier !== "none") pop.createDiv({ cls: "bt-mobile-menu-section", text: t("view_display") });
 
       // „Erledigte anzeigen" ergibt in „Demnächst" (reine Zukunfts-Agenda) keinen Sinn -> dort weglassen.
       if (page.key !== "demnaechst") {
@@ -186,6 +225,13 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
         o = { ...DEFAULT_OPTIONS, calMode: ctx.plugin.settings.defaultCalendarView }; c = { ...DEFAULT_CRITERIA };
         render();
       };
+
+      if (pageMenu?.onMore) {
+        const more = pop.createEl("button", { cls: "bt-mobile-menu-more" });
+        setIcon(more.createSpan(), "ellipsis");
+        more.createSpan({ text: t("more_actions") });
+        more.onclick = () => pageMenu.onMore?.(more);
+      }
     };
     render();
   });

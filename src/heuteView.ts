@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, Platform, TFile, ViewStateResult } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, TFile, ViewStateResult } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { PageCtx, PageRef, pageInfo, samePage, manageTitleKey } from "./pageCtx";
 import { dragTask, dragFromCol, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
@@ -14,22 +14,23 @@ import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTas
 import { FilterModal } from "./filterModal";
 import { NewItemModal } from "./newItemModal";
 import { buildItemMenu, showHiddenSubmenu, addGcalSyncItem, addOpenItems, openEdit, buildCreateSubmenu, addCreateItems, buildTemplateMenu, NavMenuItem } from "./navMenu";
-import { anzeigeButton } from "./viewPanel";
+import { anzeigeButton, openViewPanel } from "./viewPanel";
 import { renderManageInto, iconBtn, confirmInline, attachRowDrag } from "./manageView";
 import { listTemplates, TemplateInfo } from "./templateService";
 import { ApplyTemplateModal, promptNewTemplate } from "./templateModal";
 import { ConfirmModal } from "./confirmModal";
 import { parseRecurrence } from "./recurrence";
 import { describeRecurrence } from "./recurrenceText";
-import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen, dropCalendarAnchors } from "./calendarView";
+import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen, dropCalendarAnchors, resetCalendarToToday } from "./calendarView";
 import { DayEvent, bucketEvents, addDays, addMonths } from "./calendarModel";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
-import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
+import { installTaskMenuDelegation, menuHoldPath, openBoardMoveMenu } from "./taskMenu";
 import { PRIOS, TaskModal } from "./taskModal";
 import { isOpen, isDone, isTrashed, boardStatuses, statusLabel, statusTint, firstOpenStatus, StatusKind } from "./statuses";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
 import { entityIcon, renderProjectIdentity } from "./entityPresentation";
+import { boardProjection, BoardProjection, isCompactPane } from "./responsive";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -39,15 +40,6 @@ import { entityIcon, renderProjectIdentity } from "./entityPresentation";
  * aufgeklapptes Unteraufgaben-Badge klappte hier mit auf.
  */
 const viewKey = (ctx: PageCtx, rest: string): string => ctx.id + "|" + rest;
-
-/** Obsidian Mobile does not consistently expose Platform.isMobile. Touch capability and the
- * actual pane width are the reliable fallbacks for responsive preview and mobile WebViews. */
-function compactTaskUi(el: HTMLElement): boolean {
-  const view = el.closest<HTMLElement>(".bt-view");
-  const noHover = typeof window !== "undefined" && typeof window.matchMedia === "function"
-    && window.matchMedia("(hover: none)").matches;
-  return Platform.isMobile || noHover || (view?.getBoundingClientRect().width ?? window.innerWidth) <= 700;
-}
 
 /** Pro Dashboard-Tab genau ein Things-artig aufgeklappter Aufgaben-Editor. Er bleibt während
  *  Index-Meldungen stehen; beim Schließen wird die inzwischen geänderte Liste nachgezogen. */
@@ -193,7 +185,7 @@ function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement,
 /** Alle Einträge eines Tabs verwerfen (beim Schließen bzw. beim Seitenwechsel des Tabs). */
 function dropViewKeys(id: string): void {
   const prefix = id + "|";
-  for (const map of [boardScroll, colScroll, listScroll, subtaskToggle] as Map<string, unknown>[]) {
+  for (const map of [boardScroll, colScroll, boardColumnSelection, boardLaneSelection, listScroll, subtaskToggle] as Map<string, unknown>[]) {
     for (const k of [...map.keys()]) if (k.startsWith(prefix)) map.delete(k);
   }
   for (const k of [...gcalExpanded]) if (k.startsWith(prefix)) gcalExpanded.delete(k);
@@ -207,6 +199,10 @@ const boardScroll = new Map<string, number>();
 // zwangsläufig bei 0. In der Listenansicht stellt sich die Frage nicht: dort ist der Scroller
 // contentEl selbst, das Element überlebt und wird nur geleert und wieder gefüllt.
 const colScroll = new Map<string, number>();
+// Tablet/mobile boards show a slice of the same model. The selected status/priority belongs to
+// this tab just like scroll position; changing it must not mutate the page or another open tab.
+const boardColumnSelection = new Map<string, string>();
+const boardLaneSelection = new Map<string, string>();
 // Senkrechte Position der LISTE (Schlüssel: Tab). Der Scroller ist hier contentEl selbst, das
 // Element überlebt also – aber sein Inhalt nicht: Beim Neuaufbau ist die Seite kurzzeitig leer,
 // und sobald in diesem Moment irgendwo Layout gelesen wird, klemmt der Browser scrollTop auf 0.
@@ -655,7 +651,8 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   }
   if (meta?.type === "area" && ctx.opts.layout === "list") renderAreaList(root, ctx, meta, childProjects, source(), today);
   else if (meta?.type === "area" && ctx.opts.layout === "board") renderAreaKanban(root, ctx, meta, childProjects, source(), today);
-  else if (meta?.type === "project" && ctx.opts.layout === "board" && ctx.opts.prioritySwimlanes === true) {
+  else if (meta?.type === "project" && ctx.opts.layout === "board"
+    && ctx.opts.prioritySwimlanes === true) {
     renderTaskSwimlaneBoard(root, ctx, source(), today, { project: name, status: meta.workflowStatus, priority: meta.priority });
   }
   else renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name, status: meta?.workflowStatus, priority: meta?.priority },
@@ -703,10 +700,14 @@ function renderAreaProjectHead(parent: HTMLElement, ctx: PageCtx, project: ProjI
   setIcon(head.createSpan({ cls: "bt-area-project-icon" }), project.icon);
   const title = head.createSpan({ cls: "bt-area-project-title", text: project.name });
   title.onclick = (e) => { e.stopPropagation(); ctx.open({ kind: "project", key: project.path }); };
-  head.createSpan({ cls: "bt-area-project-status", text: statusLabel(project.workflowStatus) });
-  if (priorityBucket(project.priority) !== "normal") head.createSpan({ cls: "bt-area-project-priority", text: t(PRIOS.find((p) => p.value === priorityBucket(project.priority))?.key ?? "prio_4") });
+  // These values describe the project rather than forming part of its identity. Keeping them in
+  // one group lets compact layouts move the whole group below the title instead of successively
+  // squeezing the name as status, priority and progress are added.
+  const meta = head.createSpan({ cls: "bt-area-project-meta" });
+  meta.createSpan({ cls: "bt-area-project-status", text: statusLabel(project.workflowStatus) });
+  if (priorityBucket(project.priority) !== "normal") meta.createSpan({ cls: "bt-area-project-priority", text: t(PRIOS.find((p) => p.value === priorityBucket(project.priority))?.key ?? "prio_4") });
   const progress = allTasks.filter((task) => task.project === project.path && !isTrashed(task.status));
-  if (progress.length) head.createSpan({ cls: "bt-area-project-progress", text: `${progress.filter((task) => isDone(task.status)).length}/${progress.length}` });
+  if (progress.length) meta.createSpan({ cls: "bt-area-project-progress", text: `${progress.filter((task) => isDone(task.status)).length}/${progress.length}` });
   const add = head.createEl("button", { cls: "bt-area-project-add", attr: { "aria-label": t("btn_add_task") } });
   setIcon(add, "plus");
   add.onclick = (e) => { e.stopPropagation(); plugin.openNewTask(baseName(project.path), undefined, false, project.workflowStatus, undefined, undefined, project.priority); };
@@ -789,88 +790,112 @@ function attachAreaCellDnd(cell: HTMLElement, ctx: PageCtx, area: ProjItem, stat
   });
 }
 
-function renderAreaProjectCard(parent: HTMLElement, ctx: PageCtx, project: ProjItem, nested: Task[], allTasks: Task[], today: string): void {
-  const card = parent.createDiv({ cls: "bt-area-project-card", attr: { draggable: "true" } });
+function renderAreaProjectCard(parent: HTMLElement, ctx: PageCtx, project: ProjItem, nested: Task[], allTasks: Task[], today: string,
+  projection: BoardProjection): void {
+  const draggable = projection !== "mobile";
+  const card = parent.createDiv({ cls: "bt-area-project-card", attr: { draggable: String(draggable) } });
   const body = card.createDiv({ cls: "bt-area-project-card-tasks" });
   renderAreaProjectHead(card, ctx, project, allTasks, body);
-  card.addEventListener("dragstart", (e) => {
-    if ((e.target as HTMLElement).closest(".bt-task")) return;
-    draggedAreaProject = project.path;
-    e.dataTransfer?.setData("application/x-vibetask-project", project.path);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-    card.addClass("is-dragging");
+  if (draggable) {
+    card.addEventListener("dragstart", (e) => {
+      if ((e.target as HTMLElement).closest(".bt-task")) return;
+      draggedAreaProject = project.path;
+      e.dataTransfer?.setData("application/x-vibetask-project", project.path);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      card.addClass("is-dragging");
+    });
+    card.addEventListener("dragend", () => { draggedAreaProject = null; card.removeClass("is-dragging"); });
+  }
+  for (const task of nested) renderTask(body, ctx, task, today, 1, false, {
+    flat: true, colId: project.workflowStatus, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone,
+    draggable, boardMove: projection === "mobile",
   });
-  card.addEventListener("dragend", () => { draggedAreaProject = null; card.removeClass("is-dragging"); });
-  for (const task of nested) renderTask(body, ctx, task, today, 1, false, { flat: true, colId: project.workflowStatus, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone });
 }
 
 function renderAreaKanban(root: HTMLElement, ctx: PageCtx, area: ProjItem, projects: ProjItem[], filtered: Task[], today: string): void {
   const plugin = ctx.plugin;
-  root.addClass("bt-sizer-board");
+  const swimlanes = ctx.opts.prioritySwimlanes !== false;
   const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
   const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
   const cards = visibleRows(tasks, hosts);
   const statuses = boardStatuses().filter((s) => s.kind === "open" || ctx.opts.showDone);
-  const lanes: { key: Priority | null; label: string }[] = ctx.opts.prioritySwimlanes === false
-    ? [{ key: null, label: "" }]
-    : PRIOS.map((p) => ({ key: p.value, label: t(p.key) }));
   const visibleProjects = plugin.sortProjItems("projects", projects).filter((project) =>
     statuses.some((s) => s.id === project.workflowStatus)
     && projectMatchesAreaFilter(project, ctx)
     && (!hasTaskOnlyAreaCriteria(ctx) || filtered.some((task) => task.project === project.path)));
-  const board = root.createDiv({ cls: "bt-area-board" + (ctx.opts.prioritySwimlanes === false ? " is-flat" : "") });
-  board.style.setProperty("--bt-area-cols", String(statuses.length));
-  board.createDiv({ cls: "bt-area-board-corner" });
-  for (const status of statuses) {
-    const head = board.createDiv({ cls: "bt-area-board-status" });
-    head.createSpan({ cls: "bt-kanban-dot" }).style.background = statusTint(status.id);
-    head.createSpan({ text: statusLabel(status.id) });
-  }
-  for (const lane of lanes) {
-    board.createDiv({ cls: "bt-area-board-lane", text: lane.label });
-    for (const status of statuses) {
-      const cell = board.createDiv({ cls: "bt-area-board-cell" });
-      attachAreaCellDnd(cell, ctx, area, status.id, lane.key ?? undefined);
-      const projectsHere = visibleProjects.filter((p) => p.workflowStatus === status.id && (!lane.key || priorityBucket(p.priority) === lane.key));
-      const nestedPaths = new Set<string>();
+  const cellItems = (status: string, priority?: Priority): { projectsHere: ProjItem[]; standalone: Task[] } => {
+    const projectsHere = visibleProjects.filter((p) => p.workflowStatus === status
+      && (!priority || priorityBucket(p.priority) === priority));
+    const nestedPaths = new Set<string>();
+    for (const project of projectsHere) {
+      cards.filter((task) => priority ? taskMatchesProjectCell(task, project)
+        : task.project === project.path && task.status === project.workflowStatus)
+        .forEach((task) => nestedPaths.add(task.path));
+    }
+    return {
+      projectsHere,
+      standalone: cards.filter((task) => task.status === status
+        && (!priority || priorityBucket(task.priority) === priority) && !nestedPaths.has(task.path)),
+    };
+  };
+  const columns: UnifiedBoardColumn[] = statuses.map((status) => ({
+    id: status.id, title: statusLabel(status.id), tint: statusTint(status.id),
+    count: (lane) => {
+      const items = cellItems(status.id, lane?.id as Priority | undefined);
+      return items.projectsHere.length + items.standalone.length;
+    },
+  }));
+  const lanes: UnifiedBoardLane[] | undefined = swimlanes
+    ? PRIOS.map((priority, index) => ({ id: priority.value, label: t(priority.key), shortLabel: `P${index + 1}` }))
+    : undefined;
+  renderUnifiedBoard(root, ctx, {
+    key: "area|" + area.path,
+    columns,
+    lanes,
+    setupCell: (cell, column, lane, projection) => {
+      if (projection !== "mobile") attachAreaCellDnd(cell, ctx, area, column.id, lane?.id as Priority | undefined);
+    },
+    renderCell: (cell, column, lane, projection) => {
+      const priority = lane?.id as Priority | undefined;
+      const { projectsHere, standalone } = cellItems(column.id, priority);
       for (const project of projectsHere) {
-        const nested = cards.filter((task) => lane.key
+        const nested = cards.filter((task) => priority
           ? taskMatchesProjectCell(task, project)
           : task.project === project.path && task.status === project.workflowStatus);
-        nested.forEach((task) => nestedPaths.add(task.path));
-        renderAreaProjectCard(cell, ctx, project, nested, plugin.index.all(), today);
+        renderAreaProjectCard(cell, ctx, project, nested, plugin.index.all(), today, projection);
       }
-      const standalone = cards.filter((task) => task.status === status.id && (!lane.key || priorityBucket(task.priority) === lane.key) && !nestedPaths.has(task.path));
-      for (const task of standalone) renderTask(cell, ctx, task, today, 0, false, { flat: true, colId: status.id, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone });
-      const add = cell.createEl("button", { cls: "bt-kanban-add" });
-      add.createSpan({ cls: "bt-add-icon" });
-      add.createSpan({ text: t("btn_add_task") });
-      add.onclick = () => plugin.openNewTask(baseName(area.path), undefined, false, status.id, undefined, undefined, lane.key ?? "normal");
-    }
-  }
+      for (const task of standalone) renderTask(cell, ctx, task, today, 0, false, {
+        flat: true, colId: column.id, subs: effectiveSubtasks(ctx.opts), showDone: ctx.opts.showDone,
+        draggable: projection !== "mobile", boardMove: projection === "mobile",
+      });
+    },
+    onAdd: (column, lane) => plugin.openNewTask(baseName(area.path), undefined, false,
+      column.id, undefined, undefined, (lane?.id as Priority | undefined) ?? "normal"),
+  });
 }
 
 /** Optional status × priority board for a single Project. Unlike an Area board it contains only
  * task cards, but uses the same four displayed priority buckets and independent two-axis drag. */
 function renderTaskSwimlaneBoard(root: HTMLElement, ctx: PageCtx, filtered: Task[], today: string, add: BoardAdd): void {
   const plugin = ctx.plugin;
-  root.addClass("bt-sizer-board");
   const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
   const subs = effectiveSubtasks(ctx.opts);
   const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs));
   const statuses = boardStatuses().filter((status) => status.kind === "open" || ctx.opts.showDone);
-  const board = root.createDiv({ cls: "bt-area-board bt-task-swimlane-board" });
-  board.style.setProperty("--bt-area-cols", String(statuses.length));
-  board.createDiv({ cls: "bt-area-board-corner" });
-  for (const status of statuses) {
-    const head = board.createDiv({ cls: "bt-area-board-status" });
-    head.createSpan({ cls: "bt-kanban-dot" }).style.background = statusTint(status.id);
-    head.createSpan({ text: statusLabel(status.id) });
-  }
-  for (const lane of PRIOS) {
-    board.createDiv({ cls: "bt-area-board-lane", text: t(lane.key) });
-    for (const status of statuses) {
-      const cell = board.createDiv({ cls: "bt-area-board-cell" });
+  const columns: UnifiedBoardColumn[] = statuses.map((status) => ({
+    id: status.id, title: statusLabel(status.id), tint: statusTint(status.id),
+    count: (lane) => cards.filter((task) => task.status === status.id
+      && (!lane || priorityBucket(task.priority) === lane.id)).length,
+  }));
+  const lanes: UnifiedBoardLane[] = PRIOS.map((priority, index) => ({
+    id: priority.value, label: t(priority.key), shortLabel: `P${index + 1}`,
+  }));
+  renderUnifiedBoard(root, ctx, {
+    key: "project-swimlanes|" + ctx.pageKey,
+    columns,
+    lanes,
+    setupCell: (cell, column, lane, projection) => {
+      if (projection === "mobile" || !lane) return;
       cell.addEventListener("dragover", (e) => {
         if (!dragTask()) return;
         e.preventDefault();
@@ -886,21 +911,22 @@ function renderTaskSwimlaneBoard(root: HTMLElement, ctx: PageCtx, filtered: Task
         endTaskDrag();
         if (!task) return;
         void applyDropPage(plugin, task, add).then(async () => {
-          if (task.status !== status.id) await plugin.setTaskStatus(task, status.id);
-          if (priorityBucket(task.priority) !== lane.value) await plugin.setTaskPriority(task, lane.value);
+          if (task.status !== column.id) await plugin.setTaskStatus(task, column.id);
+          if (priorityBucket(task.priority) !== lane.id) await plugin.setTaskPriority(task, lane.id as Priority);
         });
       });
-      const cellTasks = sortColumn(cards.filter((task) => task.status === status.id
-        && priorityBucket(task.priority) === lane.value), status.kind, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin));
+    },
+    renderCell: (cell, column, lane, projection) => {
+      const status = statuses.find((item) => item.id === column.id)!;
+      const cellTasks = sortColumn(cards.filter((task) => task.status === column.id
+        && (!lane || priorityBucket(task.priority) === lane.id)), status.kind, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin));
       for (const task of cellTasks) renderTask(cell, ctx, task, today, 0, false,
-        { flat: true, colId: status.id, subs, showDone: ctx.opts.showDone });
-      const addButton = cell.createEl("button", { cls: "bt-kanban-add" });
-      addButton.createSpan({ cls: "bt-add-icon" });
-      addButton.createSpan({ text: t("btn_add_task") });
-      addButton.onclick = () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
-        status.id, undefined, undefined, lane.value);
-    }
-  }
+        { flat: true, colId: column.id, subs, showDone: ctx.opts.showDone,
+          draggable: projection !== "mobile", boardMove: projection === "mobile" });
+    },
+    onAdd: (column, lane) => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
+      column.id, undefined, undefined, (lane?.id as Priority | undefined) ?? add.priority),
+  });
 }
 
 /** Label-Board: alle Aufgaben mit einem Label, nach Status/Datum gruppiert (wie Projekt-Board). */
@@ -1074,8 +1100,61 @@ interface HeaderOpts {
  *  actions deliberately live in that overflow instead of claiming another permanent button. */
 function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts: HeaderOpts = {}): void {
   const plugin = ctx.plugin;
-  root.closest<HTMLElement>(".bt-view")?.toggleClass("bt-mobile", compactTaskUi(root));
+  const compact = isCompactPane(root);
+  root.closest<HTMLElement>(".bt-view")?.toggleClass("bt-mobile", compact);
   const head = root.createDiv({ cls: "bt-board-head" });
+
+  // On compact task pages the header is an app bar, not a second desktop toolbar squeezed into a
+  // phone. The drawer owns secondary choices and the full identity; the bar keeps only navigation,
+  // current context, Today and creation.
+  if (compact && !ctx.embedded && pageInfo(ctx.page).tier !== "none" && !opts.actions) {
+    head.addClass("bt-mobile-app-head");
+    const fullTitle = titleEl.textContent ?? "";
+    const menuBtn = head.createEl("button", { cls: "bt-mobile-head-menu", attr: { "aria-label": t("more_actions") } });
+    setIcon(menuBtn, "menu");
+
+    const identity = head.createDiv({ cls: "bt-mobile-head-identity" });
+    if (opts.hideTitle) titleEl.remove(); else identity.appendChild(titleEl);
+    const effectiveCalMode = ctx.opts.calMode === "week" ? "day" : ctx.opts.calMode;
+    identity.createDiv({
+      cls: "bt-mobile-head-status",
+      text: ctx.opts.layout === "calendar"
+        ? `${t("layout_calendar")} · ${t("cal_mode_" + effectiveCalMode)}`
+        : t("layout_" + ctx.opts.layout),
+    });
+
+    const actions = head.createDiv({ cls: "bt-head-actions bt-mobile-head-actions" });
+    const today = actions.createEl("button", { cls: "bt-mobile-head-today", attr: { "aria-label": t("cal_today") } });
+    setIcon(today, "calendar-check");
+    tip(today, t("cal_today"));
+    today.onclick = (event) => {
+      event.stopPropagation();
+      if (ctx.opts.layout === "calendar") resetCalendarToToday(ctx);
+      else ctx.open({ kind: "view", key: "heute" });
+    };
+    if (opts.onAdd) {
+      const add = actions.createEl("button", { cls: "bt-page-add" });
+      add.setAttr("aria-label", t("btn_add_task"));
+      setIcon(add.createSpan({ cls: "bt-page-add-ic" }), "plus");
+      add.onclick = (event) => { event.stopPropagation(); opts.onAdd?.(add); };
+    }
+
+    menuBtn.onclick = (event) => {
+      event.stopPropagation();
+      openViewPanel(menuBtn, ctx, {
+        title: fullTitle,
+        description: () => root.querySelector<HTMLElement>(".bt-page-desc:not(.is-empty)")?.textContent ?? "",
+        ...(opts.menu ? { onMore: (anchor: HTMLElement) => {
+          const menu = new Menu();
+          buildItemMenu(menu, plugin, opts.menu!, "board");
+          const rect = anchor.getBoundingClientRect();
+          menu.showAtPosition({ x: rect.left, y: rect.bottom });
+        } } : {}),
+      });
+    };
+    return;
+  }
+
   if (opts.hideTitle) titleEl.remove();
   else head.appendChild(titleEl);
   const actions = head.createDiv({ cls: "bt-head-actions" });
@@ -1157,6 +1236,172 @@ interface BoardColumn {
   has: (tk: Task) => boolean;                   // gehört die Aufgabe in diese Spalte?
   onDrop?: (tk: Task, fromColId: string) => void; // Loslassen aus Spalte fromColId; fehlt = kein Drop-Ziel
   onAdd?: () => void;                           // „+ Aufgabe" in dieser Spalte; fehlt = kein „+" (z. B. „Überfällig")
+}
+
+/** One Kanban system, projected according to available pane width. Page-specific adapters only
+ * provide axes and card contents; this renderer owns columns, headers, surfaces, selection and
+ * responsive shape for Today, projects, Areas and priority swimlanes alike. */
+interface UnifiedBoardLane { id: string; label: string; shortLabel?: string; }
+interface UnifiedBoardColumn {
+  id: string;
+  title: string;
+  tint: string;
+  count(lane?: UnifiedBoardLane): number;
+}
+interface UnifiedBoardModel {
+  key: string;
+  columns: UnifiedBoardColumn[];
+  lanes?: UnifiedBoardLane[];
+  setupCell?(shell: HTMLElement, column: UnifiedBoardColumn, lane: UnifiedBoardLane | undefined,
+    projection: BoardProjection): void;
+  renderCell(list: HTMLElement, column: UnifiedBoardColumn, lane: UnifiedBoardLane | undefined,
+    projection: BoardProjection): void;
+  canAdd?(column: UnifiedBoardColumn, lane?: UnifiedBoardLane): boolean;
+  onAdd?(column: UnifiedBoardColumn, lane?: UnifiedBoardLane): void;
+  decorateHeader?(shell: HTMLElement, head: HTMLElement, column: UnifiedBoardColumn,
+    columnsHost: HTMLElement, drive: (clientX: number | null) => void): void;
+  pinned?(column: UnifiedBoardColumn): boolean;
+  scrollKey?: string;
+}
+
+function selectedBoardValue(store: Map<string, string>, key: string, choices: readonly string[]): string {
+  const saved = store.get(key);
+  if (saved && choices.includes(saved)) return saved;
+  const fallback = choices[0] ?? "";
+  if (fallback) store.set(key, fallback);
+  return fallback;
+}
+
+function renderBoardTabs(parent: HTMLElement, items: { id: string; label: string; count?: number }[],
+  selected: string, choose: (id: string) => void, label: string): void {
+  const tabs = parent.createDiv({ cls: "bt-board-axis-tabs", attr: { role: "tablist", "aria-label": label } });
+  for (const item of items) {
+    const button = tabs.createEl("button", {
+      cls: "bt-board-axis-tab" + (item.id === selected ? " is-active" : ""),
+      attr: { role: "tab", "aria-selected": String(item.id === selected), type: "button" },
+    });
+    button.createSpan({ text: item.label });
+    if (item.count !== undefined) button.createSpan({ cls: "bt-board-axis-count", text: String(item.count) });
+    button.onclick = () => choose(item.id);
+  }
+}
+
+function renderUnifiedBoard(root: HTMLElement, ctx: PageCtx, model: UnifiedBoardModel): void {
+  root.addClass("bt-sizer-board");
+  const projection = boardProjection(root);
+  const view = root.closest<HTMLElement>(".bt-view");
+  if (view) view.dataset.boardProjection = projection;
+  const lanes = model.lanes?.length ? model.lanes : undefined;
+  const board = root.createDiv({
+    cls: `bt-kanban bt-unified-board is-${projection}${lanes ? " has-swimlanes" : ""}`,
+  });
+  board.style.setProperty("--bt-board-cols", String(Math.max(1, model.columns.length)));
+  if (!model.columns.length) return;
+
+  const selectionKey = viewKey(ctx, "board-axis|" + model.key);
+  const addButton = (parent: HTMLElement, column: UnifiedBoardColumn, lane?: UnifiedBoardLane): void => {
+    if (!model.onAdd || model.canAdd?.(column, lane) === false) return;
+    const add = parent.createEl("button", { cls: "bt-kanban-add", attr: { type: "button" } });
+    add.createSpan({ cls: "bt-add-icon" });
+    add.createSpan({ text: t("btn_add_task") });
+    add.onclick = () => model.onAdd?.(column, lane);
+  };
+  const header = (parent: HTMLElement, column: UnifiedBoardColumn, lane: UnifiedBoardLane | undefined,
+    shell?: HTMLElement, columnsHost?: HTMLElement, drive?: (clientX: number | null) => void): HTMLElement => {
+    const head = parent.createDiv({ cls: "bt-kanban-head bt-board-column-head" });
+    head.createSpan({ cls: "bt-kanban-dot" }).style.background = column.tint;
+    head.createSpan({ cls: "bt-kanban-title", text: column.title });
+    head.createSpan({ cls: "bt-kanban-count", text: String(column.count(lane)) });
+    if (shell && columnsHost && drive) model.decorateHeader?.(shell, head, column, columnsHost, drive);
+    return head;
+  };
+  const cellBody = (shell: HTMLElement, column: UnifiedBoardColumn, lane?: UnifiedBoardLane): HTMLElement => {
+    model.setupCell?.(shell, column, lane, projection);
+    const list = shell.createDiv({ cls: "bt-kanban-list bt-board-cell-content" });
+    model.renderCell(list, column, lane, projection);
+    return list;
+  };
+  const renderColumn = (parent: HTMLElement, column: UnifiedBoardColumn, lane: UnifiedBoardLane | undefined,
+    columnsHost: HTMLElement, drive: (clientX: number | null) => void, showHeader = true): void => {
+    const shell = parent.createDiv({ cls: "bt-kanban-col bt-board-column" });
+    shell.dataset.col = column.id;
+    if (model.pinned?.(column)) shell.dataset.pin = "1";
+    if (showHeader) header(shell, column, lane, shell, columnsHost, drive);
+    cellBody(shell, column, lane);
+    addButton(shell, column, lane);
+  };
+  const renderColumns = (lane?: UnifiedBoardLane): void => {
+    const columns = board.createDiv({ cls: "bt-board-columns" });
+    columns.style.setProperty("--bt-board-cols", String(Math.max(1, model.columns.length)));
+    const drive = attachEdgeAutoscroll(columns);
+    if (model.scrollKey) {
+      columns.addEventListener("scroll", () => boardScroll.set(model.scrollKey!, columns.scrollLeft));
+    }
+    for (const column of model.columns) renderColumn(columns, column, lane, columns, drive);
+    const saved = model.scrollKey ? boardScroll.get(model.scrollKey) : undefined;
+    if (saved) columns.scrollLeft = saved;
+  };
+
+  if (projection === "desktop" && lanes) {
+    const matrix = board.createDiv({ cls: "bt-board-matrix" });
+    matrix.style.setProperty("--bt-board-cols", String(model.columns.length));
+    matrix.createDiv({ cls: "bt-board-matrix-corner" });
+    for (const column of model.columns) header(matrix, column, undefined);
+    for (const lane of lanes) {
+      const laneHead = matrix.createDiv({ cls: "bt-board-lane-head" });
+      laneHead.createDiv({ cls: "bt-board-lane-title", text: lane.label });
+      const laneCount = model.columns.reduce((n, col) => n + col.count(lane), 0);
+      laneHead.createDiv({
+        cls: "bt-board-lane-count",
+        text: t(laneCount === 1 ? "count_task" : "count_tasks", laneCount),
+      });
+      for (const column of model.columns) {
+        const shell = matrix.createDiv({ cls: "bt-board-cell" });
+        cellBody(shell, column, lane);
+        addButton(shell, column, lane);
+      }
+    }
+    return;
+  }
+
+  if (projection === "tablet" && lanes) {
+    const laneId = selectedBoardValue(boardLaneSelection, selectionKey, lanes.map((lane) => lane.id));
+    const lane = lanes.find((item) => item.id === laneId) ?? lanes[0];
+    renderBoardTabs(board, lanes.map((item) => ({ id: item.id, label: item.shortLabel ?? item.label })),
+      lane.id, (id) => { boardLaneSelection.set(selectionKey, id); ctx.redraw(); }, t("chip_priority"));
+    renderColumns(lane);
+    return;
+  }
+
+  if (projection === "mobile") {
+    const columnId = selectedBoardValue(boardColumnSelection, selectionKey, model.columns.map((column) => column.id));
+    const column = model.columns.find((item) => item.id === columnId) ?? model.columns[0];
+    renderBoardTabs(board, model.columns.map((item) => ({
+      id: item.id, label: item.title,
+      count: lanes ? lanes.reduce((n, lane) => n + item.count(lane), 0) : item.count(),
+    })), column.id, (id) => { boardColumnSelection.set(selectionKey, id); ctx.redraw(); }, t("chip_status"));
+    if (lanes) {
+      const stack = board.createDiv({ cls: "bt-board-mobile-lanes" });
+      // Empty matrix rows add enormous vertical dead space on a phone. The tabs retain the full
+      // status count; inside the selected status only priorities that actually contain cards show.
+      for (const lane of lanes.filter((item) => column.count(item) > 0)) {
+        const section = stack.createDiv({ cls: "bt-board-mobile-lane" });
+        const laneHead = section.createDiv({ cls: "bt-board-mobile-lane-head" });
+        laneHead.createSpan({ text: lane.label });
+        laneHead.createSpan({ cls: "bt-board-axis-count", text: String(column.count(lane)) });
+        const shell = section.createDiv({ cls: "bt-board-cell" });
+        cellBody(shell, column, lane);
+      }
+      addButton(board, column);
+    } else {
+      const columns = board.createDiv({ cls: "bt-board-columns" });
+      const drive = attachEdgeAutoscroll(columns);
+      renderColumn(columns, column, undefined, columns, drive, false);
+    }
+    return;
+  }
+
+  renderColumns();
 }
 
 const NO_LABEL = "\u0000nolabel";   // Sentinel-ID der „Ohne Label"-Spalte (kein gültiger Label-Name)
@@ -1510,11 +1755,14 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
   // bekommt ihre Karte in IHRER Tages-Spalte, auch wenn der Parent als Karte auf dem Board steht.
   // Karten sind flach (keine Verschachtelung) -> kein skip nötig, Doppelung kann nicht entstehen.
   const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs), agendaOwnRow(opts.group));
-  // Gruppierungs-Schlüssel (stabil) für die board-eigene Spalten-Reihenfolge. Priorität bleibt fest.
+  // Gruppierungs-Schlüssel (stabil) für die board-eigene Spalten-Reihenfolge. Status follows the
+  // canonical order from Settings; otherwise desktop drag order could disagree with the tablet
+  // and mobile projections of the same board.
   const groupKey = opts.group === "label" ? "label" : opts.group === "priority" ? "priority" : opts.group === "project" ? "project"
     : opts.group === "date" || opts.group === "deadline" ? opts.group : "status";
-  // Nicht umsortierbar, wo die Reihenfolge fest ist: Priorität (P1–P4) und Datum (chronologisch).
-  const reorderable = groupKey !== "priority" && groupKey !== "date" && groupKey !== "deadline";
+  // Only labels and projects have a board-local order. Status is configured centrally; priority
+  // is P1–P4 and dates are chronological.
+  const reorderable = groupKey === "label" || groupKey === "project";
   // Spalten aus den SICHTBAREN Karten ableiten: sonst entstünde eine Label-/Projekt-Spalte für
   // eine Unteraufgabe, die im kompakten Modus gar keine Karte hat – eine leere Spalte ohne Grund.
   const baseCols = opts.group === "label" ? labelColumns(plugin, cards, add)
@@ -1524,33 +1772,34 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
           : opts.group === "deadline" ? dateColumns(plugin, cards, today, "due", add)
             : statusColumns(plugin, add);
   const cols = reorderable ? applyColumnOrder(baseCols, plugin.settings.boardColumnOrder?.[groupKey]) : baseCols;
-  const board = root.createDiv({ cls: "bt-kanban" });
-  const driveScroll = attachEdgeAutoscroll(board);
   // Scroll-Position über Re-Renders halten: nach einem Karten-Drop rendert die ganze View neu –
   // ohne das spränge das Board zurück nach links. Schlüssel = aktuelle Board-Identität (+ Gruppierung).
   const scrollKey = viewKey(ctx, ctx.pageKey + "|" + (opts.group ?? ""));
-  board.addEventListener("scroll", () => boardScroll.set(scrollKey, board.scrollLeft));
-  for (const col of cols) {
-    const colEl = board.createDiv({ cls: "bt-kanban-col" });
-    colEl.dataset.col = col.id;
-    const sentinel = isSentinelCol(col.id);
-    if (sentinel) colEl.dataset.pin = "1";
-    if (col.onDrop) setupColumnDnd(colEl, col, plugin, opts.sort === "manual", add);   // kein Drop-Ziel -> kein DnD (z. B. „Überfällig")
-
-    const head = colEl.createDiv({ cls: "bt-kanban-head" });
-    // Der ganze Spaltenkopf ist der Ziehgriff zum Umsortieren (nicht bei Priorität/Sentinel).
-    // Grip-Dots als Hover-Signal (absolut positioniert -> kein Layout-Versatz), Cursor = Hand via CSS.
-    if (reorderable && !sentinel) {
+  const columnById = new Map(cols.map((column) => [column.id, column] as const));
+  const tasksByColumn = new Map(cols.map((column) => [column.id,
+    sortColumn(cards.filter((task) => column.has(task)), column.kind, opts.sort, opts.sortDir, orderKey(plugin))] as const));
+  const columns: UnifiedBoardColumn[] = cols.map((column) => ({
+    id: column.id, title: column.title, tint: column.tint,
+    count: () => tasksByColumn.get(column.id)?.length ?? 0,
+  }));
+  renderUnifiedBoard(root, ctx, {
+    key: "kanban|" + ctx.pageKey + "|" + groupKey,
+    columns,
+    scrollKey,
+    pinned: (column) => isSentinelCol(column.id),
+    decorateHeader: (shell, head, column, columnsHost, drive) => {
+      if (!reorderable || isSentinelCol(column.id)) return;
       head.addClass("bt-col-draggable");
       setIcon(head.createSpan({ cls: "bt-kanban-grip" }), "grip-vertical");
-      attachColumnDrag(colEl, head, board, groupKey, plugin, driveScroll);
-    }
-    head.createSpan({ cls: "bt-kanban-dot" }).style.background = col.tint;
-    head.createSpan({ cls: "bt-kanban-title", text: col.title });
-    const colTasks = sortColumn(cards.filter((tk) => col.has(tk)), col.kind, opts.sort, opts.sortDir, orderKey(plugin));
-    head.createSpan({ cls: "bt-kanban-count", text: String(colTasks.length) });
-
-    const listEl = colEl.createDiv({ cls: "bt-kanban-list" });
+      attachColumnDrag(shell, head, columnsHost, groupKey, plugin, drive);
+    },
+    setupCell: (shell, column, _lane, projection) => {
+      const source = columnById.get(column.id);
+      if (projection !== "mobile" && source?.onDrop) setupColumnDnd(shell, source, plugin, opts.sort === "manual", add);
+    },
+    renderCell: (listEl, column, _lane, projection) => {
+      const col = columnById.get(column.id)!;
+      const colTasks = tasksByColumn.get(column.id) ?? [];
     // Abhaken schreibt die Notiz -> der Index meldet -> MainView.draw() baut alles neu. Ohne das
     // Folgende spränge die Spalte dabei nach oben, und wer unten mehrere Karten abhaken will,
     // müsste nach jeder einzelnen erneut hinunterscrollen.
@@ -1572,7 +1821,10 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
     let kartePx = 0;                       // an DIESER Spalte gemessene Kartenhöhe
     let colSentinel: HTMLElement | null = null;
     const zeichne = (bis: number): void => {
-      for (const tk of colTasks.slice(gezeigt, bis)) renderTask(listEl, ctx, tk, today, 0, false, { flat: true, colId: col.id, subs, impliedDate, deadlineImplied, hideProject });
+      for (const tk of colTasks.slice(gezeigt, bis)) renderTask(listEl, ctx, tk, today, 0, false, {
+        flat: true, colId: col.id, subs, impliedDate, deadlineImplied, hideProject,
+        draggable: projection !== "mobile", boardMove: projection === "mobile",
+      });
       gezeigt = bis;
     };
     /** Platzhalter für die noch fehlenden Karten – hält die Spaltenhöhe, damit die gemerkte
@@ -1620,17 +1872,10 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
     // Ist die Spalte inzwischen kürzer (Karte ist rausgefallen), klemmt der Browser auf das neue
     // Maximum – das Scroll-Ereignis schreibt den geklemmten Wert dann selbst zurück.
     if (savedTop) listEl.scrollTop = savedTop;
-
-    if (col.onAdd) {
-      const addEl = colEl.createDiv({ cls: "bt-kanban-add" });
-      addEl.createSpan({ cls: "bt-add-icon" });
-      addEl.createSpan({ text: t("btn_add_task") });
-      addEl.onclick = () => col.onAdd?.();
-    }
-  }
-  // Board ist jetzt aufgebaut (Breite steht) -> gemerkte Scroll-Position wiederherstellen.
-  const savedLeft = boardScroll.get(scrollKey);
-  if (savedLeft) board.scrollLeft = savedLeft;
+    },
+    canAdd: (column) => !!columnById.get(column.id)?.onAdd,
+    onAdd: (column) => columnById.get(column.id)?.onAdd?.(),
+  });
 }
 
 
@@ -2202,7 +2447,8 @@ function renderTaskInsertControls(row: HTMLElement, ctx: PageCtx, task: Task): v
 }
 
 function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, depth: number, trash = false,
-  opts: { flat?: boolean; colId?: string; subs?: SubtaskDisplay; manual?: boolean; showDone?: boolean; impliedDate?: string; deadlineImplied?: boolean; hideProject?: string } = {}): void {
+  opts: { flat?: boolean; colId?: string; subs?: SubtaskDisplay; manual?: boolean; showDone?: boolean; impliedDate?: string;
+    deadlineImplied?: boolean; hideProject?: string; draggable?: boolean; boardMove?: boolean } = {}): void {
   const plugin = ctx.plugin;
   // Unteraufgaben-Darstellung: vom Aufrufer (section) EINMAL pro Section gereicht statt hier pro
   // Zeile ctx.opts zu lesen (bei Projektseiten ein metadataCache-Zugriff je Aufgabe).
@@ -2223,6 +2469,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     kids, expanded: subsExpanded(ctx, task.path, subs),
   });
   const row = list.createDiv({ cls: plan.classes.join(" ") });
+  if (opts.boardMove) row.addClass("has-board-move");
   if (depth) row.style.setProperty("--bt-depth", String(depth));
   row.dataset.path = task.path;
   if (task.path === menuHoldPath()) row.addClass("bt-menu-hold");   // offenes Kontextmenü hält das Hover
@@ -2245,7 +2492,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
   //
   // Der Zieh-Griff der Handsortierung kommt sich damit nicht ins Gehege: Er ruft in `pointerdown`
   // `preventDefault()`, und das unterbindet den nativen Zug, bevor er beginnt.
-  if (!trash) {
+  if (!trash && opts.draggable !== false) {
     row.setAttr("draggable", "true");
     row.addEventListener("dragstart", (e) => {
       startTaskDrag(task.path, opts.colId ?? null);   // Quell-Spalte (Status-ID bzw. Label) für die Drop-Semantik
@@ -2272,6 +2519,20 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
 
   const body = row.createDiv({ cls: "bt-body" });
   renderLinkedText(body.createDiv({ cls: "bt-title" }), ctx, task.title, task.path);
+
+  // A one-column mobile projection has no adjacent drop target. Keep status movement explicit and
+  // discoverable instead of making long-press on the checkbox the only way to reach it.
+  if (opts.boardMove) {
+    const move = row.createEl("button", {
+      cls: "bt-board-move", attr: { type: "button", "aria-label": t("chip_status") },
+    });
+    setIcon(move, "arrow-right-left");
+    tip(move, t("chip_status"));
+    move.onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
+      openBoardMoveMenu(plugin, task, move);
+    };
+  }
 
   // Beschreibungs-Vorschau (einzeilig, gekürzt) – aus dem Frontmatter (`description`), optional
   // per Einstellung. Bild-/Embed-Syntax wird entfernt, damit die Zeile nie zu einem Block aufgeht.
@@ -3321,7 +3582,21 @@ export class MainView extends ItemView {
   private scrollKey(): string { return this.id + "|scroll"; }
   /** Beim Sichtbarwerden nachziehen, falls in der Zwischenzeit vorgemerkt (s. draw). */
   drawIfDirty(): void { if (this.dirty) this.draw(); }
-  onResize(): void { this.drawIfDirty(); }
+  onResize(): void {
+    // Headers and responsive board projections have intentionally different DOM. Rebuild only
+    // when one of those contracts changes; ordinary resizes remain free. An active inline editor
+    // is never torn out from under the user's cursor—the next normal draw adopts the new density.
+    const shellCrossed = isCompactPane(this.contentEl) !== this.contentEl.hasClass("bt-mobile");
+    const renderedBoard = this.contentEl.dataset.boardProjection as BoardProjection | undefined;
+    const boardCrossed = !!renderedBoard && boardProjection(this.contentEl) !== renderedBoard;
+    const crossed = shellCrossed || boardCrossed;
+    if (crossed && !inlineTaskEditorOpen(this.id)) {
+      this.contentEl.empty();   // invalidates the fast-patch mounts and guarantees a full shell draw
+      this.draw();
+      return;
+    }
+    this.drawIfDirty();
+  }
 
   draw(): void {
     if (!this.contentEl) return;
@@ -3372,6 +3647,7 @@ export class MainView extends ItemView {
     this.renderComp = this.addChild(new Component());
     const ctx = this.ctx();
     this.contentEl.removeClass("bt-view-calendar");   // setzt renderCalendar bei Bedarf wieder
+    delete this.contentEl.dataset.boardProjection;   // renderUnifiedBoard setzt es bei Board-Layouts neu
     // Das Zeilen-Budget gilt für JEDE Seite, nicht nur für die vollen Seiten (s. section).
     // „Demnächst" zeigt ALLE künftig datierten Aufgaben – gedeckelt ist dort nur, wie weit die
     // Termine reichen (upcomingMonths), nicht die Aufgaben. Gemessen an einem echten Vault

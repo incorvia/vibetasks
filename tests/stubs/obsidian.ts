@@ -37,4 +37,5 @@ export class FuzzySuggestModal {}
 export class Modal {}
 export class Setting {}
 export class Notice {}
+export const Platform = { isMobile: false };
 export function setIcon(): void { /* no-op im Test */ }

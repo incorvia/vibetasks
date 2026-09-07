@@ -17,6 +17,7 @@ import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { attachLinkSuggest } from "./linkSuggest";
 import { TimeBlockModal } from "./timeBlockModal";
+import { isCompactPane } from "./responsive";
 
 // PRIOS/PRIO_KEY leben jetzt in chips.ts (gemeinsam mit der Schnelleingabe); hier re-exportiert,
 // damit bestehende Importe (filterModal, quickAddModal) unverändert bleiben.
@@ -183,9 +184,7 @@ export class TaskModal extends Modal {
   onOpen(): void {
     const { contentEl, modalEl } = this;
     modalEl.addClass("bt-task-modal");
-    const noHover = typeof window !== "undefined" && typeof window.matchMedia === "function"
-      && window.matchMedia("(hover: none)").matches;
-    const compact = Platform.isMobile || noHover || document.documentElement.clientWidth <= 700;
+    const compact = isCompactPane(document.documentElement);
     this.compact = compact;
     modalEl.toggleClass("bt-mobile", compact);
     // Klasse auf <body>, solange dieses Modal offen ist: hebt die native „Seitenvorschau" per CSS

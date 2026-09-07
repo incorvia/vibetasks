@@ -1,9 +1,9 @@
-import { setIcon } from "obsidian";
+import { Menu, setIcon } from "obsidian";
 import type VibeTaskPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { Task, CalEvent, TimeBlock, agendaDate } from "./types";
-import { ViewOptions } from "./filterEngine";
+import { PageLayout, ViewOptions } from "./filterEngine";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { isInboxLink } from "./taskService";
 import { combineDT, todayStr } from "./format";
@@ -15,6 +15,7 @@ import { tip, tipWhenClipped } from "./tooltip";
 import { TimeBlockModal } from "./timeBlockModal";
 import { blockKind } from "./timeService";
 import { calendarTaskColor } from "./calendarTaskColor";
+import { isCompactPane } from "./responsive";
 import {
   CalMode, CAL_MODES, monthGrid, timeGridDays, timeGridStep, yearMonths, bucketByDate,
   addDays, addMonths, addYears, sameMonth, parseISO, DEFAULT_BLOCK_MIN, layoutSlots,
@@ -55,6 +56,12 @@ const pageKey = (ctx: PageCtx): string => ctx.id + "|" + ctx.pageKey + "|cal";
 export function dropCalendarAnchors(id: string): void {
   const prefix = id + "|";
   for (const k of [...anchors.keys()]) if (k.startsWith(prefix)) anchors.delete(k);
+}
+
+/** Return the calendar in this tab to the current date from outside its local toolbar. */
+export function resetCalendarToToday(ctx: PageCtx): void {
+  anchors.set(pageKey(ctx), todayStr());
+  ctx.redraw();
 }
 
 
@@ -164,15 +171,13 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
   root.parentElement?.addClass("bt-view-calendar");
   // Obsidian Mobile sometimes reports a desktop-like viewport. The page header already marks
   // those panes explicitly; the media query is the fallback for embeds and unusually narrow panes.
-  const mobile = !!root.closest(".bt-mobile")
-    || (window.matchMedia("(hover: none)").matches && root.getBoundingClientRect().width <= 700);
+  const mobile = !!root.closest(".bt-mobile") || isCompactPane(root);
   root.toggleClass("bt-calview-mobile", mobile);
   const key = pageKey(ctx);
   const anchor = anchors.get(key) ?? today;
-  // Seven (or even three) time columns cannot be made legible on a phone without a horizontally
-  // panning canvas, which conflicts with Obsidian's own pane swipe. Preserve the saved desktop
-  // preference, but present the same anchor as a day timeline while this pane is compact.
-  const mode: CalMode = mobile && (opts.calMode === "week" || opts.calMode === "3day") ? "day" : opts.calMode;
+  // A seven-column time grid is not useful on a phone. Three columns remain legible and provide
+  // the compact multi-day overview used by native calendar apps.
+  const mode: CalMode = mobile && opts.calMode === "week" ? "day" : opts.calMode;
 
   const go = (next: string): void => { anchors.set(key, next); redraw(); };
   // Ein Klick auf ‹/› springt um die angezeigte Spanne weiter: Jahr, Monat, Woche oder Tag.
@@ -193,16 +198,48 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
   // „Heute" sitzt zwischen den Chevrons: ‹ Heute ›
   navBtn("chevron-left", t("cal_prev"), () => step(-1));
   const todayBtn = nav.createEl("button", { cls: "bt-calview-today", text: t("cal_today") });
+  if (mobile) {
+    // Match the compact calendar affordance used by native calendar apps: the current day number
+    // is enough visual identity here, while the accessible label still announces the action.
+    todayBtn.empty();
+    todayBtn.addClass("bt-calview-today-compact");
+    todayBtn.setAttr("aria-label", t("cal_today"));
+    todayBtn.createSpan({ text: String(parseISO(today).getDate()) });
+  }
   todayBtn.onclick = () => go(today);
   navBtn("chevron-right", t("cal_next"), () => step(1));
   head.createSpan({ cls: "bt-calview-title", text: rangeTitle(mode, anchor) });
 
   const seg = head.createDiv({ cls: "bt-tabs bt-calview-seg" });
-  const modes = mobile ? CAL_MODES.filter((m) => m === "year" || m === "month" || m === "day") : CAL_MODES;
-  for (const m of modes) {
-    const b = seg.createEl("button", { cls: "bt-tab" + (mode === m ? " is-active" : ""), text: t("cal_mode_" + m) });
-    b.onclick = () => ctx.setOption({ calMode: m });
-  }
+  const modes = mobile ? CAL_MODES.filter((m) => m !== "week") : CAL_MODES;
+  // One compact view picker is predictable at every pane width and avoids a breakpoint where the
+  // five calendar scales only just fail to fit. It also exposes List and Board without requiring
+  // users to discover that layout lives behind the page-level sliders button.
+  const picker = seg.createEl("button", {
+    cls: "bt-tab bt-calview-view-btn is-active",
+    attr: { "aria-label": `${t("layout_calendar")} · ${t("cal_mode_" + mode)}`, "aria-haspopup": "menu" },
+  });
+  picker.createSpan({ cls: "bt-calview-view-lbl", text: t("cal_mode_" + mode) });
+  setIcon(picker.createSpan({ cls: "bt-calview-view-chev" }), "chevron-down");
+  picker.onclick = (event) => {
+    event.stopPropagation();
+    const menu = new Menu();
+    for (const layout of (["list", "board"] as PageLayout[])) {
+      menu.addItem((item) => item
+        .setTitle(t("layout_" + layout))
+        .setChecked(false)
+        .onClick(() => ctx.setLayout(layout)));
+    }
+    menu.addSeparator();
+    for (const m of modes) {
+      menu.addItem((item) => item
+        .setTitle(`${t("layout_calendar")} · ${t("cal_mode_" + m)}`)
+        .setChecked(mode === m)
+        .onClick(() => ctx.setOption({ calMode: m })));
+    }
+    const rect = picker.getBoundingClientRect();
+    menu.showAtPosition({ x: rect.left, y: rect.bottom });
+  };
 
   // Wirklich ungeplante Aufgaben: weder Deadline noch primärer Aufgaben-Zeitplan.
   const unscheduledOf = (list: Task[]): Task[] => list.filter((tk) => !agendaDate(tk) && !plugin.scheduling.getTaskSchedule(tk.id) && isOpen(tk.status));

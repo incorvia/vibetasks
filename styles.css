@@ -266,6 +266,11 @@ body {
      ohnehin breiten Leerrand der Lesebreite, kostet also nichts. */
   scrollbar-gutter: stable both-edges;
 }
+/* Responsive contract (mirrors src/responsive.ts):
+   700px = compact page shell, mobile board and editor; 820px container = calendar-toolbar reflow;
+   1100px = tablet board projection (one selected priority across status columns);
+   500px = small-phone content refinement; 390px = micro-phone refinement. Device/pointer checks
+   may opt into the compact shell, but new layout breakpoints should use this set. */
 /* Inhalt zentriert auf Lesebreite (wie das alte VibeTask). WICHTIG: der seitliche
    Abstand wird über die SIZER-BREITE geregelt, nicht über Padding – denn bei einem
    zentrierten Sizer heben sich Padding und Auto-Margin gegenseitig auf (= kein Effekt).
@@ -2032,14 +2037,23 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-view .bt-layout-toggle .bt-tab:hover { color: var(--text-normal); }
 .bt-view .bt-layout-toggle .bt-tab.is-active { background: none; color: var(--interactive-accent); font-weight: 650; }
 
-/* ── Kanban-Board (Spalten = Status) ── */
-/* Board nutzt volle Pane-Breite statt der Lesebreite (die Liste bleibt schmal). */
+/* ── Unified responsive Kanban ── */
+/* Every page supplies the same renderer with columns, optional priority lanes, and card content.
+   The pane width changes only the projection—not the surface hierarchy or interaction model. */
 .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 48px); }
-.bt-kanban { display: flex; align-items: flex-start; gap: 14px; overflow-x: auto; padding: 10px 2px 16px; }
+.bt-unified-board {
+  --bt-board-column-bg: var(--background-secondary);
+  --bt-board-card-bg: var(--background-primary);
+  display: block; padding: 10px 2px 16px;
+}
+.bt-board-columns {
+  display: grid; grid-template-columns: repeat(var(--bt-board-cols), minmax(260px, 1fr));
+  align-items: start; gap: 14px; overflow-x: auto; padding: 0 0 2px;
+  scrollbar-gutter: stable both-edges;
+}
 .bt-kanban-col {
-  flex: 0 0 300px; width: 300px;
   display: flex; flex-direction: column; max-height: calc(100vh - 220px);
-  background: var(--background-secondary); border: 1px solid var(--bt-line);
+  min-width: 260px; background: var(--bt-board-column-bg); border: 1px solid var(--bt-line);
   border-radius: 10px; padding: 10px 0;   /* horizontaler Abstand liegt an Kopf/Liste/„+" (Scrollbar-Gutter-Ausrichtung) */
 }
 .bt-kanban-col.is-drop { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.06); }
@@ -2052,30 +2066,41 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-kanban-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 40px; overflow-y: auto; padding-inline: 10px; scrollbar-gutter: stable; }
 
 /* Karten: kompakte Kacheln statt Listenzeilen (keine Trennlinie, eigener Rahmen). */
-.bt-kanban-list .bt-task {
+.bt-kanban-list > .bt-task {
   display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 10px; row-gap: 6px;
-  background: var(--background-primary); border: 1px solid var(--bt-line-faint);
+  background: var(--bt-board-card-bg); border: 1px solid var(--bt-line-faint);
   border-radius: 8px; padding: 8px 10px; cursor: grab;
 }
-.bt-kanban-list .bt-task > .bt-check { grid-column: 1; grid-row: 1; }
-.bt-kanban-list .bt-task > .bt-body { grid-column: 2; grid-row: 1; }
-.bt-kanban-list .bt-task:hover, .bt-kanban-list .bt-task.bt-menu-hold { background: var(--background-primary); border-color: var(--bt-line); }
-.bt-kanban-list .bt-task::after { display: none; }
-.bt-kanban-list .bt-task:active { cursor: grabbing; }
-.bt-kanban-list .bt-task.is-dragging { opacity: 0.45; }
+.bt-kanban-list > .bt-task > .bt-check { grid-column: 1; grid-row: 1; }
+.bt-kanban-list > .bt-task > .bt-body { grid-column: 2; grid-row: 1; }
+.bt-kanban-list > .bt-task:hover, .bt-kanban-list > .bt-task.bt-menu-hold { background: var(--bt-board-card-bg); border-color: var(--bt-line); }
+.bt-kanban-list > .bt-task::after { display: none; }
+.bt-kanban-list > .bt-task:active { cursor: grabbing; }
+.bt-kanban-list > .bt-task.is-dragging { opacity: 0.45; }
 
-.bt-kanban-add {
-  display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 10px;
-  color: var(--text-muted); font-size: var(--font-ui-small); cursor: pointer; border-radius: 6px;
+.bt-view button.bt-kanban-add {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 38px; margin: 10px 10px 2px; padding: 8px 12px;
+  color: var(--text-muted); font: inherit; font-size: var(--font-ui-small); cursor: pointer; border-radius: 6px;
+  appearance: none; transform: none;
+  border: 1px solid transparent !important; background: transparent !important;
+  background-image: none !important; box-shadow: none !important;
 }
-.bt-kanban-add:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.bt-view button.bt-kanban-add:hover,
+.bt-view button.bt-kanban-add:active {
+  color: var(--text-normal); background: var(--background-modifier-hover) !important;
+  border-color: transparent !important; box-shadow: none !important; transform: none;
+}
+.bt-view button.bt-kanban-add:focus-visible {
+  background: transparent !important; box-shadow: none !important;
+  outline: 2px solid var(--interactive-accent); outline-offset: 1px;
+}
 
-/* Mobil / schmale Pane: Spalten vertikal stapeln statt nebeneinander scrollen. */
-@media (max-width: 700px) {
-  .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 24px); }
-  .bt-kanban { flex-direction: column; overflow-x: visible; }
-  .bt-kanban-col { flex: 1 1 auto; width: 100%; max-height: none; }
+.bt-unified-board.is-tablet .bt-board-columns {
+  grid-template-columns: repeat(var(--bt-board-cols), minmax(220px, 1fr)); gap: 10px;
 }
+.bt-unified-board.is-tablet .bt-kanban-col { min-width: 220px; }
+@media (max-width: 700px) { .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 24px); } }
 
 /* ── Status-Editor (ListManager-Tab „Status") ── */
 .bt-view .bt-manage-hint { color: var(--text-faint); font-size: var(--font-ui-smaller); margin: 2px 2px 14px; }
@@ -2437,6 +2462,56 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 @media (prefers-reduced-motion: reduce) { .bt-view-panel .bt-panel-switch, .bt-view-panel .bt-panel-switch::after { transition: none; } }
 
+/* Compact page menu: the normal display popover becomes a phone-height drawer. It contains the
+   full page identity plus view/range/display controls, leaving the app bar stable and sparse. */
+.bt-pop.bt-view-panel.bt-mobile-page-menu {
+  left: 0 !important; top: 0 !important; bottom: 0;
+  width: min(88vw, 380px); min-width: 0; max-height: 100dvh !important;
+  padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+  border-radius: 0 14px 14px 0; overflow-y: auto; box-sizing: border-box;
+  box-shadow: 14px 0 34px rgba(0, 0, 0, .28);
+}
+.bt-mobile-menu-identity { position: relative; padding: 2px 42px 16px 2px; }
+.bt-mobile-menu-title { color: var(--text-normal); font-size: 1.05em; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.bt-mobile-menu-desc { margin-top: 5px; color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.4; overflow-wrap: anywhere; }
+.bt-mobile-menu-close {
+  position: absolute; top: -7px; right: -7px; display: grid; place-items: center;
+  width: 40px; height: 40px; padding: 0; border: 0; background: transparent; color: var(--text-muted); box-shadow: none;
+}
+.bt-mobile-menu-close:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.bt-mobile-menu-close svg { width: 19px; height: 19px; }
+.bt-mobile-page-menu .bt-mobile-menu-section {
+  margin: 4px -16px 8px; padding: 14px 18px 0;
+  border-top: 1px solid var(--background-modifier-border-hover);
+  color: var(--text-muted); font-size: .92em; font-weight: 650;
+}
+.bt-mobile-page-menu .bt-layout-toggle { flex-direction: column; gap: 5px; margin: 0; }
+.bt-mobile-page-menu .bt-layout-toggle .bt-tab,
+.bt-mobile-menu-option {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+  padding: 9px 12px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--text-normal); font: inherit; font-size: var(--font-ui-medium); text-align: left; box-shadow: none; cursor: pointer;
+}
+.bt-mobile-page-menu .bt-layout-toggle .bt-tab:hover,
+.bt-mobile-menu-option:hover { background: var(--background-modifier-hover); }
+.bt-mobile-page-menu .bt-layout-toggle .bt-tab.is-active,
+.bt-mobile-menu-option.is-active { background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); color: var(--text-normal); }
+.bt-mobile-menu-row-ic { display: inline-flex; color: var(--text-muted); }
+.bt-mobile-menu-row-ic svg { width: 18px; height: 18px; }
+.bt-mobile-menu-check { display: inline-flex; margin-left: auto; color: var(--text-accent, var(--interactive-accent)); }
+.bt-mobile-menu-check svg { width: 17px; height: 17px; }
+.bt-mobile-menu-options { display: flex; flex-direction: column; gap: 3px; }
+.bt-mobile-page-menu .bt-panel-cap:not(:first-child) { margin-inline: -16px; padding-inline: 18px; }
+.bt-mobile-page-menu .bt-panel-row { min-height: 44px; padding-block: 8px; }
+.bt-mobile-page-menu .bt-panel-reset { width: calc(100% + 32px); margin-inline: -16px; padding-inline: 16px; }
+.bt-mobile-menu-more {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; margin-top: 8px; padding: 9px 12px;
+  border: 0; border-top: 1px solid var(--background-modifier-border-hover); border-radius: 0;
+  background: transparent; color: var(--text-normal); font: inherit; box-shadow: none; cursor: pointer;
+}
+.bt-mobile-menu-more:hover { background: var(--background-modifier-hover); }
+.bt-mobile-menu-more svg { width: 18px; height: 18px; }
+
 /* ── Bestätigungs-/Prompt-Modal ── */
 .bt-confirm-modal { width: 360px; max-width: 92vw; }
 .bt-confirm-modal h3 { margin: 0 0 10px; font-size: 17px; letter-spacing: -0.01em; }
@@ -2574,56 +2649,59 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Kanban-Scrollleisten: dünn (10px-Spur, 3px transparenter Rand -> ~4px sichtbarer Kern), rein
    kosmetisch. Die HORIZONTALE Board-Leiste bleibt IMMER sichtbar (Orientierung bei vielen Spalten);
    die VERTIKALEN Spalten-Leisten sind transparent und erscheinen erst beim Überfahren der Spalte. */
-.bt-kanban, .bt-kanban-list { scrollbar-width: thin; }
-.bt-kanban::-webkit-scrollbar, .bt-kanban-list::-webkit-scrollbar { width: 10px; height: 10px; }
-.bt-kanban::-webkit-scrollbar-track, .bt-kanban-list::-webkit-scrollbar-track { background: transparent; }
-.bt-kanban::-webkit-scrollbar-thumb, .bt-kanban-list::-webkit-scrollbar-thumb {
+.bt-board-columns, .bt-board-matrix, .bt-kanban-list { scrollbar-width: thin; }
+.bt-board-columns::-webkit-scrollbar, .bt-board-matrix::-webkit-scrollbar, .bt-kanban-list::-webkit-scrollbar { width: 10px; height: 10px; }
+.bt-board-columns::-webkit-scrollbar-track, .bt-board-matrix::-webkit-scrollbar-track, .bt-kanban-list::-webkit-scrollbar-track { background: transparent; }
+.bt-board-columns::-webkit-scrollbar-thumb, .bt-board-matrix::-webkit-scrollbar-thumb, .bt-kanban-list::-webkit-scrollbar-thumb {
   border-radius: 10px; border: 3px solid transparent; background-clip: padding-box;
 }
 
 /* Horizontal (Board unten): immer sichtbar */
-.bt-kanban { scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent; }
-.bt-kanban::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg, var(--background-modifier-border)); background-clip: padding-box; }
-.bt-kanban::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg, var(--background-modifier-border-hover)); background-clip: padding-box; }
+.bt-board-columns, .bt-board-matrix { scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent; }
+.bt-board-columns::-webkit-scrollbar-thumb, .bt-board-matrix::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg, var(--background-modifier-border)); background-clip: padding-box; }
+.bt-board-columns::-webkit-scrollbar-thumb:hover, .bt-board-matrix::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg, var(--background-modifier-border-hover)); background-clip: padding-box; }
 
 /* Vertikal (Spalten): transparent, blenden bei Hover über der Spalte ein */
 .bt-kanban-list { scrollbar-color: transparent transparent; }
 .bt-kanban-list::-webkit-scrollbar-thumb { background: transparent; }
-.bt-kanban-col:hover .bt-kanban-list { scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent; }
-.bt-kanban-col:hover .bt-kanban-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg, var(--background-modifier-border)); background-clip: padding-box; }
+.bt-kanban-col:hover .bt-kanban-list, .bt-board-cell:hover .bt-kanban-list { scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent; }
+.bt-kanban-col:hover .bt-kanban-list::-webkit-scrollbar-thumb, .bt-board-cell:hover .bt-kanban-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg, var(--background-modifier-border)); background-clip: padding-box; }
 .bt-kanban-list::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active-thumb-bg, var(--background-modifier-border-hover)); background-clip: padding-box; }
 
-/* Area hierarchy: status columns crossed with optional P1–P4 priority lanes. */
-.bt-area-board {
-  --bt-area-cols: 1;
+/* Desktop swimlanes are the full status × priority projection of the same columns/cards above. */
+.bt-board-matrix {
   display: grid;
-  grid-template-columns: 74px repeat(var(--bt-area-cols), minmax(240px, 1fr));
-  gap: 8px;
-  min-width: max-content;
-  overflow-x: auto;
-  padding: 10px 2px 18px;
+  grid-template-columns: 96px repeat(var(--bt-board-cols), minmax(240px, 1fr));
+  gap: 8px; min-width: max-content; overflow-x: auto; align-items: stretch;
 }
-.bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(260px, 1fr)); }
-.bt-area-board.is-flat .bt-area-board-lane { visibility: hidden; padding: 0; border: 0; }
-.bt-area-board-corner, .bt-area-board-status, .bt-area-board-lane, .bt-area-board-cell {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+.bt-board-matrix-corner { min-height: 42px; }
+.bt-board-matrix > .bt-board-column-head {
+  min-height: 42px; padding: 9px 12px;
+  background: var(--bt-board-column-bg); border: 1px solid var(--bt-line); border-radius: 9px;
 }
-.bt-area-board-corner { min-height: 42px; }
-.bt-area-board-status { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-weight: 600; }
-.bt-area-board-lane { display: flex; align-items: center; justify-content: center; padding: 10px 6px; color: var(--text-muted); font-weight: 700; }
-.bt-area-board-cell { min-height: 110px; padding: 8px; display: flex; flex-direction: column; gap: 7px; }
-.bt-area-board-cell.is-drop { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 7%, transparent); }
-.bt-area-board-cell > .bt-task, .bt-area-project-card {
-  border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary-alt); padding: 7px;
+.bt-board-lane-head {
+  padding: 12px 8px; border-top: 1px solid var(--bt-line); color: var(--text-normal);
 }
-.bt-area-board-cell > .bt-task { cursor: grab; }
+.bt-board-lane-title { font-weight: 650; }
+.bt-board-lane-count { margin-top: 4px; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.bt-board-cell {
+  min-height: 110px; display: flex; flex-direction: column;
+  background: var(--bt-board-column-bg); border: 1px solid var(--bt-line); border-radius: 9px; padding: 8px 0;
+}
+.bt-board-cell.is-drop { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.06); }
+.bt-board-cell > .bt-kanban-list { overflow-y: visible; padding-inline: 8px; }
+.bt-board-cell > .bt-kanban-add { margin-inline: 8px; }
+.bt-board-cell-content > .bt-task, .bt-area-project-card {
+  border: 1px solid var(--bt-line-faint); border-radius: 8px; background: var(--bt-board-card-bg); padding: 7px;
+}
+.bt-board-cell-content > .bt-task { cursor: grab; }
 .bt-area-project-card.is-dragging { opacity: .45; }
 .bt-area-project-head { display: flex; align-items: center; gap: 7px; min-height: 32px; cursor: pointer; }
 .bt-area-project-icon, .bt-area-project-chevron { display: inline-flex; color: var(--text-muted); }
 .bt-area-project-icon svg { width: 16px; height: 16px; }
 .bt-area-project-chevron svg { width: 14px; height: 14px; }
 .bt-area-project-title { min-width: 0; flex: 1; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-area-project-meta { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 .bt-area-project-status, .bt-area-project-priority, .bt-area-project-progress { font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 999px; padding: 2px 6px; }
 .bt-area-project-add { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; background: transparent; box-shadow: none; }
 .bt-area-project-add svg { width: 14px; height: 14px; }
@@ -2638,12 +2716,56 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   margin: var(--bt-content-group-gap) 0 0;
   border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px;
 }
-@media (max-width: 700px) {
-  .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
-  .bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(220px, 1fr)); }
+
+/* Tablet selects one priority but retains every status column. Mobile selects one status and,
+   when swimlanes are enabled, presents that status as short priority sections. */
+.bt-view .bt-board-axis-tabs {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, auto); gap: 0; width: max-content;
+  margin: 0 0 12px auto; padding: 4px; overflow: hidden; border: 0; border-radius: 10px;
+  background: var(--background-secondary); box-shadow: none;
 }
-.bt-view.bt-mobile .bt-area-board { grid-template-columns: 54px repeat(var(--bt-area-cols), minmax(210px, 1fr)); }
-.bt-view.bt-mobile .bt-area-board.is-flat { grid-template-columns: 0 repeat(var(--bt-area-cols), minmax(220px, 1fr)); }
+/* This is one segmented control, not a row of standalone theme buttons. The stronger selector
+   and explicit resets keep themes such as Border from adding a raised surface to every segment. */
+.bt-view button.bt-board-axis-tab {
+  min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 0; padding: 7px 14px; border-radius: 8px; color: var(--text-muted); white-space: nowrap;
+  appearance: none; transform: none;
+  border: 0 !important; background: transparent !important; background-image: none !important;
+  box-shadow: none !important;
+}
+.bt-view button.bt-board-axis-tab:hover { color: var(--text-normal); background: var(--background-modifier-hover) !important; transform: none; }
+.bt-view button.bt-board-axis-tab.is-active { color: var(--text-normal); background: var(--background-primary) !important; }
+.bt-view button.bt-board-axis-tab:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: -2px; box-shadow: none !important;
+}
+.bt-board-axis-count { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.bt-board-mobile-lanes { display: flex; flex-direction: column; gap: 14px; }
+.bt-board-mobile-lane { border-top: 1px solid var(--bt-line); padding-top: 10px; }
+.bt-board-mobile-lane-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 0 8px 8px;
+  color: var(--text-normal); font-weight: 650;
+}
+
+.bt-unified-board.is-mobile { padding-top: 6px; }
+.bt-unified-board.is-mobile .bt-board-axis-tabs {
+  width: 100%; grid-auto-columns: minmax(88px, 1fr); margin-bottom: 14px; overflow-x: auto;
+}
+.bt-unified-board.is-mobile .bt-board-axis-tab > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.bt-unified-board.is-mobile .bt-board-columns { display: block; overflow: visible; }
+.bt-unified-board.is-mobile .bt-kanban-col { width: 100%; min-width: 0; max-height: none; }
+.bt-unified-board.is-mobile .bt-board-cell { min-height: 0; }
+.bt-unified-board.is-mobile .bt-task { cursor: default; }
+.bt-unified-board.is-mobile > .bt-kanban-add {
+  width: 100%; justify-content: center; margin: 12px 0 0; border: 1px solid var(--bt-line); background: var(--bt-board-card-bg);
+}
+.bt-kanban-list > .bt-task.has-board-move { grid-template-columns: 16px minmax(0, 1fr) 32px; }
+.bt-kanban-list > .bt-task.has-board-move > .bt-board-move {
+  grid-column: 3; grid-row: 1; align-self: start; display: inline-grid; place-items: center;
+  width: 32px; height: 32px; margin: -5px -6px 0 0; padding: 0; border: 0; border-radius: 7px;
+  color: var(--text-muted); background: transparent; box-shadow: none;
+}
+.bt-kanban-list > .bt-task.has-board-move > .bt-board-move:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.bt-kanban-list > .bt-task.has-board-move > .bt-board-move svg { width: 17px; height: 17px; }
 
 /* Kanban: Spaltenkopf als Ziehgriff zum Umsortieren der Spalten (nicht Priorität/Sentinel).
    Grip-Dots-Icon als Hover-Signal: absolut im linken Kopf-Abstand -> kein Layout-Versatz. */
@@ -2840,7 +2962,11 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
    auto-Margin schlägt in einem Flex-Container das stretch – ohne die feste Breite schrumpft die
    Seite auf Inhaltsbreite (die Wochenansicht wurde dadurch schmal und zentriert). */
 .bt-view .bt-sizer.bt-calview-host { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; width: 100%; }
-.bt-calview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.bt-calview {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  /* Header controls react to the width of their pane, including split-screen desktop panes. */
+  container: bt-calendar / inline-size;
+}
 .bt-calview-timegrid { display: flex; position: relative; }
 .bt-calview-hours { position: relative; }
 .bt-calview-hour { position: relative; }
@@ -3123,6 +3249,15 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 .bt-calview-mobile .bt-calview-seg { grid-column: 2; grid-row: 1; flex: none; }
 .bt-calview-mobile .bt-calview-seg .bt-tab { min-height: 36px; padding-inline: 9px; }
+.bt-calview-view-btn { display: inline-flex; align-items: center; gap: 5px; max-width: 120px; }
+.bt-calview-mobile .bt-calview-view-btn { display: none; }
+.bt-calview-view-lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-calview-view-chev { display: inline-flex; flex: 0 0 auto; }
+.bt-calview-view-chev svg { width: 13px; height: 13px; }
+.bt-calview-mobile .bt-calview-today-compact {
+  width: 36px; min-width: 36px; height: 36px; padding: 0; border-radius: 8px;
+  color: var(--text-normal); font-variant-numeric: tabular-nums;
+}
 .bt-calview-mobile .bt-calview-panel-btn { min-width: 38px; justify-content: center; }
 .bt-calview-mobile .bt-calview-body { position: relative; isolation: isolate; overflow: hidden; gap: 0; }
 .bt-calview-mobile .bt-calview-week { width: 100%; touch-action: pan-y; }
@@ -3158,11 +3293,25 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-calview-mobile .bt-calview-panel-list { overscroll-behavior: contain; }
 @keyframes bt-calview-drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @media (max-width: 390px) {
-  .bt-calview-mobile .bt-calview-today { padding-inline: 10px; }
   .bt-calview-mobile .bt-calview-seg .bt-tab { padding-inline: 7px; }
   .bt-calview-mobile .bt-calview-year { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .bt-calview-mobile .bt-calview-panel { animation: none; } }
+
+/* Below this component width the date moves under the controls. Unlike a viewport media query,
+   this also covers a calendar in a narrow desktop split pane. */
+@container bt-calendar (max-width: 820px) {
+  .bt-calview-head {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px;
+    margin-bottom: 6px;
+  }
+  .bt-calview-nav { grid-column: 1; min-width: 0; }
+  .bt-calview-title {
+    grid-column: 1 / -1; grid-row: 2; justify-self: start;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 0.92em;
+  }
+  .bt-calview-seg { grid-column: 2; grid-row: 1; flex: none; }
+}
 
 /* Kompakte Checkbox für den Kalender: dieselbe .bt-check, nur kleiner – die Chips sind ~20 px hoch.
    Alles andere (Zustände, Prioritäts-Ring, Status-Icon, Klick/Rechtsklick) erbt sie unverändert. */
@@ -3264,26 +3413,53 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 .bt-view .bt-page-top .bt-head-actions:empty { display: none; }
 .bt-view .bt-page-top .bt-head-actions > .bt-tabs { margin: 0; }
+/* List pages use the readable content column, so their controls must end at that column's edge as
+   well. Board and Calendar use `.bt-sizer-board` and intentionally keep the pane-edge placement
+   above. This is a layout distinction, not another responsive breakpoint. */
+.bt-view .bt-page-top-in:not(.bt-sizer-board) .bt-board-head {
+  align-items: center; flex-wrap: nowrap;
+}
+.bt-view .bt-page-top-in:not(.bt-sizer-board) .bt-board-head > h1 {
+  flex: 1 1 auto; min-width: 0;
+}
+.bt-view .bt-page-top-in:not(.bt-sizer-board) .bt-head-actions {
+  position: static; flex: 0 0 auto; margin-left: auto;
+}
 @media (max-width: 700px) {
   /* Narrow desktop panes use the same compact header grammar as mobile. */
   .bt-view .bt-sizer { max-width: calc(100% - 24px); }
-  .bt-view .bt-page-top { padding: 14px 0 6px; }
+  .bt-view .bt-page-top { padding: 6px 0 4px; }
   .bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
   .bt-view .bt-page-top .bt-board-head {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
   }
   .bt-view .bt-page-top .bt-board-head > h1 {
-    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1 1 170px; min-width: 0; margin-block: 4px;
+    overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere;
   }
   .bt-view .bt-page-top .bt-head-actions {
-    position: static; width: auto; margin: 0; justify-content: flex-end; flex-wrap: nowrap;
+    position: static; width: auto; margin: 0 0 0 auto; justify-content: flex-end; flex-wrap: nowrap;
   }
+  .bt-view .bt-record-title { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .bt-view .bt-page-desc.is-empty { display: none; }
   .bt-view .bt-page-add-lbl, .bt-view .bt-anzeige-lbl { display: none; }
   .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
   .bt-view .bt-anzeige { width: 40px; min-width: 40px; padding-inline: 0; justify-content: center; }
   .bt-view > .bt-inline-new.bt-task-modal {
     max-width: calc(100% - 24px);
   }
+  .bt-area-project-head {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
+    align-items: center; column-gap: 7px; row-gap: 6px;
+  }
+  .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+  .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+  .bt-area-project-title {
+    grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+  .bt-area-project-add { grid-column: 4; grid-row: 1; }
 }
 @media (pointer: coarse) {
   .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
@@ -3304,18 +3480,26 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 /* Obsidian Mobile may expose a desktop-sized CSS viewport and desktop pointer capabilities.
    JavaScript therefore marks our view explicitly with Platform.isMobile. */
+.bt-view.bt-mobile {
+  --bt-page-content-gap: 1.25em;
+  --bt-content-group-gap: 1.6em;
+}
 .bt-view.bt-mobile .bt-sizer { width: calc(100% - 24px); max-width: calc(100% - 24px); }
-.bt-view.bt-mobile .bt-page-top { padding: 14px 0 6px; }
+.bt-view.bt-mobile .bt-page-top { padding: 6px 0 4px; }
 .bt-view.bt-mobile > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
 .bt-view.bt-mobile .bt-page-top .bt-board-head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
 }
 .bt-view.bt-mobile .bt-page-top .bt-board-head > h1 {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 170px; min-width: 0; margin-block: 4px;
+  overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere;
 }
 .bt-view.bt-mobile .bt-page-top .bt-head-actions {
-  position: static; width: auto; margin: 0; justify-content: flex-end; flex-wrap: nowrap;
+  position: static; width: auto; margin: 0 0 0 auto; justify-content: flex-end; flex-wrap: nowrap;
 }
+.bt-view.bt-mobile .bt-record-title { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.bt-view.bt-mobile .bt-page-top h1 { font-size: 1.5em; }
+.bt-view.bt-mobile .bt-page-desc { display: none; }
 .bt-view.bt-mobile .bt-page-add-lbl,
 .bt-view.bt-mobile .bt-anzeige-lbl { display: none; }
 .bt-view.bt-mobile .bt-board-head .bt-head-actions button.bt-page-add,
@@ -3326,6 +3510,59 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-view.bt-mobile .bt-board-head .bt-head-actions .bt-manage-btn {
   width: 44px; height: 44px;
 }
+/* Stable mobile app bar. Symmetric 88px side slots keep the identity centered even though the
+   right side has two actions and the left only one. Full text remains available in the drawer. */
+.bt-view.bt-mobile .bt-page-top .bt-board-head.bt-mobile-app-head {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr) 88px;
+  align-items: center; gap: 0; min-height: 52px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.bt-mobile-head-menu,
+.bt-mobile-head-today {
+  display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0;
+  border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); box-shadow: none;
+}
+.bt-mobile-head-menu { justify-self: start; }
+.bt-mobile-head-menu:hover,
+.bt-mobile-head-today:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.bt-mobile-head-menu svg,
+.bt-mobile-head-today svg { width: 20px; height: 20px; }
+.bt-mobile-head-identity { min-width: 0; text-align: center; }
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-identity > h1 {
+  display: block; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 1.2em; line-height: 1.2;
+}
+.bt-view.bt-mobile .bt-mobile-head-identity .bt-record-icon { display: none; }
+.bt-view.bt-mobile .bt-mobile-head-identity .bt-record-title {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-mobile-head-status {
+  margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.2;
+}
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions {
+  display: flex; width: 88px; margin: 0; justify-content: flex-end; gap: 0;
+}
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions button.bt-page-add,
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions .bt-mobile-head-today {
+  width: 44px; min-width: 44px; height: 44px; min-height: 44px;
+  border: 0; border-radius: 9px; background: transparent; box-shadow: none;
+}
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions button.bt-page-add:hover,
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions .bt-mobile-head-today:hover { background: var(--background-modifier-hover); }
+.bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions .bt-page-add-ic svg { width: 20px; height: 20px; }
+.bt-view.bt-mobile .bt-area-project-head {
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
+  align-items: center; column-gap: 7px; row-gap: 6px;
+}
+.bt-view.bt-mobile .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+.bt-view.bt-mobile .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+.bt-view.bt-mobile .bt-area-project-title {
+  grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
+  white-space: normal; overflow-wrap: anywhere;
+}
+.bt-view.bt-mobile .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+.bt-view.bt-mobile .bt-area-project-add { grid-column: 4; grid-row: 1; }
 /* Hover-only manual insertion affordances become permanently visible on touch. The page Add
    action is the unambiguous mobile creation path. */
 .bt-view.bt-mobile .bt-row-insert { display: none; }

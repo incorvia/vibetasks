@@ -1750,8 +1750,9 @@ export default class VibeTaskPlugin extends Plugin {
     this.renderAll();
   }
 
-  /** Manuelle Kanban-Spalten-Reihenfolge je Gruppierung setzen (board-eigen, entkoppelt von der
-   *  Sidebar). keys = Spalten-IDs in gewünschter Reihenfolge (ohne Sentinel „Ohne …"). */
+  /** Manuelle Kanban-Spalten-Reihenfolge für Label-/Projekt-Gruppierungen setzen (board-eigen,
+   *  entkoppelt von der Sidebar). Status-Spalten folgen dagegen immer der Status-Einstellung.
+   *  keys = Spalten-IDs in gewünschter Reihenfolge (ohne Sentinel „Ohne …"). */
   async setBoardColumnOrder(groupKey: string, keys: string[]): Promise<void> {
     const map = this.settings.boardColumnOrder ?? {};
     map[groupKey] = keys;

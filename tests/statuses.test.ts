@@ -37,6 +37,7 @@ describe("Status-Registry (user-definiert)", () => {
   it("übernimmt eigene Liste und Reihenfolge", () => {
     initStatuses(custom);
     expect(allStatuses().map((s) => s.id)).toEqual(["backlog", "review", "shipped", "cancelled"]);
+    expect(boardStatuses().map((s) => s.id)).toEqual(["backlog", "review", "shipped"]);
     expect(firstOpenStatus()).toBe("backlog");
     expect(firstDoneStatus()).toBe("shipped");
     expect(isDone("shipped")).toBe(true);
