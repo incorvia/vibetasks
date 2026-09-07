@@ -229,11 +229,11 @@ export function buildFacets(plugin: OpalTasksPlugin, ids: readonly FacetId[],
       const c = get();
       // Der Eingang kann unter mehreren Namen gespeichert sein („Inbox"/„Eingang", s. isInboxName) –
       // die Engine matcht ihn trotzdem, also ist er nie verwaist.
-      const stale = orphanKeys(["Inbox", ...[...bereiche, ...projekte].map((p) => p.name)],
+      const stale = orphanKeys(["Inbox", ...[...bereiche, ...projekte].map((p) => p.id)],
         [...c.projects, ...c.projectsNot].filter((k) => !isInboxName(k)));
       out.push({ id, label: t("filter_projects"),
         opts: [{ key: "Inbox", label: t("nav_inbox") },
-          ...[...bereiche, ...projekte].map((p) => ({ key: p.name, label: projectDisplayName(p.name) })),
+          ...[...bereiche, ...projekte].map((p) => ({ key: p.id, label: projectDisplayName(p.name) })),
           ...staleOpts(stale)],
         multi: pickMulti(get, set, "projects", "projectsNot", stale) });
     } else {

@@ -94,8 +94,10 @@ export function addGcalSyncItem(menu: Menu, plugin: OpalTasksPlugin, path: strin
 export function openEdit(plugin: OpalTasksPlugin, item: NavMenuItem, focus: EditFocus = "name"): void {
   if (item.sec === "filters") { new FilterModal(plugin, item.key, undefined, focus).open(); return; }
   const kind = item.sec === "labels" ? "label" : (item.type ?? "project");
-  const managed = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived).find((p) => p.path === item.key);
-  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: managed?.description ?? "", area: managed?.area ?? null, workflowStatus: managed?.workflowStatus, priority: managed?.priority }, focus).open();
+  const all = listManaged(plugin.app).active.concat(listManaged(plugin.app).archived);
+  const managed = all.find((p) => p.path === item.key);
+  const area = managed?.areaId ? all.find((candidate) => candidate.id === managed.areaId)?.path ?? null : managed?.area ?? null;
+  new NewItemModal(plugin, kind, { key: item.key, name: item.name, color: item.color ?? null, visible: !item.hidden, description: managed?.description ?? "", area, workflowStatus: managed?.workflowStatus, priority: managed?.priority }, focus).open();
 }
 
 function setVisible(plugin: OpalTasksPlugin, sec: NavSection, key: string, visible: boolean): Promise<void> {
@@ -154,12 +156,7 @@ export function buildItemMenu(menu: Menu, plugin: OpalTasksPlugin, item: NavMenu
       }));
   }
   if (isProjLike) {
-    const record = plugin.app.vault.getAbstractFileByPath(item.key);
-    const raw: unknown = record instanceof TFile
-      ? plugin.app.metadataCache.getFileCache(record)?.frontmatter?.linked_note
-      : undefined;
-    const link = typeof raw === "string" ? raw.match(/^\[\[([^\]|#]+)/)?.[1] : undefined;
-    const linked = link ? plugin.app.metadataCache.getFirstLinkpathDest(link, item.key) : null;
+    const linked = plugin.linkedCollectionNote(item.key);
     if (linked) {
       menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_open_linked_note")).setIcon("external-link")
         .onClick(() => void plugin.app.workspace.getLeaf("tab").openFile(linked)));

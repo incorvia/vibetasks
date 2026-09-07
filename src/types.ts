@@ -50,7 +50,9 @@ export interface Task {
   dueTime: string | null;  // "HH:mm" oder null (für Kalender/Uhrzeit)
   estimate?: number | null; // erwarteter Gesamtaufwand in Minuten
   project: string | null;  // aufgelöster Pfad der zugeordneten Liste (Projekt ODER Bereich; Typ lebt an der Liste)
+  projectId?: string | null; // stabile Identität der Liste (`opal_project_id`)
   parent: string | null;   // aufgelöster Pfad der Eltern-Aufgabe
+  parentId?: string | null; // stabile Identität der Eltern-Aufgabe (`opal_parent_id`)
   labels: string[];
   description: string;          // kurzer Zusatztext, im Frontmatter (`description`); NICHT der Notiz-Body
   recurrence: string | null;

@@ -1,6 +1,6 @@
 import { App, Component, TFile } from "obsidian";
 import { Task, Priority, OpalTasksSettings } from "./types";
-import { archivedProjectNames, isInboxName, isProjectType, resolveProjectPath, baseName, isUnderFolder, folderPrefix, isUnderPrefix } from "./taskService";
+import { archivedProjectNames, isInboxName, isProjectType, resolveProjectPath, baseName, isUnderFolder, folderPrefix, isUnderPrefix, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
 import { isKnownStatus, isOpen, isDone, isTrashed, firstOpenStatus } from "./statuses";
 import { titleKey, fmTitle, firstH1, resolveTitle } from "./taskTitle";
 import { fieldKey, labelKey } from "./fieldNames";
@@ -45,6 +45,7 @@ export const TEMPLATE_SCOPE: IndexScope = { typeValue: "template", restrictTo: (
 export class TaskIndex extends Component {
   private byPath = new Map<string, Task>();
   private byId = new Map<string, string>();        // id -> path (überlebt Umbenennen, für Sync)
+  private recordPaths = new Map<string, { path: string; type: string }>();
   private commentCounts = new Map<string, number>(); // path -> Anzahl [!log]-Einträge (Kommentare/Anhänge)
   private subs = new Set<() => void>();
   private timer: number | null = null;
@@ -187,6 +188,13 @@ export class TaskIndex extends Component {
     // Feldnamen-Wechsel sucht er sonst weiter unter dem alten Schlüssel (s. scanCache).
     clearScanCaches();
     const alle = this.app.vault.getMarkdownFiles();
+    this.recordPaths.clear();
+    for (const file of alle) {
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const type: unknown = fm?.[fieldKey("type")];
+      if (typeof fm?.id === "string" && typeof type === "string" && (!isProjectType(type) || isCollectionPath(file.path)))
+        this.recordPaths.set(fm.id, { path: file.path, type });
+    }
     const files = alle.filter((f) => this.inScope(f.path));
     for (const f of files) this.upsert(f, false, true);   // Frontmatter sofort, Body separat (s. u.)
     // Body-Metadaten (Beschreibung + Kommentarzahl) asynchron nachladen – und GENAU EINMAL melden.
@@ -237,8 +245,17 @@ export class TaskIndex extends Component {
       if (wasProject || severed.length) this.notify();
     }));
     this.registerEvent(vault.on("rename", (f, old) => {
+      const movedId = [...this.recordPaths].find(([, record]) => record.path === old)?.[0];
       this.remove(old, false);
       if (f instanceof TFile) this.upsert(f, false);
+      if (movedId && f instanceof TFile) {
+        for (const [path, task] of this.byPath) {
+          let next = task;
+          if (task.projectId === movedId) next = { ...next, project: f.path };
+          if (task.parentId === movedId) next = { ...next, parent: f.path };
+          if (next !== task) this.byPath.set(path, next);
+        }
+      }
       this.notify();
     }));
     this.notify();
@@ -247,6 +264,11 @@ export class TaskIndex extends Component {
   // ── Mutation (inkrementell, nie Vollscan im Betrieb) ──
   private upsert(f: TFile, notify = true, skipBody = false): void {
     if (f.extension !== "md") return;
+    for (const [id, record] of this.recordPaths) if (record.path === f.path) this.recordPaths.delete(id);
+    const rawFm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+    const rawType: unknown = rawFm?.[fieldKey("type")];
+    if (typeof rawFm?.id === "string" && typeof rawType === "string" && (!isProjectType(rawType) || isCollectionPath(f.path)))
+      this.recordPaths.set(rawFm.id, { path: f.path, type: rawType });
     // Ordner-gebundener Index (Vorlagen): alles ausserhalb geht ihn nichts an – auch nicht der
     // Projekt-Zweig unten, der sonst bei JEDER fremden Dateiänderung im Vault eine Meldung
     // auslöste und damit die Vorlagen-Ansicht grundlos neu zeichnen liesse.
@@ -278,6 +300,7 @@ export class TaskIndex extends Component {
   }
 
   private remove(path: string, notify = true): void {
+    for (const [id, record] of this.recordPaths) if (record.path === path) this.recordPaths.delete(id);
     const t = this.byPath.get(path);
     this.commentCounts.delete(path);
     if (!t) return;
@@ -317,6 +340,16 @@ export class TaskIndex extends Component {
       return dest ? dest.path : null;
     };
     const fromFm = fmTitle(fm[titleKey()]);
+    const projectId = typeof fm[OPAL_PROJECT_ID] === "string" ? fm[OPAL_PROJECT_ID] : null;
+    const parentId = typeof fm[OPAL_PARENT_ID] === "string" ? fm[OPAL_PARENT_ID] : null;
+    const projectRecord = projectId ? this.recordPaths.get(projectId) : undefined;
+    // Compatibility for the broken first stable-ID migration: records that lacked an ID were
+    // represented by their path, and that path was then written to `opal_project_id`. Resolve it
+    // by basename until the repair migration normalizes the stored value.
+    const legacyCanonicalProject = projectId && !projectRecord
+      ? (this.projectPaths().get(baseName(projectId).toLowerCase()) ?? null)
+      : null;
+    const parentRecord = parentId ? this.recordPaths.get(parentId) : undefined;
     return {
       id: String(fm.id ?? f.path),
       path: f.path,
@@ -336,8 +369,11 @@ export class TaskIndex extends Component {
       sortOrder: asNum(fm.sort_order),
       // Projekt über den Basenamen gegen echte Projekt-/Bereichs-Notizen (immun gegen gleichnamige
       // Fremd-Notizen, s. resolveProjectPath). `parent` bleibt beim generischen Link-Resolver.
-      project: resolveProjectPath(fm.project, this.projectPaths()),
-      parent: link(fm.parent),
+      project: projectId ? (projectRecord && isProjectType(projectRecord.type) ? projectRecord.path : legacyCanonicalProject)
+        : resolveProjectPath(fm.project, this.projectPaths()),
+      projectId,
+      parent: parentId ? (parentRecord?.type === this.scope.typeValue && this.inScope(parentRecord.path) ? parentRecord.path : null) : link(fm.parent),
+      parentId,
       labels: Array.isArray(fm[labelKey()]) ? (fm[labelKey()] as unknown[]).map(String) : [],
       description: typeof fm.description === "string" ? fm.description : "",
       recurrence: typeof fm.recurrence === "string" ? fm.recurrence : null,
@@ -428,7 +464,8 @@ export class TaskIndex extends Component {
   }
 
   /** Eingang, ALLE Status (fürs Board): „nicht einsortiert" = alter `[[Inbox]]`-Verweis ODER
-   *  (optional, per Einstellung) gar kein Projekt. Papierkorb bleibt außen vor (globaler Papierkorb). */
+   *  (optional, per Einstellung) kein AUFLÖSBARES Projekt. A dangling stable ID must stay visible
+   *  here so a failed/partial migration cannot make a task disappear. */
   inbox(): Task[] {
     const filed = this.all().filter((t) => t.project != null && isInboxName(baseName(t.project)) && !isTrashed(t.status));
     const unfiled = this.getSettings().showUnfiledInInbox ? this.all().filter((t) => !t.project && !isTrashed(t.status)) : [];

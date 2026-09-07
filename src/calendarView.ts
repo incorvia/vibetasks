@@ -76,7 +76,7 @@ const monthYear = (isoDate: string): string =>
   new Intl.DateTimeFormat(getLocale(), { month: "long", year: "numeric" }).format(parseISO(isoDate));
 
 /** Projekt/Label der Seite – eine hier angelegte Aufgabe erbt sie (wie „+ Aufgabe" der Liste). */
-export interface CalendarAdd { project?: string | null; label?: string }
+export interface CalendarAdd { project?: string | null; projectId?: string | null; label?: string }
 
 /** Jeder Modus-Zeichner liefert diese Füll-Funktion: Aufgaben UND Termine des Zeitraums, jeweils
  *  nach Tag gebündelt. Das Gerüst bleibt stehen, nur der Inhalt wird neu gezeichnet. */
@@ -425,7 +425,7 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
     const num = cell.createDiv({ cls: "bt-calview-daynum", text: String(parseISO(day).getDate()) });
     const activate = (): void => mobileZoom
       ? mobileZoom(day, "day")
-      : plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label);
+      : plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label, add.projectId);
     num.onclick = (e) => { e.stopPropagation(); activate(); };
     cell.onclick = activate;
 
@@ -535,7 +535,7 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
     const d = head.createDiv({ cls: "bt-calview-dayhead" + (day === today ? " is-today" : "") });
     d.createSpan({ cls: "bt-calview-dayhead-wd", text: weekdayShort(parseISO(day).getDay()) });
     d.createSpan({ cls: "bt-calview-dayhead-num", text: String(parseISO(day).getDate()) });
-    d.onclick = () => plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label);
+    d.onclick = () => plugin.openNewTaskOn(day, null, add.project ?? undefined, add.label, add.projectId);
   }
 
   // Ganztägig-Zeile: alles ohne Uhrzeit. Drop hierher entfernt eine gesetzte Uhrzeit.
@@ -574,7 +574,7 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
       if (e.target !== col) return;                        // nur die freie Fläche, nicht ein Block
       const minutes = snap(yToMin(e.clientY, col)), time = hhmm(minutes);
       openPopover(col, (pop, close) => {
-        popRow(pop, "plus-circle", "New task", () => { plugin.openNewTaskOn(day, time, add.project ?? undefined, add.label); close(); });
+        popRow(pop, "plus-circle", "New task", () => { plugin.openNewTaskOn(day, time, add.project ?? undefined, add.label, add.projectId); close(); });
         popRow(pop, "calendar-plus", "New time block", () => { new TimeBlockModal(plugin, new Date(`${day}T${time}:00`)).open(); close(); });
       });
     };
@@ -707,7 +707,7 @@ function renderUnscheduled(body: HTMLElement, plugin: OpalTasksPlugin, add: Cale
   setIcon(addEl.createSpan({ cls: "bt-calview-panel-add-ic" }), "plus");
   addEl.createSpan({ text: t("btn_add_task") });
   // Ohne Datum anlegen – die Aufgabe landet genau hier und wird später eingeplant.
-  addEl.onclick = () => plugin.openNewTask(add.project ?? undefined, add.label);
+  addEl.onclick = () => plugin.openNewTask(add.project ?? undefined, add.label, false, undefined, undefined, undefined, undefined, add.projectId);
 
   return (tasks: Task[]): void => {
     count.setText(String(tasks.length));

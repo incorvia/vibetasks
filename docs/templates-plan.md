@@ -60,9 +60,9 @@ zweiten Fall entsteht keine Hülle.
 _opal_tasks/templates/
 ├── Urlaub vorbereiten/
 │   ├── Urlaub vorbereiten.md     type: template · template_of: task     ← Wurzel
-│   ├── Reisepass prüfen.md       type: template · parent: [[Urlaub vorbereiten]]
-│   ├── Koffer packen.md          type: template · parent: [[Urlaub vorbereiten]]
-│   └── Wohnung übergeben.md      type: template · parent: [[Urlaub vorbereiten]]
+│   ├── Reisepass prüfen.md       type: template · opal_parent_id: <root-id>
+│   ├── Koffer packen.md          type: template · opal_parent_id: <root-id>
+│   └── Wohnung übergeben.md      type: template · opal_parent_id: <root-id>
 └── Website-Relaunch/
     ├── Website-Relaunch.md       type: template · template_of: project  ← Wurzel
     └── …
@@ -70,7 +70,7 @@ _opal_tasks/templates/
 
 **Ein Unterordner je Vorlage ist nicht Ordnungssinn, sondern nötig.** Verweise gehen über den
 Basenamen, und Vorlagen wiederholen generische Schritte („Prüfen", „Abnahme"). Flach in einem Topf
-zeigte `parent: [[Prüfen]]` irgendwann auf die falsche Vorlage. Obsidian löst Wikilinks bevorzugt
+zeigte ein früheres `parent: [[Prüfen]]` irgendwann auf die falsche Vorlage. `opal_parent_id` löst
 im eigenen Ordner auf — der Unterordner beseitigt die Zweideutigkeit, statt sie zu verwalten.
 
 `template_of` steht nur an der Wurzel; die Kinder brauchen es nicht.
@@ -113,7 +113,7 @@ im eigenen Ordner auf — der Unterordner beseitigt die Zweideutigkeit, statt si
 ### Stufe 2 — Projektvorlagen ✅
 Dieselbe Maschinerie eine Ebene höher, plus die Wahl „neues Projekt" / „bestehendes Projekt".
 
-**Der eine Kniff:** Im Vault gehört eine Aufgabe über `project: [[Name]]` zu ihrem Projekt, nicht
+**Der eine Kniff:** Im Vault gehört eine Aufgabe über `opal_project_id` zu ihrem Projekt, nicht
 über `parent`. In der Vorlage wäre das eine Sackgasse — `descendants()` läuft über `parent`, ohne
 diese Kette fände weder die Grössenangabe noch das Anwenden eine einzige Aufgabe. Deshalb:
 

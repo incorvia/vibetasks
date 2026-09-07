@@ -8,6 +8,7 @@ import {
 import { isKnownStatus } from "./statuses";
 import { CalMode, CAL_MODES } from "./calendarModel";
 import { updateRecord } from "./mdbaseRepository";
+import { OPAL_PROJECT_IDS, OPAL_PROJECT_IDS_NOT, isInboxName } from "./taskService";
 
 // Gemeinsames Lesen/Schreiben der Anzeige-Optionen (Layout/Sortieren/Gruppieren/Erledigte).
 // Notiz-Seiten (Projekte, Bereiche, Filter) speichern sie im Frontmatter (obsidian-nativ,
@@ -89,7 +90,12 @@ export function readCriteria(rec: Record<string, unknown> | undefined): FilterCr
     statuses: asStrArr(fm.statuses).filter(isKnownStatus), statusesNot: asStrArr(fm.statuses_not).filter(isKnownStatus),
     priorities: prio(fm.priorities), prioritiesNot: prio(fm.priorities_not),
     labels: asStrArr(fm.labels), labelsAll: asStrArr(fm.labels_all), labelsNot: asStrArr(fm.labels_not),
-    projects: asStrArr(fm.projects), projectsNot: asStrArr(fm.projects_not),
+    projects: (OPAL_PROJECT_IDS in fm || "opal_include_inbox" in fm)
+      ? [...asStrArr(fm[OPAL_PROJECT_IDS]), ...(fm.opal_include_inbox === true ? ["Inbox"] : [])]
+      : asStrArr(fm.projects),
+    projectsNot: (OPAL_PROJECT_IDS_NOT in fm || "opal_exclude_inbox" in fm)
+      ? [...asStrArr(fm[OPAL_PROJECT_IDS_NOT]), ...(fm.opal_exclude_inbox === true ? ["Inbox"] : [])]
+      : asStrArr(fm.projects_not),
     subtaskMode: oneOf<SubtaskFilter>(fm.subtask_mode, SUBTASK_FILTERS, DEFAULT_CRITERIA.subtaskMode),
     search: typeof fm.search === "string" ? fm.search : "",
   };
@@ -107,8 +113,11 @@ export function writeCriteria(rec: Record<string, unknown>, c: FilterCriteria): 
   setOrDel("labels", c.labels.length ? c.labels : null);
   setOrDel("labels_all", c.labelsAll.length ? c.labelsAll : null);
   setOrDel("labels_not", c.labelsNot.length ? c.labelsNot : null);
-  setOrDel("projects", c.projects.length ? c.projects : null);
-  setOrDel("projects_not", c.projectsNot.length ? c.projectsNot : null);
+  setOrDel(OPAL_PROJECT_IDS, c.projects.filter((v) => !isInboxName(v)).length ? c.projects.filter((v) => !isInboxName(v)) : null);
+  setOrDel(OPAL_PROJECT_IDS_NOT, c.projectsNot.filter((v) => !isInboxName(v)).length ? c.projectsNot.filter((v) => !isInboxName(v)) : null);
+  setOrDel("opal_include_inbox", c.projects.some(isInboxName) ? true : null);
+  setOrDel("opal_exclude_inbox", c.projectsNot.some(isInboxName) ? true : null);
+  delete rec.projects; delete rec.projects_not;
   setOrDel("subtask_mode", c.subtaskMode === "any" ? null : c.subtaskMode);
   setOrDel("search", c.search.trim() || null);
 }

@@ -30,6 +30,13 @@ describe("Area hierarchy", () => {
     expect(projectsInArea(area, [child, orphan, archived]).map((p) => p.name)).toEqual(["Launch"]);
   });
 
+  it("uses the canonical Area ID when grouping projects", () => {
+    const area = item("Personal", "area", { id: "PERSONAL-ID" });
+    const child = item("Household", "project", { areaId: "PERSONAL-ID" });
+    const other = item("Work", "project", { areaId: "WORK-ID" });
+    expect(projectsInArea(area, [child, other]).map((p) => p.name)).toEqual(["Household"]);
+  });
+
   it("rolls direct Area tasks together with child-project tasks", () => {
     const area = item("Work", "area");
     const child = item("Launch", "project", { area: "[[Work]]" });

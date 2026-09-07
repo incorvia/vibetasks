@@ -17,9 +17,12 @@ describe("ensureLinkedProjectEmbeds", () => {
   });
 
   it("places the header after YAML and H1", () => {
-    const out = ensureLinkedProjectEmbeds("---\ntags: [work]\n---\n# Launch\n\nText", "p-1");
+    const original = "---\ntags: [work]\n---\n# Launch\n\nText with [[links]] and `formatting`.";
+    const out = ensureLinkedProjectEmbeds(original, "p-1");
     expect(out.indexOf("section: header")).toBeGreaterThan(out.indexOf("# Launch"));
-    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("Text"));
+    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("Text with"));
+    expect(out).toContain("tags: [work]");
+    expect(out).toContain("Text with [[links]] and `formatting`.");
   });
 
   it("is idempotent and recognizes a pre-section project block as the task list", () => {

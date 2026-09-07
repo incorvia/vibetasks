@@ -8,7 +8,7 @@ import { openPopover } from "./popover";
 import { ViewOptions, FilterCriteria, PageLayout, FilterSort, FilterGroup, SortDir, SubtaskDisplay, LAYOUTS, SORTS, SORT_DIRS, SUBTASK_DISPLAYS, BOARD_SUBTASK_DISPLAYS, effectiveSubtasks, hasSortDir, hasCriteria, activeFacetCount, DEFAULT_OPTIONS, DEFAULT_CRITERIA } from "./filterEngine";
 import { PANEL_STYLE, buildFacets, renderFacet, selectControl } from "./facets";
 import { FilterModal } from "./filterModal";
-import { INBOX_KEY, baseName, isAreaPath } from "./taskService";
+import { INBOX_KEY, isAreaPath, listManaged } from "./taskService";
 import { resetSubtaskToggles } from "./heuteView";
 import { t } from "./i18n";
 import { CAL_MODES } from "./calendarModel";
@@ -32,10 +32,15 @@ function groupOptions(kind: string): FilterGroup[] {
 /** Kriterien für „Als Filter speichern": der Ansichtsfilter PLUS die Achse der Seite. Ohne sie
  *  wäre der gespeicherte Filter vault-weit – „Priorität 1" statt „Priorität 1 in diesem Projekt",
  *  also etwas anderes als das, was gerade auf dem Schirm steht. */
-function presetFor(page: PageRef, c: FilterCriteria): FilterCriteria {
+function presetFor(page: PageRef, c: FilterCriteria, ctx: PageCtx): FilterCriteria {
   const add = (list: string[], v: string): string[] => (list.includes(v) ? list : [...list, v]);
   if (page.kind === "label") return { ...c, labels: add(c.labels, page.key) };
-  if (page.kind === "project") return { ...c, projects: add(c.projects, page.key === INBOX_KEY ? "Inbox" : baseName(page.key)) };
+  if (page.kind === "project") {
+    const id = page.key === INBOX_KEY ? "Inbox"
+      : [...listManaged(ctx.plugin.app).active, ...listManaged(ctx.plugin.app).archived]
+        .find((item) => item.path === page.key)?.id;
+    return id ? { ...c, projects: add(c.projects, id) } : { ...c };
+  }
   if (page.key === "heute") return { ...c, range: "today" };
   if (page.key === "demnaechst") return { ...c, range: "next7" };
   return { ...c };
@@ -215,7 +220,7 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: Mobi
         const save = pop.createEl("button", { cls: "bt-panel-save" });
         save.createSpan({ cls: "bt-add-icon" });
         save.createSpan({ text: t("filter_save_as") });
-        save.onclick = () => { close(); new FilterModal(ctx.plugin, undefined, presetFor(ctx.page, c)).open(); };
+        save.onclick = () => { close(); new FilterModal(ctx.plugin, undefined, presetFor(ctx.page, c, ctx)).open(); };
       }
 
       const reset = pop.createEl("button", { cls: "bt-panel-reset", text: t("filter_reset") });

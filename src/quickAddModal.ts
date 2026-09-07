@@ -8,7 +8,7 @@ import { Modal, Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { Priority, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels } from "./taskService";
+import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId } from "./taskService";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { todayStr } from "./format";
@@ -19,11 +19,11 @@ import { TaskModal } from "./taskModal";
 
 export class QuickAddModal extends Modal {
   private f: {
-    title: string; project: string | null; status: TaskStatus;
+    title: string; project: string | null; projectId: string | null; status: TaskStatus;
     due: string | null; dueTime: string | null; estimate: number | null;
     priority: Priority; labels: string[];
     recurrence: string | null; recurBasis: "due" | "done";
-    reminders: string[]; parent: string | null;
+    reminders: string[]; parent: string | null; parentId: string | null;
   };
   private cleanTitle = "";
   private duePinned = false;        // Datum manuell gesetzt/geleert -> Parser überschreibt nicht mehr
@@ -40,11 +40,11 @@ export class QuickAddModal extends Modal {
     super(plugin.app);
     this.defaultProject = project ?? null;   // kein Default-Projekt -> Eingang
     this.f = {
-      title: "", project: this.defaultProject, status: firstOpenStatus(),
+      title: "", project: this.defaultProject, projectId: relationshipId(this.app, this.defaultProject, ["project", "area"]), status: firstOpenStatus(),
       due: opts.due ?? (opts.today ? todayStr() : null),
       dueTime: null, estimate: null,
       priority: "normal", labels: opts.label ? [opts.label] : [],
-      recurrence: null, recurBasis: "due", reminders: [], parent: null,
+      recurrence: null, recurBasis: "due", reminders: [], parent: null, parentId: null,
     };
   }
 
@@ -99,6 +99,7 @@ export class QuickAddModal extends Modal {
     });
     this.cleanTitle = r.title;
     Object.assign(this.f, r.fields);
+    this.f.projectId = relationshipId(this.app, this.f.project, ["project", "area"]);
     this.nl = r.state;
   }
 
@@ -154,7 +155,7 @@ export class QuickAddModal extends Modal {
       unparseEstimate: () => this.unparseEstimate(),
       unparseRecur: () => this.unparseRecur(),
       resetParsedLabels: () => { this.nl.labels = []; },
-      onParentPicked: (proj) => { if (proj) { this.f.project = proj; this.nl.project = null; this.renderProjekt(); } },
+      onParentPicked: () => { this.nl.project = null; this.renderProjekt(); },
       // Details in der Schnelleingabe hat keinen Inline-Log -> öffnet den vollen Editor mit
       // aufgeklapptem Detailbereich (Schnelleingabe bleibt eine reine Ein-Zeilen-Erfassung).
       toggleDetails: () => this.openInFull(true),
@@ -205,12 +206,13 @@ export class QuickAddModal extends Modal {
   private renderProjekt(): void {
     this.projektBtn.empty();
     const { bereiche, projekte } = listProjectsAndAreas(this.app);
-    const inbox = isInboxLink(this.f.project);   // kein Projekt ODER Verweis auf Inbox -> Eingang
-    const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.f.project);
+    const sel = [...bereiche, ...projekte].find((p) =>
+      (!!this.f.projectId && p.id === this.f.projectId) || (!!this.f.project && (p.name === this.f.project || baseName(p.path) === this.f.project)));
+    const inbox = !sel && isInboxLink(this.f.project);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
-    this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
+    this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : (sel?.name ?? projectDisplayName(this.f.project ?? this.f.projectId)) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
   }
 
@@ -218,13 +220,13 @@ export class QuickAddModal extends Modal {
     openPopover(anchor, (pop, close) => {
       pop.addClass("bt-picker");
       const { bereiche, projekte } = listProjectsAndAreas(this.app);
-      const pick = (name: string | null) => { this.f.project = name; this.nl.project = null; this.renderProjekt(); close(); };
+      const pick = (name: string | null, id: string | null = null) => { this.f.project = name; this.f.projectId = id; this.nl.project = null; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
-      popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.f.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]) => {
+      popRow(pop, "inbox", t("nav_inbox"), () => pick(null), !this.f.projectId && isInboxLink(this.f.project));
+      const group = (title: string, items: { id: string; name: string; icon: string; color: string | null }[]) => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name, it.color ?? undefined);
+        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), it.color ?? undefined);
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);
@@ -247,15 +249,17 @@ export class QuickAddModal extends Modal {
       recurrence: this.f.recurrence, recurBasis: this.f.recurBasis,
       reminders: this.f.reminders, parent: this.f.parent,
       project: this.f.project,
+      projectId: this.f.projectId,
     });
     await this.plugin.showNewTaskLabels(newLabels);
     new Notice(t("qa_added"));
     // Für die nächste Aufgabe zurücksetzen (Projekt beibehalten).
     const project = this.f.project;
+    const projectId = this.f.projectId;
     this.f = {
-      title: "", project, status: firstOpenStatus(),
+      title: "", project, projectId, status: firstOpenStatus(),
       due: null, dueTime: null, estimate: null,
-      priority: "normal", labels: [], recurrence: null, recurBasis: "due", reminders: [], parent: null,
+      priority: "normal", labels: [], recurrence: null, recurBasis: "due", reminders: [], parent: null, parentId: null,
     };
     this.cleanTitle = ""; this.duePinned = false; this.nl = emptyQuickEntryState();
     this.input.value = "";
@@ -278,6 +282,7 @@ export class QuickAddModal extends Modal {
       priority: this.f.priority,
       labels: [...this.f.labels], recurrence: this.f.recurrence, recurBasis: this.f.recurBasis,
       reminders: [...this.f.reminders], parent: this.f.parent,
+      parentId: this.f.parentId, projectId: this.f.projectId,
     };
     this.close();
     new TaskModal(this.plugin, undefined, project, { defaultTitle: title, seed, openDetails, duePinned: this.duePinned }).open();

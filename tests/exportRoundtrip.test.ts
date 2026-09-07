@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toExportTask, toExportList, importedTaskFrontmatter, importedListFrontmatter, parseExport, noteBody, toExportFilter, unknownStatusReport, ExportTask, ExportList } from "../src/importExport";
+import { toExportTask, toExportList, importedTaskFrontmatter, importedListFrontmatter, parseExport, noteBody, toExportFilter, unknownStatusReport, ExportTask, ExportList, makeImportData } from "../src/importExport";
 import { Task } from "../src/types";
 import { ProjItem } from "../src/taskService";
 
@@ -14,7 +14,8 @@ const AUFGABE: Task = {
   status: "doing", priority: "high",
   due: "2026-08-20", dueTime: "09:30", estimate: 45, scheduled: null, scheduledTime: null,
   duration: null, start: null, sortOrder: 2110,
-  project: "Opal Tasks/Projects/Haus.md", parent: "Opal Tasks/Items/Eltern.md",
+  project: "Opal Tasks/Projects/Haus.md", projectId: "project-1",
+  parent: "Opal Tasks/Items/Eltern.md", parentId: "task-parent-1",
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
   created: "2026-07-01T08:00:00", completed: null, cancelled: null, externalId: "ext-1",
@@ -26,14 +27,14 @@ const LISTE: ProjItem = {
 };
 
 /** Frontmatter-Wert holen, egal ob der Schlüssel konfiguriert wurde. */
-const fmOf = (t: Task): Record<string, unknown> => importedTaskFrontmatter(toExportTask(t), "type", "title");
+const fmOf = (t: Task): Record<string, unknown> => importedTaskFrontmatter(toExportTask(t), "type", "title", { id: "new-task-id" });
 
 describe("Aufgabe → Export → Frontmatter", () => {
   it("bringt jedes Feld durch, das der Datensatz führt", () => {
     const fm = fmOf(AUFGABE);
     expect(fm.type).toBe("task");
     expect(fm.title).toBe("Test");
-    expect(fm.id).toBe("t-abc");
+    expect(fm.id).toBe("new-task-id");
     expect(fm.status).toBe("doing");
     expect(fm.priority).toBe("high");
     expect(fm.due).toBe("2026-08-20T09:30");   // Datum und Uhrzeit als ein Wert (combineDT)
@@ -41,8 +42,10 @@ describe("Aufgabe → Export → Frontmatter", () => {
     expect(fm.scheduled).toBeUndefined();
     expect(fm.duration).toBeUndefined();
     expect(fm.start).toBeUndefined();
-    expect(fm.project).toBe("[[Haus]]");        // Basename, nicht Pfad
-    expect(fm.parent).toBe("[[Eltern]]");
+    expect(fm.opal_project_id).toBe("project-1");
+    expect(fm.opal_parent_id).toBe("task-parent-1");
+    expect(fm.project).toBeUndefined();
+    expect(fm.parent).toBeUndefined();
     expect(fm.labels).toEqual(["ui", "bug"]);
     expect(fm.recurrence).toBe("jeden Montag");
     expect(fm.recur_basis).toBe("done");
@@ -83,8 +86,8 @@ describe("Aufgabe → Export → Frontmatter", () => {
 describe("Liste → Export → Frontmatter", () => {
   it("bringt Symbol, Beschreibung und Ausgeblendet mit (neu in v3)", () => {
     const el = toExportList(LISTE);
-    expect(el).toEqual({ name: "Haus", type: "project", color: "#e05c4a", archived: true, icon: "home", description: "Alles rund ums Haus", hidden: true, workflow_status: "doing", priority: "high" });
-    const fm = importedListFrontmatter(el, "type");
+    expect(el).toEqual({ id: "project-1", name: "Haus", type: "project", color: "#e05c4a", archived: true, icon: "home", description: "Alles rund ums Haus", hidden: true, workflow_status: "doing", priority: "high" });
+    const fm = importedListFrontmatter(el, "type", { id: "new-project-id" });
     expect(fm.type).toBe("project");
     expect(fm.icon).toBe("home");
     expect(fm.description).toBe("Alles rund ums Haus");
@@ -135,6 +138,16 @@ describe("Alte Exporte bleiben lesbar", () => {
     expect(lfm.nav_hidden).toBeUndefined();
     expect(lfm.workflow_status).toBe("todo");
     expect(lfm.priority).toBeUndefined();
+  });
+});
+
+describe("Exportformat v5", () => {
+  it("uses stable IDs and advertises version 5", () => {
+    const task = toExportTask(AUFGABE);
+    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(5);
+    expect(task).toMatchObject({ id: "t-abc", projectId: "project-1", parentId: "task-parent-1" });
+    expect(task).not.toHaveProperty("project");
+    expect(task).not.toHaveProperty("parent");
   });
 });
 

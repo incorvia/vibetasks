@@ -55,7 +55,7 @@ export interface FilterCriteria {
   statuses: string[];      statusesNot: string[];                  // ✓ / −  (Status-Ids)
   priorities: Priority[];  prioritiesNot: Priority[];              // ✓ / −
   labels: string[];        labelsAll: string[]; labelsNot: string[];  // ✓ / + / −
-  projects: string[];      projectsNot: string[];                 // ✓ / −  (Basenamen)
+  projects: string[];      projectsNot: string[];                 // ✓ / −  (record IDs; Inbox sentinel stays textual)
   subtaskMode: SubtaskFilter; // Unteraufgaben einbeziehen / nur sie / keine
   search: string;          // Freitext in Titel und Beschreibung ("" = keiner)
 }
@@ -425,11 +425,10 @@ export function matchesTask(t: Task, c: FilterCriteria, today: string): boolean 
   if (c.labels.length && !c.labels.some((l) => t.labels.includes(l))) return false;
   if (!c.labelsAll.every((l) => t.labels.includes(l))) return false;
   if (c.labelsNot.some((l) => t.labels.includes(l))) return false;
-  // Projekte (einwertig, Basename): ✓ irgendeines / − keines. „Eingang" = nicht einsortiert
-  // (kein Projekt ODER Inbox-Verweis) und matcht einen Inbox-Eintrag der Filterliste.
-  const inbox = isInboxLink(t.project);
-  const pb = inbox ? null : baseName(t.project!);
-  const inList = (list: string[]): boolean => inbox ? list.some(isInboxName) : (pb !== null && list.includes(pb));
+  // Projects compare immutable IDs. Inbox remains an explicit built-in sentinel.
+  const inbox = !t.projectId && isInboxLink(t.project);
+  const inList = (list: string[]): boolean => inbox ? list.some(isInboxName)
+    : (!!t.projectId && list.includes(t.projectId)) || (!!t.project && list.includes(baseName(t.project)));
   if (c.projects.length && !inList(c.projects)) return false;
   if (inList(c.projectsNot)) return false;
   // Unteraufgaben: eine Aufgabe MIT parent ist eine Unteraufgabe.

@@ -1,4 +1,45 @@
+import { isCollectionPath } from "./mdbaseResources";
+
 export type ProjectEmbedSection = "header" | "tasks";
+
+const OPAL_ENTITY_TYPES = new Set(["task", "project", "area", "filter", "template", "time_log", "timer_state"]);
+
+export interface LinkedCollectionRef { id: string; path: string }
+export type NoteProjectAction = { kind: "convert" } | { kind: "open"; path: string } | null;
+
+export interface LinkedProjectIdentity { id: string; path: string | null }
+
+/** Reuse both valid and stale markers; only a note without a marker receives a fresh identity. */
+export function linkedProjectIdentity(
+  projectId: unknown,
+  collections: readonly LinkedCollectionRef[],
+  createId: () => string,
+): LinkedProjectIdentity {
+  const markedId = typeof projectId === "string" && projectId ? projectId : null;
+  const existing = markedId ? collections.find((record) => record.id === markedId) : undefined;
+  return { id: existing?.id ?? markedId ?? createId(), path: existing?.path ?? null };
+}
+
+/** Decide which project action belongs in a Markdown note's file menu. */
+export function noteProjectAction(
+  path: string,
+  extension: string,
+  type: unknown,
+  projectId: unknown,
+  collections: readonly LinkedCollectionRef[],
+): NoteProjectAction {
+  if (extension !== "md" || isCollectionPath(path) || OPAL_ENTITY_TYPES.has(String(type))) return null;
+  if (typeof projectId === "string" && projectId) {
+    const linked = collections.find((record) => record.id === projectId);
+    if (linked) return { kind: "open", path: linked.path };
+  }
+  return { kind: "convert" };
+}
+
+/** A collision may change the internal filename, never the title the user chose in their note. */
+export function projectTitleFromNote(frontmatterTitle: string | null, firstHeading: string | null, basename: string): string {
+  return frontmatterTitle ?? (firstHeading?.trim() || basename);
+}
 
 /** The code block stays intentionally tiny: the stable record id survives either note being renamed. */
 export function projectEmbedBlock(id: string, section: ProjectEmbedSection): string {
@@ -43,5 +84,5 @@ export function ensureLinkedProjectEmbeds(content: string, id: string): string {
 
 /** Initial content for a companion note. Its filename is already rendered as the note title. */
 export function newLinkedProjectNoteContent(id: string): string {
-  return ensureLinkedProjectEmbeds("", id);
+  return ensureLinkedProjectEmbeds(`---\nopal_project_id: ${id}\n---\n`, id);
 }

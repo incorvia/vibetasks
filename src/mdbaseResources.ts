@@ -58,8 +58,8 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     priority: { enum: [...DEFAULT_PRIORITIES] },
     due: dateOrDateTime,
     estimate: { type: "integer", minimum: 1 },
-    project: { type: "string", minLength: 1 },
-    parent: { type: "string", minLength: 1 },
+    opal_project_id: { type: "string", minLength: 1 },
+    opal_parent_id: { type: "string", minLength: 1 },
     labels: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
     recurrence: { type: "string", minLength: 1 },
     recur_basis: { enum: ["due", "done"] },
@@ -77,14 +77,12 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     priority: { enum: [...DEFAULT_PRIORITIES] },
     priority_swimlanes: { type: "boolean" },
     icon: { type: "string" },
-    area: { type: "string", minLength: 1 },
-    linked_note: { type: "string", minLength: 1 },
+    opal_area_id: { type: "string", minLength: 1 },
     gcal_sync: { type: "boolean" },
   }, ["status"]),
   area: extend(common("area"), {
     status: { enum: ["active", "archived"] },
     priority_swimlanes: { type: "boolean" },
-    linked_note: { type: "string", minLength: 1 },
     gcal_sync: { type: "boolean" },
   }, ["status"]),
   filter: extend(common("filter"), {
@@ -105,8 +103,10 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     labels: { type: "array", items: { type: "string" } },
     labels_all: { type: "array", items: { type: "string" } },
     labels_not: { type: "array", items: { type: "string" } },
-    projects: { type: "array", items: { type: "string" } },
-    projects_not: { type: "array", items: { type: "string" } },
+    opal_project_ids: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
+    opal_project_ids_not: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
+    opal_include_inbox: { type: "boolean" },
+    opal_exclude_inbox: { type: "boolean" },
     subtask_mode: { type: "string" },
     search: { type: "string" },
   }),
@@ -116,8 +116,8 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     priority: { enum: [...DEFAULT_PRIORITIES] },
     due: dateOrDateTime,
     estimate: { type: "integer", minimum: 1 },
-    project: { type: "string", minLength: 1 },
-    parent: { type: "string", minLength: 1 },
+    opal_project_id: { type: "string", minLength: 1 },
+    opal_parent_id: { type: "string", minLength: 1 },
     labels: { type: "array", items: { type: "string", minLength: 1 } },
     recurrence: { type: "string" },
     recur_basis: { enum: ["due", "done"] },
@@ -200,11 +200,11 @@ export function mdbaseConfigDocument(): string {
 
 export function typeDocument(type: RecordType): string {
   const links: Record<string, unknown> = {};
-  if (type === "task") {
-    links.project = { target_type: ["project", "area"], validate_exists: true, format: "wikilink" };
-    links.parent = { target_type: "task", validate_exists: true, format: "wikilink" };
+  if (type === "task" || type === "template") {
+    links.opal_project_id = { target_type: ["project", "area"], validate_exists: true, format: "any" };
+    links.opal_parent_id = { target_type: type === "template" ? "template" : "task", validate_exists: true, format: "any" };
   } else if (type === "project") {
-    links.area = { target_type: "area", validate_exists: true, format: "wikilink" };
+    links.opal_area_id = { target_type: "area", validate_exists: true, format: "any" };
   }
   const extension = type === "task" || type === "template" || type === "project" ? {
     statuses: DEFAULT_MDBASE_STATUSES,
@@ -213,7 +213,7 @@ export function typeDocument(type: RecordType): string {
   const frontmatter = {
     kind: "mdbase.type",
     name: type,
-    version: 1,
+    version: 2,
     description: `Opal Tasks ${type} record`,
     match: { where: { type } },
     schema: { dialect: "json-schema-2020-12", value: DEFAULT_SCHEMAS[type] },

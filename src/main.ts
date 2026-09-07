@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, projectAreaName, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -44,7 +44,7 @@ import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
 import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
-import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent } from "./linkedProjectNote";
+import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
 import { migrateTimingFields } from "./timingMigration";
 import { TimeStore, TimerService } from "./timeService";
 import { TimeDashboardModal } from "./timeDashboard";
@@ -52,6 +52,7 @@ import { TimerConflictModal } from "./timerConflictModal";
 import { TimeBlockModal } from "./timeBlockModal";
 import { SchedulingService } from "./schedulingService";
 import { WorkTimerService } from "./workTimerService";
+import { migrateStableRelationships } from "./stableRelationships";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -281,6 +282,17 @@ export default class OpalTasksPlugin extends Plugin {
     // unabhängig von Obsidians „interne Links aktualisieren"-Einstellung (die Klartext-Kriterien in
     // Filtern ohnehin nie anfasst). Deckt Projekt/Bereich/Filter/Aufgabe ab.
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => void this.onNoteRenamed(file, oldPath)));
+    // The note's own ⋯ menu and the File Explorer context menu both emit `file-menu`.
+    // Keep the decision in one place so this entry and the command palette cannot drift apart.
+    this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
+      if (!(file instanceof TFile)) return;
+      const action = this.noteProjectMenuAction(file);
+      if (!action) return;
+      menu.addItem((item) => item.setSection("opal-tasks")
+        .setTitle(t(action.kind === "open" ? "menu_open_opal_project" : "menu_project_from_note"))
+        .setIcon(action.kind === "open" ? "list-checks" : "list-plus")
+        .onClick(() => void this.runNoteProjectAction(file, action)));
+    }));
 
     this.addCommand({ id: "open", name: t("ribbon_open"), callback: () => void this.openOpalTasks() });
     for (const id of VIEW_IDS) {
@@ -310,15 +322,12 @@ export default class OpalTasksPlugin extends Plugin {
       callback: () => {
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension !== "md") { new Notice(t("notice_project_note_required")); return; }
-        const type: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")];
-        if (isCollectionPath(file.path) && ["task", "project", "area", "filter", "template"].includes(String(type))) {
+        const action = this.noteProjectMenuAction(file);
+        if (!action) {
           new Notice(t("notice_project_record_already"));
           return;
         }
-        void this.createProjectFromNote(file).catch((error) => {
-          console.error("Opal Tasks: failed to create embedded project", error);
-          new Notice(error instanceof Error ? error.message : String(error));
-        });
+        void this.runNoteProjectAction(file, action);
       },
     });
     this.addCommand({ id: "plan-split", name: t("plan_open"), callback: () => void this.openPlanSplit() });
@@ -1234,45 +1243,86 @@ export default class OpalTasksPlugin extends Plugin {
     this.registerEvent(ref);
   }
 
-  /** Create a canonical project record while leaving the source note untouched. */
-  async createProjectFromNote(note: TFile): Promise<void> {
+  /** Synchronous metadata used to decide what the note/file context menu should offer. */
+  private noteProjectMenuAction(note: TFile): NoteProjectAction {
+    const fm = this.app.metadataCache.getFileCache(note)?.frontmatter;
+    const collections: LinkedCollectionRef[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (!isCollectionPath(file.path)) continue;
+      const recordFm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (recordFm?.[fieldKey("type")] !== "project" && recordFm?.[fieldKey("type")] !== "area") continue;
+      if (typeof recordFm.id === "string" && recordFm.id) collections.push({ id: recordFm.id, path: file.path });
+    }
+    return resolveNoteProjectAction(note.path, note.extension, fm?.[fieldKey("type")], fm?.[OPAL_PROJECT_ID], collections);
+  }
+
+  /** Shared execution/error path for the command palette and note options menu. */
+  private async runNoteProjectAction(note: TFile, action: Exclude<NoteProjectAction, null>): Promise<void> {
+    try {
+      const projectPath = await this.createProjectFromNote(note);
+      if (action.kind === "open") await this.activateProject(projectPath);
+      else new Notice(t("notice_project_from_note"));
+    } catch (error) {
+      console.error("Opal Tasks: failed to create embedded project", error);
+      new Notice(t("notice_project_from_note_failed"));
+    }
+  }
+
+  /** Create or repair a canonical project record while leaving the source note in place. */
+  async createProjectFromNote(note: TFile): Promise<string> {
     const cache = this.app.metadataCache.getFileCache(note);
-    const title = fmTitle(cache?.frontmatter?.[titleKey()])
-      ?? ((firstH1(cache?.headings) ?? "").trim() || note.basename);
-    const linkedNote = `[[${note.path.replace(/\.md$/i, "")}]]`;
-    const existing = (await this.repository.list("project"))
-      .find((record) => record.frontmatter.linked_note === linkedNote);
-    let id = existing?.id;
-    if (!id) {
+    const title = projectTitleFromNote(
+      fmTitle(cache?.frontmatter?.[titleKey()]),
+      firstH1(cache?.headings) ?? null,
+      note.basename,
+    );
+    const [projects, areas] = await Promise.all([this.repository.list("project"), this.repository.list("area")]);
+    const identity = linkedProjectIdentity(cache?.frontmatter?.[OPAL_PROJECT_ID], [...projects, ...areas], newUlid);
+    const id = identity.id;
+    let projectPath = identity.path ?? undefined;
+    if (!projectPath) {
       await ensureFolder(this.app, this.settings.projectsFolder);
       const base = slugify(title);
-      let recordTitle = base;
-      let path = normalizePath(`${this.settings.projectsFolder}/${recordTitle}.md`);
+      let recordFileName = base;
+      let path = normalizePath(`${this.settings.projectsFolder}/${recordFileName}.md`);
       let suffix = 2;
       while (this.app.vault.getAbstractFileByPath(path)) {
-        recordTitle = `${base} ${suffix++}`;
-        path = normalizePath(`${this.settings.projectsFolder}/${recordTitle}.md`);
+        recordFileName = `${base} ${suffix++}`;
+        path = normalizePath(`${this.settings.projectsFolder}/${recordFileName}.md`);
       }
       const now = rfc3339Now();
-      id = newUlid();
       await this.repository.create({
         type: "project",
         path,
         frontmatter: {
-          type: "project", id, title: recordTitle, status: "active",
-          linked_note: linkedNote, created: now, modified: now,
+          type: "project", id, title, status: "active",
+          created: now, modified: now,
         },
         body: "\n",
       });
+      projectPath = path;
     }
+    await this.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => { fm[OPAL_PROJECT_ID] = id; });
     await this.app.vault.process(note, (content) => ensureLinkedProjectEmbeds(content, id));
-    new Notice(t("notice_project_from_note"));
+    return projectPath;
   }
 
   /** Resolve the user-facing note attached to a canonical project or area record. */
   linkedCollectionNote(collectionPath: string): TFile | null {
     const record = this.app.vault.getAbstractFileByPath(collectionPath);
     if (!(record instanceof TFile)) return null;
+    const id: unknown = this.app.metadataCache.getFileCache(record)?.frontmatter?.id;
+    if (typeof id === "string") {
+      const recordTypes = new Set(["task", "template", "project", "area", "filter", "time_log", "timer_state"]);
+      const marked = this.app.vault.getMarkdownFiles().filter((file) => {
+        if (file.path === collectionPath) return false;
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        return fm?.[OPAL_PROJECT_ID] === id && !recordTypes.has(String(fm?.[fieldKey("type")]));
+      });
+      if (marked.length === 1) return marked[0];
+      if (marked.length > 1) return null;
+    }
+    // Backward-read fallback until the one-way migration has claimed the companion note.
     const raw: unknown = this.app.metadataCache.getFileCache(record)?.frontmatter?.linked_note;
     const link = typeof raw === "string" ? raw.match(/^\[\[([^\]|#]+)/)?.[1] : undefined;
     return link ? this.app.metadataCache.getFirstLinkpathDest(link, collectionPath) : null;
@@ -1288,6 +1338,8 @@ export default class OpalTasksPlugin extends Plugin {
 
     const linked = this.linkedCollectionNote(collectionPath);
     if (linked) {
+      await this.app.fileManager.processFrontMatter(linked, (fm: Record<string, unknown>) => { fm[OPAL_PROJECT_ID] = id; });
+      if ("linked_note" in record.frontmatter) await this.repository.update(collectionPath, { linked_note: null });
       // This also upgrades companion notes made before the separate header embed existed.
       await this.app.vault.process(linked, (content) => ensureLinkedProjectEmbeds(content, id));
       await this.app.workspace.getLeaf("tab").openFile(linked);
@@ -1307,7 +1359,6 @@ export default class OpalTasksPlugin extends Plugin {
     }
 
     const note = await this.app.vault.create(path, newLinkedProjectNoteContent(id));
-    await this.repository.update(collectionPath, { linked_note: `[[${note.path.replace(/\.md$/i, "")}]]` });
     this.renderAll();
     await this.app.workspace.getLeaf("tab").openFile(note);
     new Notice(t("notice_linked_note_created"));
@@ -1385,10 +1436,45 @@ export default class OpalTasksPlugin extends Plugin {
     return r;
   }
   async deleteProject(path: string): Promise<void> {
+    const record = await this.repository.read(path);
+    if (record && (record.type === "project" || record.type === "area")) await this.severDeletedRecord(record.id, record.type);
     await deleteProjectNote(this.app, path);
     // Datei ist nach trashFile sofort weg -> Cache aktuell. War es das offene Projekt/Bereich,
     // zur Startansicht wechseln (sonst bliebe ein leeres Board des gelöschten Eintrags stehen).
     this.leaveDeletedPage({ kind: "project", key: path });
+  }
+
+  /** Persistently sever canonical identities before the target goes to Obsidian's trash. */
+  private async severDeletedRecord(id: string, type: "task" | "project" | "area"): Promise<void> {
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const current = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!current) continue;
+      const isTaskLike = current.type === "task" || current.type === "template";
+      const projectHit = (type === "project" || type === "area") && isTaskLike && current[OPAL_PROJECT_ID] === id;
+      const parentHit = type === "task" && isTaskLike && current[OPAL_PARENT_ID] === id;
+      const areaHit = type === "area" && current.type === "project" && current[OPAL_AREA_ID] === id;
+      const filterHit = (current.type === "filter" || current.type === "project" || current.type === "area")
+        && [current, current.view_filter].some((value) => value && typeof value === "object" && !Array.isArray(value)
+          && ([...(Array.isArray((value as Record<string, unknown>).opal_project_ids) ? (value as Record<string, unknown>).opal_project_ids as unknown[] : []),
+            ...(Array.isArray((value as Record<string, unknown>).opal_project_ids_not) ? (value as Record<string, unknown>).opal_project_ids_not as unknown[] : [])]).includes(id));
+      const companionHit = (type === "project" || type === "area") && !isCollectionPath(file.path) && current[OPAL_PROJECT_ID] === id;
+      if (!projectHit && !parentHit && !areaHit && !filterHit && !companionHit) continue;
+      await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+        if (projectHit || companionHit) delete fm[OPAL_PROJECT_ID];
+        if (parentHit) delete fm[OPAL_PARENT_ID];
+        if (areaHit) delete fm[OPAL_AREA_ID];
+        const clearLists = (target: Record<string, unknown>): void => {
+          for (const field of ["opal_project_ids", "opal_project_ids_not"]) {
+            if (!Array.isArray(target[field])) continue;
+            const next = (target[field] as unknown[]).filter((value) => value !== id);
+            if (next.length) target[field] = next; else delete target[field];
+          }
+        };
+        clearLists(fm);
+        if (fm.view_filter && typeof fm.view_filter === "object" && !Array.isArray(fm.view_filter)) clearLists(fm.view_filter as Record<string, unknown>);
+        if (isCollectionPath(file.path)) fm.modified = rfc3339Now();
+      });
+    }
   }
 
   /** Die (nicht schon im Papierkorb liegenden) Aufgaben eines Projekts/Bereichs – inkl. Unterbäume,
@@ -1541,23 +1627,13 @@ export default class OpalTasksPlugin extends Plugin {
     return true;
   }
 
-  // ── Referenz-Integrität beim Umbenennen (nativ ODER Plugin, setting-unabhängig) ──
-  /** Wikilink/Klartext → Basename (ohne .md); null, wenn kein String. */
-  private wikiBase(v: unknown): string | null {
-    if (typeof v !== "string") return null;
-    const m = v.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
-    const raw = (m ? m[1] : v).trim();
-    return raw ? raw.split("/").pop()!.replace(/\.md$/i, "") : null;
-  }
-  /** Reagiert auf jedes Umbenennen einer verwalteten Notiz und zieht alle Referenzen selbst nach. */
+  // ── Path remapping after external/manual file renames ──
+  /** IDs carry semantic identity; only path-based UI state must follow a file rename. */
   private async onNoteRenamed(file: TAbstractFile, oldPath: string): Promise<void> {
     if (!(file instanceof TFile) || file.extension !== "md") return;
     if (!isCollectionPath(file.path) && !isCollectionPath(oldPath)) return;
     const type = this.app.metadataCache.getFileCache(file)?.frontmatter?.[fieldKey("type")] as unknown;
     if (type !== "project" && type !== "area" && type !== "filter" && type !== "task") return;
-
-    const oldBase = oldPath.split("/").pop()!.replace(/\.md$/i, "");
-    const newBase = file.basename;
 
     if (type !== "task" && oldPath !== file.path) this.remapNavOrder(oldPath, file.path);   // navOrder ist pfadbasiert
     // Offene Tabs auf den neuen Pfad umhängen – sonst zeigte der Tab ins Leere. Aufgaben haben
@@ -1567,48 +1643,7 @@ export default class OpalTasksPlugin extends Plugin {
       for (const v of this.mainViews()) if (samePage(v.page, { kind: moved, key: oldPath })) v.openPage({ kind: moved, key: file.path });
     }
 
-    if (oldBase !== newBase) {
-      if (type === "project" || type === "area") await this.remapListRefs(oldBase, newBase);
-      else if (type === "task") await this.remapParentRefs(oldBase, newBase);
-    }
     this.renderAll();
-  }
-  /** Projekt/Bereich umbenannt: Aufgaben-`project` (Wikilink) UND Filter-`projects` (Klartext) nachziehen. */
-  private async remapListRefs(oldBase: string, newBase: string): Promise<void> {
-    for (const task of this.index.all()) {
-      if (this.wikiBase(task.project) !== oldBase) continue;
-      const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
-        if (this.wikiBase(fm.project) === oldBase) fm.project = "[[" + newBase + "]]";
-      });
-    }
-    for (const fl of listFilters(this.app)) {
-      if (!fl.criteria.projects.includes(oldBase) && !fl.criteria.projectsNot.includes(oldBase)) continue;
-      const f = this.app.vault.getAbstractFileByPath(fl.path);
-      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
-        for (const key of ["projects", "projects_not"]) {
-          if (Array.isArray(fm[key])) fm[key] = [...new Set((fm[key] as unknown[]).map(String).map((x) => (x === oldBase ? newBase : x)))];
-        }
-      });
-    }
-    const managed = listManaged(this.app);
-    for (const project of [...managed.active, ...managed.archived]) {
-      if (project.type !== "project" || projectAreaName(project.area)?.toLowerCase() !== oldBase.toLowerCase()) continue;
-      const f = this.app.vault.getAbstractFileByPath(project.path);
-      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
-        if (projectAreaName(typeof fm.area === "string" ? fm.area : null)?.toLowerCase() === oldBase.toLowerCase()) fm.area = "[[" + newBase + "]]";
-      });
-    }
-  }
-  /** Aufgabe umbenannt: `parent`-Referenzen der Unteraufgaben nachziehen. */
-  private async remapParentRefs(oldBase: string, newBase: string): Promise<void> {
-    for (const task of this.index.all()) {
-      if (this.wikiBase(task.parent) !== oldBase) continue;
-      const f = this.app.vault.getAbstractFileByPath(task.path);
-      if (f instanceof TFile) await updateRecord(this.app, f, (fm) => {
-        if (this.wikiBase(fm.parent) === oldBase) fm.parent = "[[" + newBase + "]]";
-      });
-    }
   }
   /** navOrder-Schlüssel (Pfad) von alt → neu umhängen (project/area/filter). */
   private remapNavOrder(oldPath: string, newPath: string): void {
@@ -2064,10 +2099,11 @@ export default class OpalTasksPlugin extends Plugin {
 
   // ── Aufgaben-Aktionen ──
   /** `due` (optional) schlägt `today`: der Kalender kann damit den angezeigten Tag vorgeben. */
-  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null, priority?: Priority): void {
+  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null, priority?: Priority,
+    projectId?: string | null): void {
     new TaskModal(this, undefined, project, {
       defaultLabel: label, defaultToday: today, defaultStatus: status,
-      seed: (due || scheduled || priority) ? { due: due ?? scheduled ?? undefined, priority } : undefined,
+      seed: (due || scheduled || priority || projectId) ? { due: due ?? scheduled ?? undefined, priority, projectId } : undefined,
     }).open();
   }
   openEditTask(task: Task): void { new TaskModal(this, task).open(); }
@@ -2276,6 +2312,12 @@ export default class OpalTasksPlugin extends Plugin {
       else if (step === "inboxRemoval") await this.migrateInboxRemoval({ silent: true });
       else if (step === "recurrenceRRule") await this.migrateRecurrenceToRRule();
       else if (step === "timingModel") await this.migrateTimingModel();
+      else if (step === "stableRelationships" || step === "stableRelationshipRepair") {
+        await migrateStableRelationships(this.app);
+        await this.repository.upgradeRelationshipSchema();
+        this.index.build();
+        this.templates.build();
+      }
       else await this.migrateTitles({ silent: true });
     }
     this.settings.schemaVersion = nextSchemaVersion(version);
@@ -2328,10 +2370,10 @@ export default class OpalTasksPlugin extends Plugin {
   }
   /** Neue Aufgabe mit vorbelegter Fälligkeit – Klick auf einen Kalendertag bzw. Zeit-Slot.
    *  Projekt/Label erbt sie von der Seite, auf der der Kalender steht (wie „+ Aufgabe" der Liste). */
-  openNewTaskOn(due: string, dueTime?: string | null, project?: string, label?: string): void {
+  openNewTaskOn(due: string, dueTime?: string | null, project?: string, label?: string, projectId?: string | null): void {
     new TaskModal(this, undefined, project, {
       defaultLabel: label,
-      seed: { due, dueTime: dueTime ?? null },
+      seed: { due, dueTime: dueTime ?? null, projectId },
     }).open();
   }
   openQuickAdd(project?: string): void { new QuickAddModal(this, project).open(); }
@@ -2351,7 +2393,7 @@ export default class OpalTasksPlugin extends Plugin {
     const page = pageInfo(ctx.page);
     // Kalender-Tagesansicht: der angezeigte Tag, nicht zwingend heute (wie „+ Aufgabe" dort).
     const due = calendarDayAnchor(ctx, ctx.opts);
-    if (page.kind === "project") return { project: baseName(page.key), today: false, due };
+    if (page.kind === "project") return { project: page.key, today: false, due };
     if (page.kind === "label") return { label: page.key, today: false, due };
     if (page.kind === "view" && page.key === "heute") return { today: true, due };
     return { today: false, due };
@@ -2447,9 +2489,11 @@ export default class OpalTasksPlugin extends Plugin {
         snapshots[directArea ? "area_id_snapshot" : "project_id_snapshot"] = fm.id;
         snapshots[directArea ? "area_title_snapshot" : "project_title_snapshot"] = String(fm.title ?? pf?.name ?? fm.id);
       }
-      if (fm?.type === "project" && typeof fm.area === "string") {
-        const areaName = fm.area.replace(/^\[\[|\]\]$/g, "").split("|")[0];
-        const area = (await this.repository.list("area")).find((r) => r.path.endsWith(`/${areaName}.md`) || r.frontmatter.title === areaName);
+      if (fm?.type === "project") {
+        const areaId = typeof fm[OPAL_AREA_ID] === "string" ? fm[OPAL_AREA_ID] : null;
+        const legacyArea = typeof fm.area === "string" ? fm.area.replace(/^\[\[|\]\]$/g, "").split("|")[0] : null;
+        const area = (await this.repository.list("area")).find((r) => areaId ? r.id === areaId
+          : !!legacyArea && (r.path.endsWith(`/${legacyArea}.md`) || r.frontmatter.title === legacyArea));
         if (area) {
           snapshots.area_id_snapshot = area.id;
           snapshots.area_title_snapshot = typeof area.frontmatter.title === "string" ? area.frontmatter.title : area.id;
@@ -2473,8 +2517,9 @@ export default class OpalTasksPlugin extends Plugin {
       if (area) {
         paths.add(area.path); const title = typeof area.frontmatter.title === "string" ? area.frontmatter.title : "";
         for (const project of await this.repository.list("project")) {
-          const parent = typeof project.frontmatter.area === "string" ? project.frontmatter.area.replace(/^\[\[|\]\]$/g, "").split("|")[0] : "";
-          if (parent === title || parent === area.path.replace(/\.md$/, "").split("/").pop()) paths.add(project.path);
+          const parentId = project.frontmatter[OPAL_AREA_ID];
+          const legacyParent = typeof project.frontmatter.area === "string" ? project.frontmatter.area.replace(/^\[\[|\]\]$/g, "").split("|")[0] : "";
+          if (parentId === area.id || (!parentId && (legacyParent === title || legacyParent === area.path.replace(/\.md$/, "").split("/").pop()))) paths.add(project.path);
         }
       }
     }
@@ -2574,7 +2619,7 @@ export default class OpalTasksPlugin extends Plugin {
     });
   }
   /** Aufgabe einem Projekt/Bereich zuordnen (Kanban „nach Projekt"). null = kein Projekt.
-   *  Referenz als `[[Basename]]` – wie im Task-Modal; der Index löst den Basename auf. */
+   *  Persistiert ausschließlich die stabile Datensatz-ID. */
   /**
    * Aufgabe von Hand einsortieren: sie soll VOR `before` stehen (null = ans Ende ihrer Gruppe).
    *
@@ -2620,7 +2665,13 @@ export default class OpalTasksPlugin extends Plugin {
     if (!(f instanceof TFile)) return;
     await updateRecord(this.app, f, (fm) => {
       this.ensureCanonical(fm);
-      fm.project = project ? "[[" + project + "]]" : null;
+      const id = relationshipId(this.app, project, ["project", "area"]);
+      if (id) fm[OPAL_PROJECT_ID] = id; else delete fm[OPAL_PROJECT_ID];
+      if (id) delete fm.project;
+      else {
+        const legacy = legacyRelationshipLink(project);
+        if (legacy) fm.project = legacy; else delete fm.project;
+      }
     });
   }
   async setTaskStatus(task: Task, status: TaskStatus): Promise<void> {
@@ -2649,6 +2700,7 @@ export default class OpalTasksPlugin extends Plugin {
           titleInFrontmatter: task.titleInFm,   // nächste Instanz wie die Vorlage
           priority: task.priority,
           project: task.project ? baseName(task.project) : null,
+          projectId: task.projectId,
           labels: [...task.labels],
           due: next.due,
           dueTime: task.dueTime,             // Uhrzeit/Dauer in die nächste Instanz übernehmen
@@ -2688,12 +2740,15 @@ export default class OpalTasksPlugin extends Plugin {
       estimate: task.estimate,
       priority: task.priority,
       project: task.project ? baseName(task.project) : null,
+      projectId: task.projectId,
       labels: [...task.labels],
       recurrence: task.recurrence, recurBasis: task.recurBasis,
       reminders: [...task.reminders],
       parent: task.parent ? baseName(task.parent) : null,
+      parentId: task.parentId,
     });
-    await this.duplicateSubtree(task.path, file.basename);
+    const rootId = (await this.repository.read(file.path))?.id ?? null;
+    await this.duplicateSubtree(task.path, file.basename, { newParentId: rootId });
     new Notice(t("msg_duplicated"));
   }
 
@@ -2753,6 +2808,8 @@ export default class OpalTasksPlugin extends Plugin {
         // Eingang. Beim Anwenden einer Vorlage gewinnt immer das Ziel des Dialogs: Der
         // Projektverweis IN der Vorlage zeigt auf nichts, was die neue Aufgabe angeht.
         project: opts.project !== undefined ? opts.project : (kid.project ? baseName(kid.project) : null),
+        projectId: opts.projectId !== undefined ? opts.projectId
+          : opts.project !== undefined ? relationshipId(this.app, opts.project, ["project", "area"]) : kid.projectId,
         labels: [...kid.labels],
         recurrence: kid.recurrence, recurBasis: kid.recurBasis,
         reminders: d ? [...d.reminders] : [...(kid.reminders ?? [])],
@@ -2760,12 +2817,15 @@ export default class OpalTasksPlugin extends Plugin {
         // wieder zu eigenständigen Aufgaben des Zielprojekts – die Vorlagen-Wurzel wird ja zum
         // PROJEKT und nicht zu einer Aufgabe, die sie tragen könnte.
         parent: opts.detachTop ? null : newParentBase,
+        parentId: opts.detachTop ? null : opts.newParentId ?? relationshipId(this.app, newParentBase, [opts.target?.type ?? "task"]),
         sortOrder: order,
       }, opts.target);
       order += ORDER_GAP;
       gesehen.add(kid.path);
       // Ohne `roots` und `detachTop`: beide gelten ausdrücklich nur für die erste Ebene.
-      await this.duplicateSubtree(kid.path, copy.basename, { ...opts, roots: undefined, detachTop: false, seen: gesehen });
+      const copyId = (await this.repository.read(copy.path))?.id ?? null;
+      await this.duplicateSubtree(kid.path, copy.basename, { ...opts, roots: undefined, detachTop: false,
+        newParentId: copyId, seen: gesehen });
     }
   }
 
@@ -2817,6 +2877,7 @@ export default class OpalTasksPlugin extends Plugin {
   async deleteTaskForever(path: string): Promise<void> {
     const task = this.index.get(path);
     if (task) await this.scheduling.cancelFutureForTask(task.id);
+    if (task) await this.severDeletedRecord(task.id, "task");
     const f = this.app.vault.getAbstractFileByPath(path);
     if (f instanceof TFile) await this.repository.trash(f.path);
   }

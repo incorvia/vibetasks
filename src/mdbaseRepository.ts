@@ -84,6 +84,35 @@ function serializeDocument(frontmatter: Record<string, unknown>, body: string): 
   return `---\n${stringifyYaml(frontmatter)}---\n${body}`;
 }
 
+const LEGACY_RELATIONSHIP_FIELDS: Partial<Record<RecordType, string[]>> = {
+  task: ["project", "parent"], template: ["project", "parent"], project: ["area", "linked_note"],
+  area: ["linked_note"], filter: ["projects", "projects_not"],
+};
+
+/** Pure, idempotent type-document upgrader used by both migration backup planning and writes. */
+export function upgradedRelationshipTypeDocument(original: string, type: RecordType): string {
+  const parsed = parseDocument(original);
+  const schema = parsed.frontmatter.schema as Record<string, unknown> | undefined;
+  const value = schema?.value as Record<string, unknown> | undefined;
+  const properties = value?.properties as Record<string, unknown> | undefined;
+  if (parsed.frontmatter.kind !== "mdbase.type" || parsed.frontmatter.name !== type || !properties) return original;
+  const defaults = DEFAULT_SCHEMAS[type].properties as Record<string, unknown>;
+  for (const legacy of LEGACY_RELATIONSHIP_FIELDS[type] ?? []) delete properties[legacy];
+  for (const key of ["opal_project_id", "opal_parent_id", "opal_area_id", "opal_project_ids", "opal_project_ids_not", "opal_include_inbox", "opal_exclude_inbox"])
+    if (key in defaults) properties[key] = defaults[key];
+  const collection = parsed.frontmatter.collection as Record<string, unknown> | undefined;
+  if (collection) {
+    const generated = parseDocument(typeDocument(type)).frontmatter.collection as Record<string, unknown>;
+    const generatedLinks = generated.links as Record<string, unknown> | undefined;
+    const links = (collection.links as Record<string, unknown> | undefined) ?? {};
+    for (const legacy of LEGACY_RELATIONSHIP_FIELDS[type] ?? []) delete links[legacy];
+    if (generatedLinks) Object.assign(links, generatedLinks);
+    if (Object.keys(links).length) collection.links = links; else delete collection.links;
+  }
+  parsed.frontmatter.version = 2;
+  return serializeDocument(parsed.frontmatter, parsed.body);
+}
+
 function revisionOf(file: TFile): string {
   return `${file.stat.mtime}:${file.stat.size}`;
 }
@@ -372,6 +401,19 @@ export class MdbaseRepository extends Component {
     if (config.statuses?.length) settings.statuses = config.statuses;
   }
 
+  /** Upgrade only Opal Tasks-owned relationship declarations, preserving user schema customizations. */
+  async upgradeRelationshipSchema(): Promise<void> {
+    for (const type of ["task", "template", "project", "area", "filter"] as const) {
+      const path = typeResourcePath(type);
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) continue;
+      const original = await this.app.vault.read(file);
+      const next = upgradedRelationshipTypeDocument(original, type);
+      if (next !== original) await this.app.vault.modify(file, next);
+    }
+    await this.initializeCollection();
+  }
+
   async updateStatuses(statuses: StoredStatus[]): Promise<void> {
     this.assertReady();
     for (const type of ["task", "template", "project"] as const) {
@@ -456,16 +498,29 @@ export class MdbaseRepository extends Component {
     if (record.type === "area" && record.frontmatter.area !== undefined) {
       return [{ path: record.path, type: record.type, severity: "error", code: "hierarchy.area_parent", field: "area", message: "Areas cannot belong to another area or project" }];
     }
-    const links: Array<{ field: string; targets: RecordType[] }> = record.type === "task"
-      ? [{ field: "project", targets: ["project", "area"] }, { field: "parent", targets: ["task"] }]
-      : record.type === "project" ? [{ field: "area", targets: ["area"] }] : [];
+    const links: Array<{ field: string; targets: RecordType[]; mode: "id" | "wikilink" }> =
+      record.type === "task" || record.type === "template"
+        ? [
+            { field: "opal_project_id", targets: ["project", "area"], mode: "id" },
+            { field: "opal_parent_id", targets: [record.type], mode: "id" },
+            { field: "project", targets: ["project", "area"], mode: "wikilink" },
+            { field: "parent", targets: [record.type], mode: "wikilink" },
+          ]
+        : record.type === "project" ? [
+            { field: "opal_area_id", targets: ["area"], mode: "id" },
+            { field: "area", targets: ["area"], mode: "wikilink" },
+          ] : [];
     const out: ValidationIssue[] = [];
     for (const link of links) {
       const value = record.frontmatter[link.field];
       if (value === undefined) continue;
       const raw = typeof value === "string" ? value.match(/^\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]$/)?.[1] : undefined;
       const wanted = raw?.replace(/\.md$/i, "").split("/").pop()?.toLowerCase();
-      const target = wanted ? this.app.vault.getMarkdownFiles().find((file) => isCollectionPath(file.path) && file.basename.toLowerCase() === wanted) : undefined;
+      const target = this.app.vault.getMarkdownFiles().find((file) => {
+        if (!isCollectionPath(file.path)) return false;
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        return link.mode === "id" ? fm?.id === value : file.basename.toLowerCase() === wanted;
+      });
       const cache = target ? this.app.metadataCache.getFileCache(target) : null;
       const targetType: unknown = cache?.frontmatter?.type;
       if (!target || !link.targets.includes(targetType as RecordType)) {

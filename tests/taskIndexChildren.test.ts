@@ -184,3 +184,21 @@ describe("TaskIndex.descendants", () => {
     expect(index.descendants("_opal_tasks/tasks/fremd.md")).toEqual([]);
   });
 });
+
+describe("TaskIndex project relationship recovery", () => {
+  it("keeps a task with a dangling project ID visible in Inbox", () => {
+    const dangling = datei("_opal_tasks/Items/trash.md", aufgabe(undefined, { id: "TASK", opal_project_id: "BROKEN-ID" }));
+    const { index } = neuerIndex([dangling]);
+    expect(pfade(index.inbox())).toEqual([dangling.path]);
+  });
+
+  it("temporarily resolves a project path stored in the canonical ID field", () => {
+    const project = datei("_opal_tasks/Projects/Personal.md", { type: "project", id: "PERSONAL-ID", title: "Personal" });
+    const task = datei("_opal_tasks/Items/trash.md", aufgabe(undefined, {
+      id: "TASK", opal_project_id: "_opal_tasks/Projects/Personal.md",
+    }));
+    const { index } = neuerIndex([project, task]);
+    expect(index.get(task.path)?.project).toBe(project.path);
+    expect(index.inbox()).toEqual([]);
+  });
+});

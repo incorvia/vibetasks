@@ -112,7 +112,8 @@ export class ProjectHeaderEmbed extends MarkdownRenderChild {
     const description = project.description.trim();
     if (description) identity.createDiv({ cls: "bt-project-note-description", text: description });
     const detail = identity.createDiv({ cls: "bt-project-note-detail" });
-    const area = projectAreaName(project.area);
+    const area = project.areaId ? [...active, ...archived].find((candidate) => candidate.id === project.areaId)?.name ?? null
+      : projectAreaName(project.area);
     if (area) detail.createSpan({ text: `@${projectDisplayName(area)}` });
     const tasks = this.plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
     if (tasks.length) detail.createSpan({ text: t("subtasks_progress", tasks.filter((task) => isDone(task.status)).length, tasks.length) });

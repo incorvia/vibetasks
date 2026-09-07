@@ -50,7 +50,11 @@ export class TimeDashboardModal extends Modal {
         if (fm?.type === "area") { area = title; project = "Direct tasks"; }
         else {
           project = title;
-          if (typeof fm?.area === "string") area = fm.area.replace(/^\[\[|\]\]$/g, "").split("|")[0];
+          if (typeof fm?.opal_area_id === "string") {
+            const areaFile = this.app.vault.getMarkdownFiles().find((file) => this.app.metadataCache.getFileCache(file)?.frontmatter?.id === fm.opal_area_id);
+            const areaFm = areaFile ? this.app.metadataCache.getFileCache(areaFile)?.frontmatter : null;
+            area = typeof areaFm?.title === "string" ? areaFm.title : fm.opal_area_id;
+          } else if (typeof fm?.area === "string") area = fm.area.replace(/^\[\[|\]\]$/g, "").split("|")[0];
           else area = "Unassigned area";
         }
       } else if (this.currentHierarchy) { area = "Unassigned area"; project = "Unassigned project"; }

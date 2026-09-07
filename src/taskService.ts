@@ -10,6 +10,8 @@ import { t } from "./i18n";
 import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { entityIcon } from "./entityPresentation";
+export { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID, OPAL_PROJECT_IDS, OPAL_PROJECT_IDS_NOT } from "./stableRelationships";
+import { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./stableRelationships";
 
 export const slugify = (s: string): string =>
   s.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Task";
@@ -31,9 +33,7 @@ export function newlyIntroducedLabels(labels: readonly string[], known: readonly
   return added;
 }
 
-/** Basename (ohne Ordner und `.md`). Die EINE Quelle: Aufgaben verweisen über den Basename auf
- *  Projekt und Elternaufgabe, und genau diese Zeile stand vorher siebenmal im Quelltext – sechsmal
- *  wörtlich gleich, einmal als `projectName` in einer View-Datei, aus der sogar `main.ts` sie zog. */
+/** Basename (ohne Ordner und `.md`) for display and legacy backward reads only. */
 export const baseName = (path: string): string => path.split("/").pop()!.replace(/\.md$/, "");
 
 export const newId = (_p: string): string =>
@@ -111,10 +111,12 @@ export interface TaskFields {
   estimate?: number | null;     // erwarteter Gesamtaufwand in Minuten
   priority?: Priority;
   project?: string | null;   // Projekt-Basename (nicht Pfad)
+  projectId?: string | null; // stabile ID; schlägt `project`
   labels?: string[];
   recurrence?: string | null;
   recurBasis?: "due" | "done";
   parent?: string | null;    // Basename der Eltern-Aufgabe
+  parentId?: string | null;  // stabile ID; schlägt `parent`
   reminders?: string[];      // rohe Erinnerungs-Strings (siehe reminders.ts)
   sortOrder?: number | null; // manuelle Position (sort_order). Normalfall: weglassen -> lazy, kein
                              // Feld. Nur gesetzt, wenn eine Reihenfolge bewusst materialisiert wird
@@ -218,6 +220,8 @@ export interface DuplicateOpts {
   dates?: Map<string, ShiftedDates>;
   /** Zielprojekt für ALLE Kopien. `undefined` = das des Originals behalten, `null` = Eingang. */
   project?: string | null;
+  /** Stable companion to `project`; supplied when the target was just created. */
+  projectId?: string | null;
   /** Woraus gelesen wird. Vorgabe ist der Aufgaben-Index; Vorlagen liegen im zweiten. */
   from?: ChildSource;
   /**
@@ -236,8 +240,51 @@ export interface DuplicateOpts {
    * lösen wir sie wieder von ihr.
    */
   detachTop?: boolean;
+  /** Stable ID of `newParentBase`; internal handoff for a record created in the same tick. */
+  newParentId?: string | null;
   /** Intern: bereits besuchte Pfade (Kreis-Schutz). Nicht von aussen setzen. */
   seen?: Set<string>;
+}
+
+/** Resolve a UI/path value to the immutable mdbase id stored in relationship fields. */
+export function relationshipId(app: App, value: string | null | undefined, targetTypes: readonly string[]): string | null {
+  if (!value) return null;
+  const raw = (value.match(/\[\[([^\]|#]+)/)?.[1] ?? value).trim().replace(/\.md$/i, "");
+  const key = raw.toLowerCase();
+  const exactId: string[] = [], exactPath: string[] = [], exactBase: string[] = [], exactTitle: string[] = [];
+  for (const file of app.vault.getMarkdownFiles()) {
+    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm || !targetTypes.includes(String(fm[fieldKey("type")]))) continue;
+    if (isProjectType(fm[fieldKey("type")]) && !isCollectionPath(file.path)) continue;
+    const id = typeof fm.id === "string" && fm.id ? fm.id : null;
+    if (!id) continue;
+    const title = typeof fm.title === "string" ? fm.title.trim().toLowerCase() : "";
+    const path = file.path.replace(/\.md$/i, "").toLowerCase();
+    if (id === raw) exactId.push(id);
+    if (path === key) exactPath.push(id);
+    if (file.basename.toLowerCase() === key.split("/").pop()) exactBase.push(id);
+    if (title && title === key) exactTitle.push(id);
+  }
+  for (const matches of [exactId, exactPath, exactBase, exactTitle]) {
+    const unique = [...new Set(matches)];
+    if (unique.length) return unique.length === 1 ? unique[0] : null;
+  }
+  return null;
+}
+
+/** Resolve an editor's cached ID, then its visible/path fallback. Never persist an unchecked
+ *  value in a canonical relationship field: older collection records without `id` used to put
+ *  their path there, which made the task disappear from both its list and the Inbox. */
+export function canonicalRelationshipId(app: App, candidateId: string | null | undefined,
+  fallback: string | null | undefined, targetTypes: readonly string[]): string | null {
+  return relationshipId(app, candidateId, targetTypes) ?? relationshipId(app, fallback, targetTypes);
+}
+
+/** Backward-compatible relationship value used only when the target has no stable ID yet. */
+export function legacyRelationshipLink(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const raw = (value.match(/\[\[([^\]|#]+)/)?.[1] ?? value).trim().replace(/\.md$/i, "");
+  return raw ? `[[${raw}]]` : null;
 }
 
 /** Neue Aufgaben-Notiz anlegen (kollisionssicherer Dateiname). */
@@ -255,6 +302,8 @@ export async function createTaskNote(app: App, settings: OpalTasksSettings, f: T
   const jetzt = rfc3339Now();
   const stamps = creationStamps(status, jetzt);
   const recordType = (target?.type ?? "task") as "task" | "template";
+  const projectId = canonicalRelationshipId(app, f.projectId, f.project, ["project", "area"]);
+  const parentId = canonicalRelationshipId(app, f.parentId, f.parent, [recordType]);
   const frontmatter: Record<string, unknown> = {
     type: recordType,
     id: newUlid(),
@@ -267,8 +316,12 @@ export async function createTaskNote(app: App, settings: OpalTasksSettings, f: T
     priority: f.priority && f.priority !== "normal" ? f.priority : undefined,
     due: f.due ? combineDT(f.due, f.dueTime) : null,
     estimate: f.estimate ?? null,
-    project: f.project ? "[[" + f.project + "]]" : null,
-    parent: f.parent ? "[[" + f.parent + "]]" : null,
+    [OPAL_PROJECT_ID]: projectId,
+    [OPAL_PARENT_ID]: parentId,
+    // If an old target has not received an ID yet, retain a resolvable legacy link. The repair
+    // migration will replace it after assigning the target an ID.
+    project: projectId ? null : legacyRelationshipLink(f.project),
+    parent: parentId ? null : legacyRelationshipLink(f.parent),
     [fieldKey("labels")]: f.labels ?? [],
     recurrence: f.recurrence ?? null,
     recur_basis: f.recurrence && f.recurBasis === "done" ? "done" : null,
@@ -352,6 +405,7 @@ export interface ProjItem {
   workflowStatus: TaskStatus;
   priority: Priority;
   area?: string | null;
+  areaId?: string | null;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
 }
 
@@ -406,7 +460,9 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
     const type: "project" | "area" | null = ty === "area" ? "area" : ty === "project" ? "project" : null;
     if (!type) return [];
     return [{
-      id: typeof fm?.id === "string" && fm.id ? fm.id : f.path,
+      // A path is not an ID. Callers may use an empty ID temporarily; task persistence then keeps
+      // a legacy wikilink until the repair migration assigns this record a stable identity.
+      id: typeof fm?.id === "string" && fm.id ? fm.id : "",
       name: typeof fm?.title === "string" && fm.title.trim() ? fm.title : f.basename, path: f.path, type,
       // Entity presentation is shared by the sidebar, embeds, pickers, and full-page headers.
       // An old explicit `folder` remains a calculated default rather than a custom project icon.
@@ -414,6 +470,7 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
       area: typeof fm?.area === "string" ? fm.area : null,
+      areaId: typeof fm?.[OPAL_AREA_ID] === "string" ? fm[OPAL_AREA_ID] : null,
       workflowStatus: typeof fm?.workflow_status === "string" && isKnownStatus(fm.workflow_status) ? fm.workflow_status : firstOpenStatus(),
       priority: (["highest", "high", "medium", "normal", "low", "lowest"] as string[]).includes(String(fm?.priority)) ? fm!.priority as Priority : "normal",
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
@@ -453,8 +510,9 @@ export function projectAreaName(area: string | null | undefined): string | null 
 
 /** Aktive Kindprojekte einer Area. Verwaiste Links werden bewusst nicht zugeordnet. */
 export function projectsInArea(area: ProjItem, projects: ProjItem[]): ProjItem[] {
-  const key = baseName(area.path).toLowerCase();
-  return projects.filter((p) => p.type === "project" && !p.archived && projectAreaName(p.area)?.toLowerCase() === key);
+  const legacyKey = baseName(area.path).toLowerCase();
+  return projects.filter((p) => p.type === "project" && !p.archived
+    && (p.areaId === area.id || (!p.areaId && projectAreaName(p.area)?.toLowerCase() === legacyKey)));
 }
 
 /** Direkte Area-Aufgaben plus Aufgaben ihrer aktiven Kindprojekte. */
@@ -490,8 +548,10 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
   return { active, archived };
 }
 
-/** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen zurück. */
-export async function createProjectNote(app: App, settings: OpalTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
+export interface CreatedProjectRecord { name: string; id: string; path: string }
+
+/** Create a project/area and return both its presentation name and immutable identity. */
+export async function createProjectRecord(app: App, settings: OpalTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<CreatedProjectRecord> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);
@@ -500,17 +560,32 @@ export async function createProjectNote(app: App, settings: OpalTasksSettings, n
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
   const type = asArea ? "area" : "project";
   const now = rfc3339Now();
-  const fm: Record<string, unknown> = { type, id: newUlid(), title: base, status: "active", workflow_status: !asArea ? workflowStatus : undefined, priority: !asArea && priority !== "normal" ? priority : undefined, area: !asArea && area ? `[[${area}]]` : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
+  const id = newUlid();
+  const areaId = !asArea ? relationshipId(app, area, ["area"]) : null;
+  const fm: Record<string, unknown> = { type, id, title: name.trim(), status: "active", workflow_status: !asArea ? workflowStatus : undefined, priority: !asArea && priority !== "normal" ? priority : undefined, [OPAL_AREA_ID]: areaId, area: !asArea && !areaId ? legacyRelationshipLink(area) : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
-  return base;
+  return { name: name.trim(), id, path: dest };
+}
+
+/** Backward-compatible UI helper returning the display name. */
+export async function createProjectNote(app: App, settings: OpalTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", area: string | null = null, workflowStatus: TaskStatus = firstOpenStatus(), priority: Priority = "normal"): Promise<string> {
+  return (await createProjectRecord(app, settings, name, asArea, color, hidden, description, area, workflowStatus, priority)).name;
 }
 
 export async function setProjectArea(app: App, path: string, area: string | null): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await updateRecord(app, file, (fm) => { if (area) fm.area = `[[${area}]]`; else delete fm.area; });
+  await updateRecord(app, file, (fm) => {
+    const id = relationshipId(app, area, ["area"]);
+    if (id) fm[OPAL_AREA_ID] = id; else delete fm[OPAL_AREA_ID];
+    if (id) delete fm.area;
+    else {
+      const legacy = legacyRelationshipLink(area);
+      if (legacy) fm.area = legacy; else delete fm.area;
+    }
+  });
 }
 
 export async function setProjectWorkflow(app: App, path: string, workflowStatus: TaskStatus, priority: Priority): Promise<void> {
@@ -565,18 +640,14 @@ export async function setProjectDescription(app: App, path: string, description:
   });
 }
 
-/** Projekt umbenennen: Datei umbenennen (Obsidian aktualisiert Links) + ggf. die H1-Überschrift,
- *  solange sie noch den alten Namen trägt (s. retitleHeading). */
+/** Project titles are presentation; record path and id stay stable. */
 export async function renameProjectNote(app: App, path: string, newName: string): Promise<string | null> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return null;
-  const base = slugify(newName);
-  if (!base || base === file.basename) return file.basename;
-  const dir = file.parent?.path ?? "";
-  const dest = normalizePath((dir ? dir + "/" : "") + base + ".md");
-  if (app.vault.getAbstractFileByPath(dest)) return null;   // Namenskollision
-  await repositoryFor(app).rename(file.path, dest, base);
-  return base;
+  const title = newName.trim();
+  if (!title) return null;
+  await updateRecord(app, file, (fm) => { fm.title = title; });
+  return title;
 }
 
 /** Projekt in den Obsidian-Papierkorb verschieben (reversibel). */

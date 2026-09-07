@@ -7,6 +7,11 @@ import { setLocale, t, pickLocale } from "../src/i18n";
 
 const LOCALES = ["en", "de", "es", "pt", "fr", "tr", "zh", "ru", "ja", "it"];
 const KEYS = ["menu_open_new_tab", "menu_open_right", "menu_open_window", "plan_open"];
+const PROJECT_NOTE_KEYS = [
+  "cmd_project_from_note", "menu_project_from_note", "menu_open_opal_project",
+  "notice_project_from_note", "notice_project_from_note_failed",
+  "notice_project_note_required", "notice_project_record_already",
+];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -48,6 +53,21 @@ describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
     for (const loc of LOCALES) {
       setLocale(loc);
       expect(t("plan_open"), loc).not.toBe("plan_open");
+    }
+    setLocale("en");
+  });
+});
+
+describe("Notiz-zu-Projekt: in jeder Sprache übersetzt", () => {
+  it("fällt für keinen neuen Text still auf Englisch zurück", () => {
+    setLocale("en");
+    const en = PROJECT_NOTE_KEYS.map((key) => t(key));
+    for (const loc of LOCALES.filter((locale) => locale !== "en")) {
+      setLocale(loc);
+      for (const [i, key] of PROJECT_NOTE_KEYS.entries()) {
+        expect(t(key), `${loc}/${key} fehlt`).not.toBe(key);
+        expect(t(key), `${loc}/${key} ist englisch`).not.toBe(en[i]);
+      }
     }
     setLocale("en");
   });

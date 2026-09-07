@@ -4,6 +4,8 @@ import { todayIso } from "./taskService";
 import { titleKey } from "./taskTitle";
 import { fieldKey } from "./fieldNames";
 import { migratedDeadline } from "./timingMigration";
+import { newUlid, rfc3339Now } from "./mdbaseRepository";
+import { OPAL_PROJECT_ID } from "./stableRelationships";
 
 const PRIO_MAP: Record<string, Priority> = {
   "🔺": "highest", "⏫": "high", "🔼": "medium", "🔽": "low", "⏬": "lowest",
@@ -55,8 +57,6 @@ export function parseLine(line: string): ParsedLine | null {
 const slugify = (s: string) =>
   s.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Aufgabe";
 
-const newId = (p: string) => p + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-
 async function ensureFolder(app: App, path: string) {
   const p = normalizePath(path);
   if (!app.vault.getAbstractFileByPath(p)) {
@@ -102,8 +102,17 @@ export async function runMigration(app: App, settings: OpalTasksSettings): Promi
     const projectName = list.basename;
     // Projekt-Notiz anlegen, falls fehlt.
     const projPath = normalizePath(settings.projectsFolder + "/" + slugify(projectName) + ".md");
-    if (!app.vault.getAbstractFileByPath(projPath)) {
-      await app.vault.create(projPath, frontmatter({ [fieldKey("type")]: "project", id: newId("p"), status: "active", icon: "list-checks" }) + "\n# " + projectName + "\n");
+    const existingProject = app.vault.getAbstractFileByPath(projPath);
+    let projectId = existingProject instanceof TFile
+      ? app.metadataCache.getFileCache(existingProject)?.frontmatter?.id as string | undefined
+      : undefined;
+    if (!projectId) projectId = newUlid();
+    if (!existingProject) {
+      const now = rfc3339Now();
+      await app.vault.create(projPath, frontmatter({ [fieldKey("type")]: "project", id: projectId, title: projectName,
+        status: "active", icon: "list-checks", created: now, modified: now }) + "\n");
+    } else if (existingProject instanceof TFile) {
+      await app.fileManager.processFrontMatter(existingProject, (fm: Record<string, unknown>) => { if (!fm.id) fm.id = projectId; });
     }
 
     const lines = (await app.vault.read(list)).split("\n");
@@ -124,12 +133,12 @@ export async function runMigration(app: App, settings: OpalTasksSettings): Promi
 
       const fm = frontmatter({
         [fieldKey("type")]: "task",
-        id: newId("t"),
+        id: newUlid(),
         [titleKey()]: p.title,
         status: p.status,
         priority: p.priority === "normal" ? undefined : p.priority,
         due: migratedDeadline(p.due, p.scheduled),
-        project: "[[" + projectName + "]]",
+        [OPAL_PROJECT_ID]: projectId,
         labels: p.labels,
         recurrence: p.recurrence,
         created: today,

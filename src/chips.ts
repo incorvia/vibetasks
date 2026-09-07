@@ -75,7 +75,10 @@ export interface ChipFields {
   labels?: string[];
   recurrence?: string | null; recurBasis?: "due" | "done";
   reminders?: string[];
+  project?: string | null;
+  projectId?: string | null;
   parent?: string | null;
+  parentId?: string | null;
 }
 
 /** Brücke Modal ⇄ Chip: liefert Feldzustand + Callbacks, die pro Modal unterschiedlich sind
@@ -334,8 +337,8 @@ function openReminders(host: ChipHost, anchor: HTMLElement): void {
 
 /** Titel der aktuell gewählten Elternaufgabe (für Chip-Label) oder null. */
 function parentTitle(host: ChipHost): string | null {
-  if (!host.f.parent) return null;
-  return host.plugin.index.all().find((tk) => baseName(tk.path) === host.f.parent)?.title ?? host.f.parent;
+  if (!host.f.parent && !host.f.parentId) return null;
+  return host.plugin.index.all().find((tk) => host.f.parentId ? tk.id === host.f.parentId : baseName(tk.path) === host.f.parent)?.title ?? host.f.parent ?? null;
 }
 
 function openParent(host: ChipHost): void {
@@ -347,6 +350,9 @@ function openParent(host: ChipHost): void {
   const items = host.plugin.index.all().filter((tk) => !isTrashed(tk.status) && !exclude.has(tk.path));
   new TaskPickerModal(host.app, items, t("pick_parent"), (parent) => {
     host.f.parent = baseName(parent.path);
+    host.f.parentId = parent.id;
+    host.f.project = parent.project ? baseName(parent.project) : null;
+    host.f.projectId = parent.projectId ?? null;
     host.onParentPicked?.(parent.project ? baseName(parent.project) : null);   // Projekt erben (wie „+ Subtask")
     host.rerender();
   }).open();
@@ -417,7 +423,7 @@ export const CHIPS: Record<ChipId, ChipDef> = {
     isSet: (f) => !!f.parent,
     valueLabel: (_f, host) => parentTitle(host) ?? t("chip_parent"),
     open: (host) => openParent(host),
-    clear: (host) => { host.f.parent = null; },
+    clear: (host) => { host.f.parent = null; host.f.parentId = null; },
   },
   details: {
     id: "details", icon: "paperclip", nameKey: "details", kind: "details",

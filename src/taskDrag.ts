@@ -72,7 +72,8 @@ export async function applyDropPage(plugin: OpalTasksPlugin, task: Task, page: D
   if (page.project === undefined) return;                    // Seite ohne Projekt-Dimension
   // Eingang und „gar kein Projekt" sind derselbe Zustand (null) – so trifft der Vergleich unten
   // auch den Fall „liegt schon im Eingang, wurde in den Eingang gezogen".
-  const cur = task.project && !isInboxLink(task.project) ? baseName(task.project) : null;
+  const cur = task.projectId && !task.project ? task.projectId
+    : task.project && !isInboxLink(task.project) ? baseName(task.project) : null;
   if (cur === page.project) return;
   await plugin.setTaskProject(task, page.project);           // null = Projekt entfernen (Eingang)
 }

@@ -2,7 +2,7 @@
 // Aufgebaut wie DetailLogView (Host-Callbacks + mount/unload), sitzt im selben Detailbereich
 // direkt ÜBER dem Kommentar-Log.
 //
-// Unteraufgaben sind eigene Notizen (`parent: [[basename]]`) – die Sektion schreibt deshalb
+// Unteraufgaben sind eigene Notizen (`opal_parent_id`) – die Sektion schreibt deshalb
 // SOFORT in den Vault (anlegen, abhaken, in den Papierkorb), unabhängig vom Speichern-Button
 // des Modals. Genau wie das Status-Chip, das ebenfalls live schreibt. Sie hängt am Index
 // (subscribe) statt selbst zu zählen, damit Änderungen aus Listen/Kalender sofort ankommen.
@@ -255,7 +255,9 @@ export class SubtaskList {
       await createTaskNote(this.plugin.app, this.plugin.settings, {
         ...r.fields, title,
         project: this.host.projectBase(),
+        projectId: parent.projectId,
         parent: parent.path.split("/").pop()!.replace(/\.md$/, ""),
+        parentId: parent.id,
       }, this.host.scope().target);
     } catch (err) {
       console.error("Opal Tasks: create subtask failed", err);

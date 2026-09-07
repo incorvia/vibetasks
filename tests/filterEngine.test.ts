@@ -63,9 +63,9 @@ describe("matchesTask – Facetten (UND zwischen, ODER innerhalb)", () => {
     expect(matchesTask(mk({ labels: ["dringend", "x"] }), c, TODAY)).toBe(true);
     expect(matchesTask(mk({ labels: ["x"] }), c, TODAY)).toBe(false);
   });
-  it("Projekt: Vergleich per Basename", () => {
+  it("Projekt: Vergleich per stabiler ID", () => {
     const c = crit({ projects: ["Immobilien"] });
-    expect(matchesTask(mk({ project: "Opal Tasks/Projects/Immobilien.md" }), c, TODAY)).toBe(true);
+    expect(matchesTask(mk({ project: "Opal Tasks/Projects/Immobilien.md", projectId: "Immobilien" }), c, TODAY)).toBe(true);
     expect(matchesTask(mk({ project: "Opal Tasks/Projects/Reisen.md" }), c, TODAY)).toBe(false);
     expect(matchesTask(mk({ project: null }), c, TODAY)).toBe(false);
   });
@@ -114,7 +114,7 @@ describe("matchesTask – Marker-Gruppen (✓ / + / −)", () => {
   });
   it("Projekt −: schließt Projekt aus, Inbox (kein Projekt) bleibt", () => {
     const c = crit({ projectsNot: ["Archiv"] });
-    expect(matchesTask(mk({ project: "P/Archiv.md" }), c, TODAY)).toBe(false);
+    expect(matchesTask(mk({ project: "P/Archiv.md", projectId: "Archiv" }), c, TODAY)).toBe(false);
     expect(matchesTask(mk({ project: "P/Küche.md" }), c, TODAY)).toBe(true);
     expect(matchesTask(mk({ project: null }), c, TODAY)).toBe(true);
   });

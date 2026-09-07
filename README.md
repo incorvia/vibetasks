@@ -199,19 +199,20 @@ Every task is a Markdown note with frontmatter. Nothing proprietary:
 ```yaml
 ---
 type: task
-id: t-8f3a1
+id: 01ARZ3NDEKTSV4RRFFQ69G5FAT
 title: Write the launch blog post
 status: todo            # todo | doing | done | cancelled
 priority: high
 due: 2026-07-10T09:00
 estimate: 30            # expected effort, minutes
-project: "[[Website Relaunch]]"
-parent: "[[Draft the outline]]"
+opal_project_id: 01ARZ3NDEKTSV4RRFFQ69G5FAV
+opal_parent_id: 01ARZ3NDEKTSV4RRFFQ69G5FAW
 labels: [work, writing]
 recurrence: every week
 recur_basis: due        # due | done
 reminders: ["-30m", "2026-07-10T08:00"]
-created: 2026-07-04
+created: 2026-07-04T09:00:00Z
+modified: 2026-07-04T09:00:00Z
 description: Free-form text shown under the title
 ---
 ```
@@ -286,7 +287,7 @@ color: "#4caf50"
 Your own notes start right here.
 ```
 
-The name comes from the required `title` field. Renaming a project, area, filter, or template updates both its title and filename, and Obsidian plus Opal Tasks update links pointing at it.
+The required `id` is identity; `title` is editable presentation. Changing a task, project, or area title does not rename its file or rewrite related records. Relationships use `opal_project_id`, `opal_parent_id`, and `opal_area_id`, so duplicate titles and manual file renames cannot silently redirect them. Saved filters use `opal_project_ids` / `opal_project_ids_not` and explicit `opal_include_inbox` / `opal_exclude_inbox` flags.
 
 By default, notes live under these folders (all configurable in settings):
 
@@ -302,9 +303,10 @@ By default, notes live under these folders (all configurable in settings):
 
 Projects and areas are the same kind of note (`type: project` / `type: area`), so they share one folder.
 
-To associate an existing vault note without turning it into a database record, focus the note and run
-**Opal Tasks: Create linked project from current note**. Opal Tasks silently creates the canonical record
-under `_opal_tasks/projects/`, stores a `linked_note` wikilink on that record, and appends a live
+To associate an existing vault note without turning it into a database record, choose **Turn into Opal
+Tasks project** from the note's options menu, or focus it and run **Opal Tasks: Turn current note into an
+Opal Tasks project**. Opal Tasks silently creates the canonical record
+under `_opal_tasks/projects/`, stores its `opal_project_id` marker on the companion note, and appends a live
 `opal_tasks` task-list embed to the original note. It also inserts a compact project card below the note
 title, where the project's own workflow status can be changed without confusing it with one of its
 tasks. Both embeds refer to the stable project ID, so renaming either file does not disconnect the

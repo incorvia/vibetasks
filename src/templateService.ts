@@ -2,7 +2,7 @@ import { App, TFile, normalizePath } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { Task } from "./types";
 import { AnchorMode, planTemplateDates } from "./templatePlan";
-import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, slugify } from "./taskService";
+import { baseName, createProjectRecord, createTaskNote, EditScope, ensureFolder, NoteTarget, slugify, relationshipId } from "./taskService";
 import { firstOpenStatus, isTrashed } from "./statuses";
 import { updateRecord } from "./mdbaseRepository";
 
@@ -134,13 +134,15 @@ export async function saveAsTemplate(plugin: OpalTasksPlugin, task: Task, kind: 
     // Index nicht mehr auf (resolveProjectPath) – der Dialog fällt dann auf die Seite zurück, von
     // der aus er geöffnet wurde. Ein toter Verweis kann hier also nichts anrichten.
     project: task.project ? baseName(task.project) : null,
+    projectId: task.projectId,
     labels: [...task.labels],
     recurrence: task.recurrence, recurBasis: task.recurBasis,
     reminders: [...task.reminders],
   }, target);
 
   await updateRecord(plugin.app, root, (fm) => { fm[TEMPLATE_OF] = kind; });
-  await plugin.duplicateSubtree(task.path, root.basename, { target, project: null });
+  await plugin.duplicateSubtree(task.path, root.basename, { target, project: null,
+    newParentId: (await plugin.repository.read(root.path))?.id ?? null });
   return root.path;
 }
 
@@ -151,7 +153,7 @@ export async function saveAsTemplate(plugin: OpalTasksPlugin, task: Task, kind: 
  * Projekts mit ihren eigenen Unterbäumen.
  *
  * ── Warum die Projektaufgaben `parent` bekommen ──────────────────────────────
- * Im Vault gehört eine Aufgabe über `project: [[Name]]` zu ihrem Projekt, nicht über `parent`.
+ * Im Vault gehört eine Aufgabe über `opal_project_id` zu ihrem Projekt, nicht über `opal_parent_id`.
  * In der Vorlage wäre das eine Sackgasse: `descendants()` läuft über `parent`, und ohne diese
  * Kette fände weder die Grössenangabe noch das Anwenden auch nur eine einzige Aufgabe. Innerhalb
  * der Vorlage bilden sie deshalb einen Baum unter der Wurzel – und beim Anwenden löst
@@ -171,7 +173,8 @@ export async function saveProjectAsTemplate(plugin: OpalTasksPlugin, projectPath
   // Papierkorb bleibt aussen vor (subtasksToDuplicate filtert ihn ohnehin, aber schon hier
   // gefiltert bleibt die Absicht sichtbar).
   const roots = plugin.index.all().filter((t) => t.project === projectPath && !t.parent && !isTrashed(t.status));
-  await plugin.duplicateSubtree(projectPath, root.basename, { target, project: null, roots });
+  await plugin.duplicateSubtree(projectPath, root.basename, { target, project: null, roots,
+    newParentId: (await plugin.repository.read(root.path))?.id ?? null });
   return root.path;
 }
 
@@ -222,11 +225,13 @@ export async function applyTemplate(plugin: OpalTasksPlugin, rootPath: string, o
   if (templateKind(plugin.app, rootPath) === "project") {
     // Die Wurzel wird zum Projekt (oder es gibt schon eines) – nicht zu einer Aufgabe. Ihre
     // direkten Kinder lösen sich deshalb von ihr und werden Aufgaben des Projekts (detachTop).
-    const target = opts.newProject
-      ? await createProjectNote(plugin.app, plugin.settings, opts.newProject, false, null, false, root.description)
-      : opts.project;
+    const created = opts.newProject
+      ? await createProjectRecord(plugin.app, plugin.settings, opts.newProject, false, null, false, root.description)
+      : null;
+    const target = created?.name ?? opts.project;
     await plugin.duplicateSubtree(rootPath, "", {
-      from: plugin.templates, dates, project: target, detachTop: true,
+      from: plugin.templates, dates, project: target,
+      projectId: created?.id ?? relationshipId(plugin.app, target, ["project", "area"]), detachTop: true,
     });
     return items.length - 1;   // die Wurzel wurde ein Projekt, keine Aufgabe
   }
@@ -240,6 +245,7 @@ export async function applyTemplate(plugin: OpalTasksPlugin, rootPath: string, o
     estimate: root.estimate,
     priority: root.priority,
     project: opts.project,
+    projectId: relationshipId(plugin.app, opts.project, ["project", "area"]),
     labels: [...root.labels],
     recurrence: root.recurrence, recurBasis: root.recurBasis,
     reminders: d ? [...d.reminders] : [...root.reminders],
@@ -249,6 +255,8 @@ export async function applyTemplate(plugin: OpalTasksPlugin, rootPath: string, o
     from: plugin.templates,
     dates,
     project: opts.project,
+    projectId: relationshipId(plugin.app, opts.project, ["project", "area"]),
+    newParentId: (await plugin.repository.read(created.path))?.id ?? null,
   });
   return items.length;
 }
@@ -274,22 +282,15 @@ export async function createEmptyTemplate(plugin: OpalTasksPlugin, name: string,
  * Eine Vorlage umbenennen.
  *
  * Geändert werden der angezeigte Name (Frontmatter-`title` der Wurzel) und der Ordnername. Die
- * DATEI der Wurzel behält ihren Namen: Die Kinder verweisen mit `parent: [[Basename]]` auf sie,
- * und ein Umbenennen zöge das Umschreiben jedes Kindes nach sich – für etwas, das niemand sieht.
- * Dieselbe Trennung wie bei Projekten (Name = Referenz, Anzeige = Wert).
+ * Nur der Präsentationstitel ändert sich. Datei und stabile ID bleiben unverändert, daher müssen
+ * Kindbeziehungen nicht umgeschrieben werden.
  */
 export async function renameTemplate(plugin: OpalTasksPlugin, rootPath: string, newName: string): Promise<void> {
   const file = plugin.app.vault.getAbstractFileByPath(rootPath);
   if (!(file instanceof TFile)) return;
-  const folder = file.parent;
   const title = newName.trim();
   if (!title) return;
-  const base = slugify(title);
-  const rootDest = normalizePath(`${folder?.path ? folder.path + "/" : ""}${base}.md`);
-  await plugin.repository.rename(file.path, rootDest, title);
-  if (!folder || folder.path === plugin.settings.templatesFolder) return;
-  const dest = freeFolder(plugin.app, templateFolder(plugin, newName));
-  if (dest !== folder.path) await plugin.app.fileManager.renameFile(folder, dest);
+  await updateRecord(plugin.app, file, (fm) => { fm.title = title; });
 }
 
 /** Eine Vorlage samt ihres Ordners in den Obsidian-Papierkorb (reversibel, wie bei Projekten). */

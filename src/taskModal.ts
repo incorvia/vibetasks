@@ -1,7 +1,7 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
@@ -79,7 +79,7 @@ export class TaskModal extends Modal {
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
   constructor(private plugin: OpalTasksPlugin, private existing?: Task, private defaultProject?: string,
-              private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
+              private opts: { hideProjekt?: boolean; parent?: string; parentId?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string; projectId?: string | null }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
     super(plugin.app);
     const seed = opts.seed;
     this.f = existing
@@ -88,7 +88,9 @@ export class TaskModal extends Modal {
           estimate: existing.estimate,
           priority: existing.priority, recurrence: existing.recurrence, recurBasis: existing.recurBasis,
           project: existing.project ? baseName(existing.project) : null,
+          projectId: existing.projectId,
           parent: existing.parent ? baseName(existing.parent) : null,
+          parentId: existing.parentId,
           labels: [...existing.labels],
           reminders: [...(existing.reminders ?? [])],
           description: existing.description,   // aus dem Frontmatter (kein Body-Read mehr nötig)
@@ -104,8 +106,8 @@ export class TaskModal extends Modal {
           due: seed?.due ?? (opts.defaultToday ? todayIso() : null),
           dueTime: seed?.dueTime ?? null, estimate: seed?.estimate ?? null,
           recurrence: seed?.recurrence ?? null, recurBasis: seed?.recurBasis ?? "due",
-          parent: seed?.parent ?? null, description: seed?.description,
-          project: defaultProject ?? null,   // kein Default-Projekt -> Eingang (= kein Projekt)
+          parent: seed?.parent ?? opts.parent ?? null, parentId: seed?.parentId ?? opts.parentId ?? null, description: seed?.description,
+          project: defaultProject ?? null, projectId: seed?.projectId ?? relationshipId(this.app, defaultProject, ["project", "area"]),
         };
     if (opts.duePinned) this.duePinned = true;   // aus der Schnelleingabe übernommen (⤢)
   }
@@ -311,8 +313,7 @@ export class TaskModal extends Modal {
       tip(this.projectOpenBtn, t("open_assigned_project"));
       setIcon(this.projectOpenBtn, "arrow-up-right");
       this.projectOpenBtn.onclick = () => {
-        const { bereiche, projekte } = listProjectsAndAreas(this.app);
-        const selected = [...bereiche, ...projekte].find((project) => project.name === this.f.project);
+        const selected = this.selectedProject();
         if (!selected) return;
         this.close();
         void this.plugin.activateProject(selected.path);
@@ -493,6 +494,7 @@ export class TaskModal extends Modal {
   /** Natural-Language: Datum, #Labels und @Projekt aus dem Titel erkennen und übernehmen.
    *  Datum nur, solange nicht manuell gesetzt; Labels werden ergänzt. */
   private applyParse(): void {
+    const previousProject = this.f.project;
     const r = applyQuickEntry(this.f.title, {
       due: this.f.due ?? null, dueTime: this.f.dueTime ?? null, priority: this.f.priority ?? "normal",
       labels: this.f.labels ?? [], project: this.f.project ?? null,
@@ -524,6 +526,7 @@ export class TaskModal extends Modal {
     });
     this.cleanTitle = r.title;
     Object.assign(this.f, r.fields);
+    if (this.f.project !== previousProject) this.f.projectId = relationshipId(this.app, this.f.project, ["project", "area"]);
     this.nl = r.state;
   }
 
@@ -579,7 +582,7 @@ export class TaskModal extends Modal {
       unparseEstimate: () => this.unparseEstimate(),
       unparseRecur: () => this.unparseRecur(),
       existingPath: this.existing?.path,
-      onParentPicked: (proj) => { if (proj) this.f.project = proj; if (!this.opts.hideProjekt) this.renderProjekt(); },
+      onParentPicked: () => { if (!this.opts.hideProjekt) this.renderProjekt(); },
       toggleDetails: () => this.toggleDetails(),
       detailsOpen: () => !this.logWrap.hasClass("bt-hidden"),
       // Elternaufgaben-Chip im festen „+ Subtask"-Modus (opts.parent) ausblenden – Parent steht fest.
@@ -673,7 +676,12 @@ export class TaskModal extends Modal {
     await this.log.flush(file);
     // Unteraufgaben (rekursiv) mitkopieren, verankert an der neuen Hauptkopie –
     // die Rekursion lebt in main.ts (gemeinsam mit dem Zeilen-Kontextmenü).
-    if (this.existing) await this.plugin.duplicateSubtree(this.existing.path, file.basename, { target: this.editScope.target, from: this.editScope.index });
+    if (this.existing) {
+      const rootId = (await this.plugin.repository.read(file.path))?.id ?? null;
+      await this.plugin.duplicateSubtree(this.existing.path, file.basename, {
+        target: this.editScope.target, from: this.editScope.index, newParentId: rootId,
+      });
+    }
     new Notice(t("msg_duplicated"));
     this.close();
   }
@@ -762,8 +770,8 @@ export class TaskModal extends Modal {
    *  Gesucht wird im Bestand DIESES Editors: Die Elternaufgabe einer Vorlagen-Unteraufgabe steht
    *  im Vorlagen-Index, und im Aufgaben-Index fände man sie nie – die Brotkrume fehlte dann. */
   private parentTask(): Task | null {
-    if (!this.f.parent) return null;
-    return this.editScope.index.all().find((tk) => baseName(tk.path) === this.f.parent) ?? null;
+    if (!this.f.parent && !this.f.parentId) return null;
+    return this.editScope.index.all().find((tk) => this.f.parentId ? tk.id === this.f.parentId : baseName(tk.path) === this.f.parent) ?? null;
   }
 
   /** Elternaufgabe in ihrer Liste anzeigen (wie die Lupe in der Suche: hinspringen + kurz
@@ -783,16 +791,24 @@ export class TaskModal extends Modal {
     this.renderChips();
   }
 
+  /** Prefer the stable ID, but fall back to the resolved display name/path when repairing a task
+   *  whose old migration wrote a path into the ID field. */
+  private selectedProject() {
+    const { bereiche, projekte } = listProjectsAndAreas(this.app);
+    return [...bereiche, ...projekte].find((project) =>
+      (!!this.f.projectId && project.id === this.f.projectId)
+      || (!!this.f.project && (project.name === this.f.project || baseName(project.path) === this.f.project)));
+  }
+
   private renderProjekt(): void {
     this.projektBtn.empty();
-    const { bereiche, projekte } = listProjectsAndAreas(this.app);
-    const inbox = isInboxLink(this.f.project);   // kein Projekt ODER Verweis auf Inbox -> Eingang
-    const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.f.project);
+    const sel = this.selectedProject();
+    const inbox = !sel && isInboxLink(this.f.project);
     this.projectOpenBtn.toggleClass("bt-hidden", !sel);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
-    this.projektBtn.createSpan({ cls: "bt-projekt-lbl", text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
+    this.projektBtn.createSpan({ cls: "bt-projekt-lbl", text: inbox ? t("nav_inbox") : (sel?.name ?? projectDisplayName(this.f.project ?? this.f.projectId)) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
   }
 
@@ -804,13 +820,13 @@ export class TaskModal extends Modal {
       popRow(pop, "plus", t("pick_new_area"), () => this.startNewProject(pop, close, true)).addClass("bt-row-action");
 
       const { bereiche, projekte } = listProjectsAndAreas(this.app);
-      const pick = (name: string | null) => { this.f.project = name; this.renderProjekt(); close(); };
+      const pick = (name: string | null, id: string | null = null) => { this.f.project = name; this.f.projectId = id; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
-      popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.f.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]) => {
+      popRow(pop, "inbox", t("nav_inbox"), () => pick(null), !this.f.projectId && isInboxLink(this.f.project));
+      const group = (title: string, items: { id: string; name: string; icon: string; color: string | null }[]) => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name, it.color ?? undefined);
+        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), it.color ?? undefined);
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);
@@ -825,8 +841,10 @@ export class TaskModal extends Modal {
       e.preventDefault();
       const name = inp.value.trim();
       if (!name) return;
-      const base = await createProjectNote(this.app, this.plugin.settings, name, asArea);
-      this.f.project = base; this.renderProjekt();
+      const created = await createProjectRecord(this.app, this.plugin.settings, name, asArea);
+      this.f.project = created.name;
+      this.f.projectId = created.id;
+      this.renderProjekt();
       close();
     };
     window.setTimeout(() => inp.focus(), 0);
@@ -852,7 +870,8 @@ export class TaskModal extends Modal {
     const parentBase = baseName(parent.path);
     // Elternmodal bleibt offen (stacked): nach dem Anlegen steht man wieder in der Hauptaufgabe,
     // und deren Liste zeigt die neue Unteraufgabe sofort.
-    new TaskModal(this.plugin, undefined, parentProject, { hideProjekt: true, parent: parentBase, defaultTitle: title, stacked: true, scope: this.opts.scope }).open();
+    new TaskModal(this.plugin, undefined, parentProject, { hideProjekt: true, parent: parentBase, parentId: parent.id,
+      defaultTitle: title, stacked: true, scope: this.opts.scope, seed: { projectId: parent.projectId } }).open();
   }
 
   // ── Details: Kommentar-Log (gemeinsame Komponente DetailLogView) ──
@@ -907,8 +926,13 @@ export class TaskModal extends Modal {
           set("estimate", this.f.estimate ?? null);
           set("recurrence", this.f.recurrence);
           set("recur_basis", this.f.recurrence && this.f.recurBasis === "done" ? "done" : null);
-          set("project", this.f.project ? "[[" + this.f.project + "]]" : null);
-          set("parent", this.f.parent ? "[[" + this.f.parent + "]]" : null);
+          const recordType = this.editScope.target?.type ?? "task";
+          const projectId = canonicalRelationshipId(this.app, this.f.projectId, this.f.project, ["project", "area"]);
+          const parentId = canonicalRelationshipId(this.app, this.f.parentId, this.f.parent, [recordType]);
+          set(OPAL_PROJECT_ID, projectId);
+          set(OPAL_PARENT_ID, parentId);
+          set("project", projectId ? null : legacyRelationshipLink(this.f.project));
+          set("parent", parentId ? null : legacyRelationshipLink(this.f.parent));
           set(labelKey(), this.f.labels);   // Feldname konfigurierbar (s. fieldNames.ts)
           set("reminders", this.f.reminders);
           set("description", (this.f.description ?? "").trim() || null);   // leer => Feld entfernen
@@ -918,7 +942,8 @@ export class TaskModal extends Modal {
       const sortOrder = this.opts.insertBefore
         ? await this.plugin.prepareTaskInsert(this.opts.insertBefore.parentPath, this.opts.insertBefore.beforePath)
         : undefined;
-      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null, sortOrder }, this.editScope.target);
+      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title,
+        parent: this.f.parent ?? this.opts.parent ?? null, parentId: this.f.parentId ?? this.opts.parentId ?? null, sortOrder }, this.editScope.target);
       await this.log.flush(file);
     }
     await this.plugin.showNewTaskLabels(newLabels);
