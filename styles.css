@@ -2053,10 +2053,13 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-unified-board {
   --bt-board-column-bg: var(--background-secondary);
   --bt-board-card-bg: var(--background-primary);
+  --bt-board-column-min: 260px;
+  --bt-board-column-max: 380px;
   display: block; padding: 10px 2px 16px;
 }
 .bt-board-columns {
-  display: grid; grid-template-columns: repeat(var(--bt-board-cols), minmax(260px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(var(--bt-board-cols), minmax(var(--bt-board-column-min), var(--bt-board-column-max)));
   align-items: start; gap: 14px; overflow-x: auto; padding: 0 0 2px;
   scrollbar-gutter: stable both-edges;
 }
@@ -2132,7 +2135,9 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 
 .bt-unified-board.is-tablet .bt-board-columns {
-  grid-template-columns: repeat(var(--bt-board-cols), minmax(220px, 1fr)); gap: 10px;
+  --bt-board-column-min: 220px;
+  --bt-board-column-max: 340px;
+  gap: 10px;
 }
 .bt-unified-board.is-tablet .bt-kanban-col { min-width: 220px; }
 @media (max-width: 700px) { .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 24px); } }
@@ -2770,8 +2775,8 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Desktop swimlanes are the full status × priority projection of the same columns/cards above. */
 .bt-board-matrix {
   display: grid;
-  grid-template-columns: 96px repeat(var(--bt-board-cols), minmax(240px, 1fr));
-  gap: 8px; min-width: max-content; overflow-x: auto; align-items: stretch;
+  grid-template-columns: 96px repeat(var(--bt-board-cols), minmax(240px, var(--bt-board-column-max)));
+  width: 100%; max-width: 100%; gap: 8px; overflow-x: auto; align-items: stretch;
 }
 .bt-board-matrix-corner { min-height: 42px; }
 .bt-board-matrix > .bt-board-column-head {

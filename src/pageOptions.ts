@@ -54,6 +54,7 @@ export function readViewOptions(fm: Record<string, unknown> | Partial<ViewOption
     calMode: oneOf<CalMode>(o.calMode, CAL_MODES, defaultCalMode),
     calPanel: o.calPanel !== false,   // Default: offen
     prioritySwimlanes: typeof o.priority_swimlanes === "boolean" ? o.priority_swimlanes : undefined,
+    showEmptyBoardAxes: o.showEmptyBoardAxes !== false,
   };
 }
 
@@ -70,6 +71,7 @@ export function writeViewOptions(fm: Record<string, unknown>, o: ViewOptions,
   setOrDel("sortDir", o.sortDir, DEFAULT_OPTIONS.sortDir);
   setOrDel("calMode", o.calMode, defaultCalMode);
   setOrDel("calPanel", o.calPanel, DEFAULT_OPTIONS.calPanel);
+  setOrDel("showEmptyBoardAxes", o.showEmptyBoardAxes, DEFAULT_OPTIONS.showEmptyBoardAxes);
   if (typeof o.prioritySwimlanes === "boolean") fm.priority_swimlanes = o.prioritySwimlanes;
   else delete fm.priority_swimlanes;   // absent = Area enabled / Project disabled
 }

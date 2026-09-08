@@ -53,6 +53,23 @@ describe("Area priority swimlanes", () => {
   });
 });
 
+describe("Empty board axes", () => {
+  it("preserves the existing visible-by-default behavior", () => {
+    expect(readViewOptions({}).showEmptyBoardAxes).toBe(true);
+    expect(readViewOptions({ showEmptyBoardAxes: true }).showEmptyBoardAxes).toBe(true);
+  });
+
+  it("persists only the non-default hidden choice", () => {
+    const hidden: Record<string, unknown> = {};
+    writeViewOptions(hidden, { ...DEFAULT_OPTIONS, showEmptyBoardAxes: false });
+    expect(hidden.showEmptyBoardAxes).toBe(false);
+    expect(readViewOptions(hidden).showEmptyBoardAxes).toBe(false);
+
+    writeViewOptions(hidden, { ...DEFAULT_OPTIONS, showEmptyBoardAxes: true });
+    expect(hidden.showEmptyBoardAxes).toBeUndefined();
+  });
+});
+
 describe("effectiveSubtasks – Vorgabe hängt am Layout", () => {
   it("nie gewählt: Liste kompakt, Board „Ausblenden“ (compact)", () => {
     // Board-Default seit 2026-07-26 bewusst „Ausblenden": Unterkarten kommen erst per

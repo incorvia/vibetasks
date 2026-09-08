@@ -80,6 +80,8 @@ export interface ViewOptions {
   calPanel: boolean;       // nur im Kalender-Layout: Seitenleiste „Undatiert" offen?
   /** Area-Kanban: Priorität als zweite Achse. Fehlt = an (neue Areas und Altbestände). */
   prioritySwimlanes?: boolean;
+  /** Kanban: auch Status-Spalten/Prioritäts-Lanes ohne sichtbaren Inhalt zeichnen. */
+  showEmptyBoardAxes: boolean;
 }
 
 export const DEFAULT_CRITERIA: FilterCriteria = {
@@ -93,7 +95,10 @@ export const DEFAULT_CRITERIA: FilterCriteria = {
 };
 // `subtasks` fehlt bewusst: „nie gewählt" IST der Standard, und was daraus folgt, entscheidet
 // erst das Layout (effectiveSubtasks).
-export const DEFAULT_OPTIONS: ViewOptions = { layout: "list", sort: "smart", group: "none", showDone: false, sortDir: "asc", calMode: "3day", calPanel: true };
+export const DEFAULT_OPTIONS: ViewOptions = {
+  layout: "list", sort: "smart", group: "none", showDone: false, sortDir: "asc",
+  calMode: "3day", calPanel: true, showEmptyBoardAxes: true,
+};
 
 /** Im UI wählbare Zeiträume/Sortierungen/Gruppierungen (Reihenfolge = Anzeige). */
 export const RANGES: FilterRange[] = ["any", "overdue", "today", "next7", "nodate"];

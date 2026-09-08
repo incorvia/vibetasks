@@ -95,6 +95,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     sortDir: { enum: ["asc", "desc"] },
     calMode: { enum: ["year", "month", "week", "3day", "day"] },
     calPanel: { type: "boolean" },
+    showEmptyBoardAxes: { type: "boolean" },
     range: { type: "string" },
     deadline_range: { type: "string" },
     statuses: { type: "array", items: { type: "string" } },

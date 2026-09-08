@@ -155,6 +155,13 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: Mobi
           (v) => { resetSubtaskToggles(ctx); apply({ subtasks: v as SubtaskDisplay }); }, subsLabelFor);
       }
 
+      if (o.layout === "board") {
+        const emptyAxesRow = pop.createDiv({ cls: "bt-panel-row" });
+        emptyAxesRow.createSpan({ cls: "bt-panel-k", text: t("panel_show_empty_board_axes") });
+        const sw = emptyAxesRow.createDiv({ cls: "bt-panel-switch" + (o.showEmptyBoardAxes ? " is-on" : "") });
+        sw.onclick = () => apply({ showEmptyBoardAxes: !o.showEmptyBoardAxes });
+      }
+
       if (o.layout === "board" && ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY) {
         const area = isAreaPath(ctx.plugin.app, ctx.page.key);
         const laneRow = pop.createDiv({ cls: "bt-panel-row" });
@@ -270,6 +277,7 @@ export function anzeigeButton(head: HTMLElement, ctx: PageCtx): void {
     // Ein Punkt auf dem Rohwert behauptete sonst eine Abweichung, die man nicht sieht (wie
     // zuvor bei der Richtung unter „smart").
     || o.showDone !== DEFAULT_OPTIONS.showDone
+    || o.showEmptyBoardAxes !== DEFAULT_OPTIONS.showEmptyBoardAxes
     || (ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY
       && (isAreaPath(ctx.plugin.app, ctx.page.key) ? o.prioritySwimlanes === false : o.prioritySwimlanes === true))
     || effectiveSubtasks(o) !== effectiveSubtasks({ layout: o.layout })

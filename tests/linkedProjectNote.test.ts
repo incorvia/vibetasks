@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { ensureLinkedProjectEmbeds, linkedNoteEntryLine, linkedNoteExcerpt, newLinkedProjectNoteContent } from "../src/linkedProjectNote";
+import { ensureLinkedProjectEmbeds, isLinkedCollectionNote, linkedNoteEntryLine, linkedNoteExcerpt, newLinkedProjectNoteContent } from "../src/linkedProjectNote";
+
+describe("isLinkedCollectionNote", () => {
+  const projectId = "project-1";
+  const recordPath = "_opal_tasks/projects/Launch.md";
+
+  it("accepts a marked companion note even when the user's taxonomy says type: project", () => {
+    expect(isLinkedCollectionNote(projectId, recordPath, "Notes/Launch.md", {
+      type: "project",
+      opal_project_id: projectId,
+    })).toBe(true);
+  });
+
+  it("rejects Opal records assigned to the project", () => {
+    expect(isLinkedCollectionNote(projectId, recordPath, "Tasks/Plan launch.md", {
+      type: "task",
+      id: "task-1",
+      opal_project_id: projectId,
+    })).toBe(false);
+  });
+
+  it("rejects the collection record itself and unrelated markers", () => {
+    expect(isLinkedCollectionNote(projectId, recordPath, recordPath, {
+      opal_project_id: projectId,
+    })).toBe(false);
+    expect(isLinkedCollectionNote(projectId, recordPath, "Notes/Other.md", {
+      opal_project_id: "project-2",
+    })).toBe(false);
+  });
+});
 
 describe("ensureLinkedProjectEmbeds", () => {
   it("creates linked-note content without repeating the filename as an H1", () => {

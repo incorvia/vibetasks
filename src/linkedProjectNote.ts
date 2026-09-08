@@ -9,6 +9,20 @@ export type NoteProjectAction = { kind: "convert" } | { kind: "open"; path: stri
 
 export interface LinkedProjectIdentity { id: string; path: string | null }
 
+/** A companion marker may coexist with the user's own `type` taxonomy. Only an `id` makes a
+ *  marked file an Opal record (for example, a task assigned to this project) rather than the
+ *  user-facing companion note. */
+export function isLinkedCollectionNote(
+  projectId: string,
+  collectionPath: string,
+  filePath: string,
+  frontmatter: Record<string, unknown> | undefined,
+): boolean {
+  return filePath !== collectionPath
+    && frontmatter?.opal_project_id === projectId
+    && typeof frontmatter.id !== "string";
+}
+
 /** Cursor destination when a dashboard opens its companion note. The generated header itself must
  *  not receive the selection: Live Preview exposes the raw fenced block on the active line. */
 export function linkedNoteEntryLine(content: string): number {

@@ -31,6 +31,7 @@ import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
 import { entityIcon, renderProjectIdentity } from "./entityPresentation";
 import { boardProjection, BoardProjection, isCompactPane } from "./responsive";
+import { boardStatusAxes, visibleBoardAxes } from "./boardAxes";
 import { linkedNoteExcerpt } from "./linkedProjectNote";
 
 /**
@@ -849,9 +850,10 @@ function renderAreaKanban(root: HTMLElement, ctx: PageCtx, area: ProjItem, proje
   const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
   const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
   const cards = visibleRows(tasks, hosts);
-  const statuses = boardStatuses().filter((s) => s.kind === "open" || ctx.opts.showDone);
+  const statuses = boardStatusAxes(boardStatuses(), ctx.opts.showDone, ctx.opts.showEmptyBoardAxes);
   const visibleProjects = plugin.sortProjItems("projects", projects).filter((project) =>
     statuses.some((s) => s.id === project.workflowStatus)
+    && (isOpen(project.workflowStatus) || (ctx.opts.showDone && isDone(project.workflowStatus)))
     && projectMatchesAreaFilter(project, ctx)
     && (!hasTaskOnlyAreaCriteria(ctx) || filtered.some((task) => task.project === project.path)));
   const cellItems = (status: string, priority?: Priority): { projectsHere: ProjItem[]; standalone: Task[] } => {
@@ -912,7 +914,7 @@ function renderTaskSwimlaneBoard(root: HTMLElement, ctx: PageCtx, filtered: Task
   const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
   const subs = effectiveSubtasks(ctx.opts);
   const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs));
-  const statuses = boardStatuses().filter((status) => status.kind === "open" || ctx.opts.showDone);
+  const statuses = boardStatusAxes(boardStatuses(), ctx.opts.showDone, ctx.opts.showEmptyBoardAxes);
   const columns: UnifiedBoardColumn[] = statuses.map((status) => ({
     id: status.id, title: statusLabel(status.id), tint: statusTint(status.id),
     count: (lane) => cards.filter((task) => task.status === status.id
@@ -1322,12 +1324,13 @@ function renderUnifiedBoard(root: HTMLElement, ctx: PageCtx, model: UnifiedBoard
   const projection = boardProjection(root);
   const view = root.closest<HTMLElement>(".bt-view");
   if (view) view.dataset.boardProjection = projection;
-  const lanes = model.lanes?.length ? model.lanes : undefined;
+  const allLanes = model.lanes?.length ? model.lanes : undefined;
+  const { columns: visibleColumns, lanes } = visibleBoardAxes(model.columns, allLanes, ctx.opts.showEmptyBoardAxes);
   const board = root.createDiv({
     cls: `bt-kanban bt-unified-board is-${projection}${lanes ? " has-swimlanes" : ""}`,
   });
-  board.style.setProperty("--bt-board-cols", String(Math.max(1, model.columns.length)));
-  if (!model.columns.length) return;
+  board.style.setProperty("--bt-board-cols", String(Math.max(1, visibleColumns.length)));
+  if (!visibleColumns.length) return;
 
   const selectionKey = viewKey(ctx, "board-axis|" + model.key);
   const addButton = (parent: HTMLElement, column: UnifiedBoardColumn, lane?: UnifiedBoardLane): void => {
@@ -1363,30 +1366,30 @@ function renderUnifiedBoard(root: HTMLElement, ctx: PageCtx, model: UnifiedBoard
   };
   const renderColumns = (lane?: UnifiedBoardLane): void => {
     const columns = board.createDiv({ cls: "bt-board-columns" });
-    columns.style.setProperty("--bt-board-cols", String(Math.max(1, model.columns.length)));
+    columns.style.setProperty("--bt-board-cols", String(Math.max(1, visibleColumns.length)));
     const drive = attachEdgeAutoscroll(columns);
     if (model.scrollKey) {
       columns.addEventListener("scroll", () => boardScroll.set(model.scrollKey!, columns.scrollLeft));
     }
-    for (const column of model.columns) renderColumn(columns, column, lane, columns, drive);
+    for (const column of visibleColumns) renderColumn(columns, column, lane, columns, drive);
     const saved = model.scrollKey ? boardScroll.get(model.scrollKey) : undefined;
     if (saved) columns.scrollLeft = saved;
   };
 
   if (projection === "desktop" && lanes) {
     const matrix = board.createDiv({ cls: "bt-board-matrix" });
-    matrix.style.setProperty("--bt-board-cols", String(model.columns.length));
+    matrix.style.setProperty("--bt-board-cols", String(visibleColumns.length));
     matrix.createDiv({ cls: "bt-board-matrix-corner" });
-    for (const column of model.columns) header(matrix, column, undefined);
+    for (const column of visibleColumns) header(matrix, column, undefined);
     for (const lane of lanes) {
       const laneHead = matrix.createDiv({ cls: "bt-board-lane-head" });
       laneHead.createDiv({ cls: "bt-board-lane-title", text: lane.label });
-      const laneCount = model.columns.reduce((n, col) => n + col.count(lane), 0);
+      const laneCount = visibleColumns.reduce((n, col) => n + col.count(lane), 0);
       laneHead.createDiv({
         cls: "bt-board-lane-count",
         text: t(laneCount === 1 ? "count_task" : "count_tasks", laneCount),
       });
-      for (const column of model.columns) {
+      for (const column of visibleColumns) {
         const shell = matrix.createDiv({ cls: "bt-board-cell" });
         cellBody(shell, column, lane);
         addButton(shell, column, lane);
@@ -1405,17 +1408,18 @@ function renderUnifiedBoard(root: HTMLElement, ctx: PageCtx, model: UnifiedBoard
   }
 
   if (projection === "mobile") {
-    const columnId = selectedBoardValue(boardColumnSelection, selectionKey, model.columns.map((column) => column.id));
-    const column = model.columns.find((item) => item.id === columnId) ?? model.columns[0];
-    renderBoardTabs(board, model.columns.map((item) => ({
+    const columnId = selectedBoardValue(boardColumnSelection, selectionKey, visibleColumns.map((column) => column.id));
+    const column = visibleColumns.find((item) => item.id === columnId) ?? visibleColumns[0];
+    renderBoardTabs(board, visibleColumns.map((item) => ({
       id: item.id, label: item.title,
       count: lanes ? lanes.reduce((n, lane) => n + item.count(lane), 0) : item.count(),
     })), column.id, (id) => { boardColumnSelection.set(selectionKey, id); ctx.redraw(); }, t("chip_status"));
     if (lanes) {
       const stack = board.createDiv({ cls: "bt-board-mobile-lanes" });
-      // Empty matrix rows add enormous vertical dead space on a phone. The tabs retain the full
-      // status count; inside the selected status only priorities that actually contain cards show.
-      for (const lane of lanes.filter((item) => column.count(item) > 0)) {
+      // Empty matrix rows add enormous vertical dead space on a phone, so the compact default
+      // keeps only priorities that contain cards in the selected status. The explicit empty-axis
+      // setting overrides that projection and exposes every configured lane here as well.
+      for (const lane of lanes.filter((item) => ctx.opts.showEmptyBoardAxes || column.count(item) > 0)) {
         const section = stack.createDiv({ cls: "bt-board-mobile-lane" });
         const laneHead = section.createDiv({ cls: "bt-board-mobile-lane-head" });
         laneHead.createSpan({ text: lane.label });
@@ -2343,6 +2347,7 @@ function frameSig(ctx: PageCtx, opts: ViewOptions, headSig: string): string {
   const o = opts;
   return [
     ctx.pageKey, headSig, o.layout, o.sort, o.sortDir, o.group, o.showDone, o.subtasks ?? "", o.prioritySwimlanes ?? "",
+    o.showEmptyBoardAxes,
     ctx.plugin.projectCollapseSignature(),
     effectiveSubtasks(o), todayStr(), JSON.stringify(ctx.crit), ctx.doneCollapsed, menuHoldPath() ?? "",
     // Aus der Suche angesprungen: das Hervorheben UND das Scrollen passieren beim Bauen der

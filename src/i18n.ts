@@ -345,7 +345,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Smart", filter_sort_manual: "Manual", filter_sort_due: "Date", filter_sort_deadline: "Deadline", filter_sort_priority: "Priority",
     filter_sort_created: "Created", filter_sort_title: "Name",
     filter_group_none: "None", filter_group_status: "Status", filter_group_date: "Date", filter_group_deadline: "Deadline", filter_group_priority: "Priority", filter_group_label: "Label", filter_group_project: "Project",
-    view_display: "Display", panel_layout: "Layout", panel_show_done: "Show completed", panel_subtasks: "Sub-tasks", panel_priority_swimlanes: "Priority swimlanes", panel_subs_compact: "Compact", panel_subs_indented: "Indented", panel_subs_hide: "Hide", panel_subs_show: "Show", subtasks_progress: "{0} of {1} done", no_label: "No label", more_actions: "More",
+    view_display: "Display", panel_layout: "Layout", panel_show_done: "Show completed", panel_subtasks: "Sub-tasks", panel_priority_swimlanes: "Priority swimlanes", panel_show_empty_board_axes: "Show empty columns / lanes", panel_subs_compact: "Compact", panel_subs_indented: "Indented", panel_subs_hide: "Hide", panel_subs_show: "Show", subtasks_progress: "{0} of {1} done", no_label: "No label", more_actions: "More",
   },
   de: {
     context_linked_note: "Verknüpfte Notiz", context_project_record: "Projektdatensatz", context_area_record: "Bereichsdatensatz", project_notes: "Notizen", project_notes_add: "Notiz hinzufügen",
@@ -684,7 +684,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Smart", filter_sort_manual: "Manuell", filter_sort_due: "Datum", filter_sort_deadline: "Deadline", filter_sort_priority: "Priorität",
     filter_sort_created: "Erstellt", filter_sort_title: "Name",
     filter_group_none: "Keine", filter_group_status: "Status", filter_group_date: "Datum", filter_group_deadline: "Deadline", filter_group_priority: "Priorität", filter_group_label: "Label", filter_group_project: "Projekt",
-    view_display: "Anzeige", panel_layout: "Layout", panel_show_done: "Erledigte anzeigen", panel_subtasks: "Unteraufgaben", panel_priority_swimlanes: "Prioritäts-Swimlanes", panel_subs_compact: "Kompakt", panel_subs_indented: "Eingerückt", panel_subs_hide: "Ausblenden", panel_subs_show: "Einblenden", subtasks_progress: "{0} von {1} erledigt", no_label: "Kein Label", more_actions: "Mehr",
+    view_display: "Anzeige", panel_layout: "Layout", panel_show_done: "Erledigte anzeigen", panel_subtasks: "Unteraufgaben", panel_priority_swimlanes: "Prioritäts-Swimlanes", panel_show_empty_board_axes: "Leere Spalten / Swimlanes anzeigen", panel_subs_compact: "Kompakt", panel_subs_indented: "Eingerückt", panel_subs_hide: "Ausblenden", panel_subs_show: "Einblenden", subtasks_progress: "{0} von {1} erledigt", no_label: "Kein Label", more_actions: "Mehr",
   },
   es: {
     context_linked_note: "Nota vinculada", context_project_record: "Registro de proyecto", context_area_record: "Registro de área", project_notes: "Notas", project_notes_add: "Añadir nota",
@@ -1023,7 +1023,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Inteligente", filter_sort_manual: "Manual", filter_sort_due: "Fecha", filter_sort_deadline: "Fecha límite", filter_sort_priority: "Prioridad",
     filter_sort_created: "Creación", filter_sort_title: "Nombre",
     filter_group_none: "Ninguna", filter_group_status: "Estado", filter_group_date: "Fecha", filter_group_deadline: "Fecha límite", filter_group_priority: "Prioridad", filter_group_label: "Etiqueta", filter_group_project: "Proyecto",
-    view_display: "Vista", panel_layout: "Diseño", panel_show_done: "Mostrar completadas", panel_subtasks: "Subtareas", panel_priority_swimlanes: "Carriles de prioridad", panel_subs_compact: "Compacto", panel_subs_indented: "Sangrado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} completadas", no_label: "Sin etiqueta", more_actions: "Más",
+    view_display: "Vista", panel_layout: "Diseño", panel_show_done: "Mostrar completadas", panel_subtasks: "Subtareas", panel_priority_swimlanes: "Carriles de prioridad", panel_show_empty_board_axes: "Mostrar columnas / carriles vacíos", panel_subs_compact: "Compacto", panel_subs_indented: "Sangrado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} completadas", no_label: "Sin etiqueta", more_actions: "Más",
   },
   pt: {
     context_linked_note: "Nota vinculada", context_project_record: "Registro do projeto", context_area_record: "Registro da área", project_notes: "Notas", project_notes_add: "Adicionar nota",
@@ -1362,7 +1362,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Inteligente", filter_sort_manual: "Manual", filter_sort_due: "Data", filter_sort_deadline: "Prazo", filter_sort_priority: "Prioridade",
     filter_sort_created: "Criação", filter_sort_title: "Nome",
     filter_group_none: "Nenhuma", filter_group_status: "Status", filter_group_date: "Data", filter_group_deadline: "Prazo", filter_group_priority: "Prioridade", filter_group_label: "Etiqueta", filter_group_project: "Projeto",
-    view_display: "Exibição", panel_layout: "Layout", panel_show_done: "Mostrar concluídas", panel_subtasks: "Subtarefas", panel_priority_swimlanes: "Raias de prioridade", panel_subs_compact: "Compacto", panel_subs_indented: "Recuado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} concluídas", no_label: "Sem etiqueta", more_actions: "Mais",
+    view_display: "Exibição", panel_layout: "Layout", panel_show_done: "Mostrar concluídas", panel_subtasks: "Subtarefas", panel_priority_swimlanes: "Raias de prioridade", panel_show_empty_board_axes: "Mostrar colunas / raias vazias", panel_subs_compact: "Compacto", panel_subs_indented: "Recuado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} concluídas", no_label: "Sem etiqueta", more_actions: "Mais",
   },
   fr: {
     context_linked_note: "Note liée", context_project_record: "Fiche de projet", context_area_record: "Fiche de domaine", project_notes: "Notes du projet", project_notes_add: "Ajouter une note",
@@ -1701,7 +1701,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Intelligent", filter_sort_manual: "Manuel", filter_sort_due: "Date", filter_sort_deadline: "Date limite", filter_sort_priority: "Priorité",
     filter_sort_created: "Création", filter_sort_title: "Nom",
     filter_group_none: "Aucun", filter_group_status: "Statut", filter_group_date: "Date", filter_group_deadline: "Date limite", filter_group_priority: "Priorité", filter_group_label: "Étiquette", filter_group_project: "Projet",
-    view_display: "Affichage", panel_layout: "Disposition", panel_show_done: "Afficher les terminées", panel_subtasks: "Sous-tâches", panel_priority_swimlanes: "Couloirs de priorité", panel_subs_compact: "Compact", panel_subs_indented: "Indenté", panel_subs_hide: "Masquer", panel_subs_show: "Afficher", subtasks_progress: "{0} sur {1} terminées", no_label: "Sans étiquette", more_actions: "Plus",
+    view_display: "Affichage", panel_layout: "Disposition", panel_show_done: "Afficher les terminées", panel_subtasks: "Sous-tâches", panel_priority_swimlanes: "Couloirs de priorité", panel_show_empty_board_axes: "Afficher les colonnes / couloirs vides", panel_subs_compact: "Compact", panel_subs_indented: "Indenté", panel_subs_hide: "Masquer", panel_subs_show: "Afficher", subtasks_progress: "{0} sur {1} terminées", no_label: "Sans étiquette", more_actions: "Plus",
   },
   tr: {
     context_linked_note: "Bağlı not", context_project_record: "Proje kaydı", context_area_record: "Alan kaydı", project_notes: "Notlar", project_notes_add: "Not ekle",
@@ -2040,7 +2040,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Akıllı", filter_sort_manual: "Elle", filter_sort_due: "Tarih", filter_sort_deadline: "Son tarih", filter_sort_priority: "Öncelik",
     filter_sort_created: "Oluşturulma", filter_sort_title: "Ad",
     filter_group_none: "Yok", filter_group_status: "Durum", filter_group_date: "Tarih", filter_group_deadline: "Son tarih", filter_group_priority: "Öncelik", filter_group_label: "Etiket", filter_group_project: "Proje",
-    view_display: "Görünüm", panel_layout: "Düzen", panel_show_done: "Tamamlananları göster", panel_subtasks: "Alt görevler", panel_priority_swimlanes: "Öncelik kulvarları", panel_subs_compact: "Derli toplu", panel_subs_indented: "Girintili", panel_subs_hide: "Gizle", panel_subs_show: "Göster", subtasks_progress: "{1} görevden {0} tamamlandı", no_label: "Etiketsiz", more_actions: "Daha fazla",
+    view_display: "Görünüm", panel_layout: "Düzen", panel_show_done: "Tamamlananları göster", panel_subtasks: "Alt görevler", panel_priority_swimlanes: "Öncelik kulvarları", panel_show_empty_board_axes: "Boş sütunları / kulvarları göster", panel_subs_compact: "Derli toplu", panel_subs_indented: "Girintili", panel_subs_hide: "Gizle", panel_subs_show: "Göster", subtasks_progress: "{1} görevden {0} tamamlandı", no_label: "Etiketsiz", more_actions: "Daha fazla",
   },
   zh: {
     context_linked_note: "关联笔记", context_project_record: "项目记录", context_area_record: "领域记录", project_notes: "笔记", project_notes_add: "添加笔记",
@@ -2379,7 +2379,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "智能", filter_sort_manual: "手动", filter_sort_due: "日期", filter_sort_deadline: "最后期限", filter_sort_priority: "优先级",
     filter_sort_created: "创建时间", filter_sort_title: "名称",
     filter_group_none: "无", filter_group_status: "状态", filter_group_date: "日期", filter_group_deadline: "最后期限", filter_group_priority: "优先级", filter_group_label: "标签", filter_group_project: "项目",
-    view_display: "显示", panel_layout: "布局", panel_show_done: "显示已完成", panel_subtasks: "子任务", panel_priority_swimlanes: "优先级泳道", panel_subs_compact: "紧凑", panel_subs_indented: "缩进", panel_subs_hide: "隐藏", panel_subs_show: "显示", subtasks_progress: "已完成 {0}/{1}", no_label: "无标签", more_actions: "更多",
+    view_display: "显示", panel_layout: "布局", panel_show_done: "显示已完成", panel_subtasks: "子任务", panel_priority_swimlanes: "优先级泳道", panel_show_empty_board_axes: "显示空列 / 泳道", panel_subs_compact: "紧凑", panel_subs_indented: "缩进", panel_subs_hide: "隐藏", panel_subs_show: "显示", subtasks_progress: "已完成 {0}/{1}", no_label: "无标签", more_actions: "更多",
   },
   ru: {
     context_linked_note: "Связанная заметка", context_project_record: "Карточка проекта", context_area_record: "Карточка области", project_notes: "Заметки", project_notes_add: "Добавить заметку",
@@ -2718,7 +2718,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Умная", filter_sort_manual: "Вручную", filter_sort_due: "Дата", filter_sort_deadline: "Крайний срок", filter_sort_priority: "Приоритет",
     filter_sort_created: "Дата создания", filter_sort_title: "Название",
     filter_group_none: "Нет", filter_group_status: "Статус", filter_group_date: "Дата", filter_group_deadline: "Крайний срок", filter_group_priority: "Приоритет", filter_group_label: "Метка", filter_group_project: "Проект",
-    view_display: "Вид", panel_layout: "Макет", panel_show_done: "Показывать выполненные", panel_subtasks: "Подзадачи", panel_priority_swimlanes: "Дорожки приоритета", panel_subs_compact: "Компактно", panel_subs_indented: "С отступом", panel_subs_hide: "Скрыть", panel_subs_show: "Показать", subtasks_progress: "{0} из {1} выполнено", no_label: "Без метки", more_actions: "Ещё",
+    view_display: "Вид", panel_layout: "Макет", panel_show_done: "Показывать выполненные", panel_subtasks: "Подзадачи", panel_priority_swimlanes: "Дорожки приоритета", panel_show_empty_board_axes: "Показывать пустые столбцы / дорожки", panel_subs_compact: "Компактно", panel_subs_indented: "С отступом", panel_subs_hide: "Скрыть", panel_subs_show: "Показать", subtasks_progress: "{0} из {1} выполнено", no_label: "Без метки", more_actions: "Ещё",
   },
   ja: {
     context_linked_note: "リンク済みノート", context_project_record: "プロジェクトレコード", context_area_record: "エリアレコード", project_notes: "ノート", project_notes_add: "ノートを追加",
@@ -3057,7 +3057,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "スマート", filter_sort_manual: "手動", filter_sort_due: "日付", filter_sort_deadline: "締め切り", filter_sort_priority: "優先度",
     filter_sort_created: "作成日", filter_sort_title: "名前",
     filter_group_none: "なし", filter_group_status: "ステータス", filter_group_date: "日付", filter_group_deadline: "締め切り", filter_group_priority: "優先度", filter_group_label: "ラベル", filter_group_project: "プロジェクト",
-    view_display: "表示", panel_layout: "レイアウト", panel_show_done: "完了を表示", panel_subtasks: "サブタスク", panel_priority_swimlanes: "優先度スイムレーン", panel_subs_compact: "コンパクト", panel_subs_indented: "インデント", panel_subs_hide: "非表示", panel_subs_show: "表示", subtasks_progress: "{1} 件中 {0} 件完了", no_label: "ラベルなし", more_actions: "その他",
+    view_display: "表示", panel_layout: "レイアウト", panel_show_done: "完了を表示", panel_subtasks: "サブタスク", panel_priority_swimlanes: "優先度スイムレーン", panel_show_empty_board_axes: "空の列 / スイムレーンを表示", panel_subs_compact: "コンパクト", panel_subs_indented: "インデント", panel_subs_hide: "非表示", panel_subs_show: "表示", subtasks_progress: "{1} 件中 {0} 件完了", no_label: "ラベルなし", more_actions: "その他",
   },
   it: {
     context_linked_note: "Nota collegata", context_project_record: "Record progetto", context_area_record: "Record area", project_notes: "Note", project_notes_add: "Aggiungi nota",
@@ -3396,7 +3396,7 @@ const STRINGS: Record<string, Dict> = {
     filter_sort_smart: "Intelligente", filter_sort_manual: "Manuale", filter_sort_due: "Data", filter_sort_deadline: "Termine ultimo", filter_sort_priority: "Priorità",
     filter_sort_created: "Creazione", filter_sort_title: "Nome",
     filter_group_none: "Nessuno", filter_group_status: "Stato", filter_group_date: "Data", filter_group_deadline: "Termine ultimo", filter_group_priority: "Priorità", filter_group_label: "Etichetta", filter_group_project: "Progetto",
-    view_display: "Visualizza", panel_layout: "Layout", panel_show_done: "Mostra completate", panel_subtasks: "Sottoattività", panel_priority_swimlanes: "Corsie di priorità", panel_subs_compact: "Compatto", panel_subs_indented: "Rientrato", panel_subs_hide: "Nascondi", panel_subs_show: "Mostra", subtasks_progress: "{0} di {1} completate", no_label: "Senza etichetta", more_actions: "Altro",
+    view_display: "Visualizza", panel_layout: "Layout", panel_show_done: "Mostra completate", panel_subtasks: "Sottoattività", panel_priority_swimlanes: "Corsie di priorità", panel_show_empty_board_axes: "Mostra colonne / corsie vuote", panel_subs_compact: "Compatto", panel_subs_indented: "Rientrato", panel_subs_hide: "Nascondi", panel_subs_show: "Mostra", subtasks_progress: "{0} di {1} completate", no_label: "Senza etichetta", more_actions: "Altro",
   },
 };
 

@@ -44,7 +44,7 @@ import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
 import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
-import { ensureLinkedProjectEmbeds, linkedNoteEntryLine, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
+import { ensureLinkedProjectEmbeds, isLinkedCollectionNote, linkedNoteEntryLine, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
 import { migrateTimingFields } from "./timingMigration";
 import { TimeStore, TimerService } from "./timeService";
 import { TimeDashboardModal } from "./timeDashboard";
@@ -1340,11 +1340,9 @@ export default class OpalTasksPlugin extends Plugin {
     if (!(record instanceof TFile)) return null;
     const id: unknown = this.app.metadataCache.getFileCache(record)?.frontmatter?.id;
     if (typeof id === "string") {
-      const recordTypes = new Set(["task", "template", "project", "area", "filter", "time_log", "timer_state"]);
       const marked = this.app.vault.getMarkdownFiles().filter((file) => {
-        if (file.path === collectionPath) return false;
         const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-        return fm?.[OPAL_PROJECT_ID] === id && !recordTypes.has(String(fm?.[fieldKey("type")]));
+        return isLinkedCollectionNote(id, collectionPath, file.path, fm);
       });
       if (marked.length === 1) return marked[0];
       if (marked.length > 1) return null;
