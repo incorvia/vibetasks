@@ -1,4 +1,4 @@
-import type { Task, TimeBlock, TimeScope, WorkSession } from "./types";
+import { isAllDaySchedule, type Task, type TimeBlock, type TimeScope, type WorkSession } from "./types";
 import { ActiveTimer, TimerService, TimeStore } from "./timeService";
 
 export interface WorkTimerHost {
@@ -69,6 +69,7 @@ export class WorkTimerService {
   }
 
   private async advanceBlitz(block: TimeBlock, previousTaskId: string): Promise<void> {
+    if (isAllDaySchedule(block)) return;
     if (Date.now() >= Date.parse(block.start) + block.duration * 60_000) {
       this.host.notify("Blitz block ended. No next task was started."); return;
     }

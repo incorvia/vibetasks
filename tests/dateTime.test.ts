@@ -87,4 +87,11 @@ describe("scheduled start confirmation", () => {
     expect(canConfirmDatePick("2026-09-08", "09:30", null, required)).toBe(false);
     expect(canConfirmDatePick("2026-09-08", "09:30", 0, required)).toBe(false);
   });
+
+  it("accepts a date-only schedule and requires duration only after a time is added", () => {
+    const flexible = { commit: "confirm" as const, requireDurationWhenTimed: true };
+    expect(canConfirmDatePick("2026-09-08", null, null, flexible)).toBe(true);
+    expect(canConfirmDatePick("2026-09-08", "09:30", null, flexible)).toBe(false);
+    expect(canConfirmDatePick("2026-09-08", "09:30", 30, flexible)).toBe(true);
+  });
 });

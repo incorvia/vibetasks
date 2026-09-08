@@ -1,7 +1,7 @@
 import { App, Component, TFile, normalizePath } from "obsidian";
 import { MdbaseRepository, repositoryFor, rfc3339Now, newUlid, updateRecord } from "./mdbaseRepository";
 import { collectionPath } from "./mdbaseResources";
-import type { Task, TimeBlock, TimeLog, TimeScope, WorkSession } from "./types";
+import { isAllDaySchedule, type NewTimeBlock, type Task, type TimeBlock, type TimeBlockPatch, type TimeLog, type TimeScope, type WorkSession } from "./types";
 import { isDone, isTrashed } from "./statuses";
 
 const localDate = (value: Date | string): string => {
@@ -9,8 +9,18 @@ const localDate = (value: Date | string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 const asArray = <T>(value: unknown): T[] => Array.isArray(value) ? value as T[] : [];
-export const blockKind = (block: TimeBlock): TimeBlock["kind"] => block.kind ?? (block.source === "drag" && block.scope.type === "task" ? "task_schedule" : "allocation");
-const normalizeBlock = (block: TimeBlock): TimeBlock => ({ ...block, kind: blockKind(block) });
+export const blockKind = (block: TimeBlock): TimeBlock["kind"] => {
+  const legacy = block as TimeBlock & { kind?: TimeBlock["kind"] };
+  return legacy.kind ?? (block.source === "drag" && block.scope.type === "task" ? "task_schedule" : "allocation");
+};
+type MutableBlockShape = TimeBlock & { allDay?: boolean; date?: string; start?: string; duration?: number };
+const normalizeBlock = (block: TimeBlock): TimeBlock => {
+  const value = { ...block, kind: blockKind(block) } as MutableBlockShape;
+  if (isAllDaySchedule(value)) { delete value.start; delete value.duration; }
+  else { delete value.date; delete value.allDay; }
+  return value as TimeBlock;
+};
+export const timeBlockDate = (block: TimeBlock): string => isAllDaySchedule(block) ? block.date : localDate(block.start);
 export const timeLogPath = (date: string): string => collectionPath(`time/${date.slice(0, 4)}/${date}.md`);
 export const TIMER_STATE_PATH = collectionPath("time/active.md");
 
@@ -100,6 +110,7 @@ export class TimeStore extends Component {
   }
   blocksIn(from: string, to: string): TimeBlock[] {
     return this.blocks().filter((b) => {
+      if (isAllDaySchedule(b)) return b.date >= from && b.date <= to && b.status !== "cancelled";
       const start = localDate(b.start), end = localDate(new Date(new Date(b.start).getTime() + b.duration * 60000));
       return start <= to && end >= from && b.status !== "cancelled";
     });
@@ -111,7 +122,7 @@ export class TimeStore extends Component {
   totals(from?: string, to?: string): TimeTotals {
     const inRange = (iso: string) => (!from || localDate(iso) >= from) && (!to || localDate(iso) <= to);
     return {
-      planned: this.blocks().filter((b) => b.status !== "cancelled" && inRange(b.start)).reduce((n, b) => n + b.duration, 0),
+      planned: this.blocks().reduce((n, b) => n + (!isAllDaySchedule(b) && b.status !== "cancelled" && inRange(b.start) ? b.duration : 0), 0),
       actual: Math.round(this.sessions().filter((s) => inRange(s.started_at)).reduce((n, s) => n + (s.elapsed ?? (s.ended_at ? Math.max(0, (Date.parse(s.ended_at) - Date.parse(s.started_at)) / 1000) : 0)), 0) / 60),
     };
   }
@@ -148,15 +159,15 @@ export class TimeStore extends Component {
     this.rebuildIndexes(); this.emit();
   }
 
-  async addBlock(input: Omit<TimeBlock, "id" | "status">): Promise<TimeBlock> {
-    const block: TimeBlock = { ...input, id: newUlid(), status: "planned" };
-    await this.mutate(localDate(block.start), (blocks) => blocks.push(block)); return block;
+  async addBlock(input: NewTimeBlock): Promise<TimeBlock> {
+    const block = normalizeBlock({ ...input, id: newUlid(), status: "planned" } as TimeBlock);
+    await this.mutate(timeBlockDate(block), (blocks) => blocks.push(block)); return block;
   }
-  async updateBlock(id: string, patch: Partial<TimeBlock>): Promise<void> {
+  async updateBlock(id: string, patch: TimeBlockPatch): Promise<void> {
     const log = this.logs().find((x) => x.blocks.some((b) => b.id === id)); if (!log) return;
     const original = log.blocks.find((b) => b.id === id); if (!original) return;
-    const updated = { ...original, ...patch };
-    const destination = localDate(updated.start);
+    const updated = normalizeBlock({ ...original, ...patch } as TimeBlock);
+    const destination = timeBlockDate(updated);
     if (destination !== log.date) {
       await this.mutate(log.date, (blocks) => { const i = blocks.findIndex((b) => b.id === id); if (i >= 0) blocks.splice(i, 1); });
       await this.mutate(destination, (blocks) => blocks.push(updated));
@@ -165,8 +176,11 @@ export class TimeStore extends Component {
     await this.mutate(log.date, (blocks) => { const i = blocks.findIndex((b) => b.id === id); if (i >= 0) blocks[i] = updated; });
   }
   async cancelFutureBlocks(scopeId: string, now = Date.now()): Promise<void> {
+    const today = localDate(new Date(now));
     for (const log of this.logs()) await this.mutate(log.date, (blocks) => {
-      for (const b of blocks) if (b.scope.id === scopeId && Date.parse(b.start) > now && b.status === "planned") b.status = "cancelled";
+      for (const b of blocks) if (b.scope.id === scopeId
+        && (isAllDaySchedule(b) ? b.date > today : Date.parse(b.start) > now)
+        && b.status === "planned") b.status = "cancelled";
     });
   }
   async addSession(session: WorkSession): Promise<void> { await this.mutate(localDate(session.started_at), (_b, sessions) => sessions.push(session)); }

@@ -10,7 +10,7 @@ import { todayStr, combineDT, dateOf, groupLabel } from "./format";
 import { openDatePicker } from "./datePicker";
 import { listProjectsAndAreas, listManaged, projectsInArea, tasksInArea, projectAreaName, priorityBucket, taskMatchesProjectCell, isAreaPath, isInboxLink, isRecentlyCompletedProject, baseName, openTaskNote, INBOX_KEY, ProjLists, ProjItem } from "./taskService";
 import { listFilters, readFilter, FilterItem } from "./filterService";
-import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
+import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, mergeTodayTaskBuckets, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
 import { FilterModal } from "./filterModal";
 import { NewItemModal } from "./newItemModal";
 import { buildItemMenu, showHiddenSubmenu, addGcalSyncItem, addOpenItems, openEdit, buildCreateSubmenu, addCreateItems, buildTemplateMenu, NavMenuItem } from "./navMenu";
@@ -33,6 +33,7 @@ import { entityIcon, renderProjectIdentity } from "./entityPresentation";
 import { boardProjection, BoardProjection, isCompactPane } from "./responsive";
 import { boardStatusAxes, visibleBoardAxes } from "./boardAxes";
 import { linkedNoteExcerpt } from "./linkedProjectNote";
+import { blockKind } from "./timeService";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -279,6 +280,19 @@ function calendarTasks(ctx: PageCtx, opts: ViewOptions): Task[] {
   return ctx.filter(opts.showDone ? [...open, ...idx.done()] : open);
 }
 
+/** Open tasks whose primary work placement touches this day. The task remains independent from
+ *  its deadline; this is the scheduling half of the Today view's combined source set. */
+function scheduledOpenTasksOn(plugin: OpalTasksPlugin, day: string): Task[] {
+  const ids = new Set(plugin.timeStore.blocksIn(day, day)
+    .filter((block) => block.status === "planned" && blockKind(block) === "task_schedule" && block.scope.type === "task")
+    .map((block) => block.scope.id));
+  return plugin.index.open().filter((task) => ids.has(task.id));
+}
+
+function todayBuckets(plugin: OpalTasksPlugin, day: string): { overdue: Task[]; today: Task[] } {
+  return mergeTodayTaskBuckets(plugin.index.overdue(day), plugin.index.dueToday(day), scheduledOpenTasksOn(plugin, day));
+}
+
 /**
  * Kopf-Block einer Seite (Titel + „Anzeige" + „+ Aufgabe"). Bleibt beim Scrollen oben stehen (CSS).
  * Die Gruppen-Überschriften scrollen bewusst mit – deshalb braucht hier auch niemand die Kopfhöhe
@@ -318,11 +332,13 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
   const idx = plugin.index;
   if (view === "heute") {
     const opts = ctx.opts;
-    // Auswahl vollständig über den Index – die Regel (Fälligkeit, ersatzweise Deadline; eine
-    // verstrichene Frist macht überfällig) lebt in filterEngine und gilt für alle Zeit-Ansichten.
-    const overdue = ctx.filter(idx.overdue(today)), dueToday = ctx.filter(idx.dueToday(today));
+    // Heute kombiniert zwei unabhängige Aussagen: Fälligkeit auf der Aufgabe und geplante Arbeit
+    // im TimeStore. Eine Planung wird dabei nie zur Fälligkeit; mergeTodayTaskBuckets hält die
+    // Gruppen disjunkt und lässt Überfällig gewinnen.
+    const rawToday = todayBuckets(plugin, today);
+    const overdue = ctx.filter(rawToday.overdue), todayTasks = ctx.filter(rawToday.today);
     const doneToday = ctx.filter(idx.done().filter((tk) => dateOf(tk.completed ?? "") === today));   // completed = Zeitstempel -> Datums-Teil vergleichen
-    const open = [...overdue, ...dueToday];
+    const open = [...overdue, ...todayTasks];
     // Termine des Tages (read-only) zählen mit: sonst behauptete „Nichts für heute" leeren Tag,
     // obwohl der Kalender voller Meetings steckt. setRange meldet dem Feed den Zeitraum (Listen-Layout
     // hat sonst nichts, was ihn anstößt – das macht sonst nur der Kalender).
@@ -364,8 +380,8 @@ export function renderViewInto(c: HTMLElement, ctx: PageCtx, view: ViewId): void
           const overdueHead = section(root, ctx, t("sec_overdue"), sortTasks(overdue, opts.sort, opts.sortDir, orderKey(plugin)), today, false, false, present, [], "", ownRow);
           rescheduleButton(overdueHead, plugin, overdue);   // verschiebt ALLE überfälligen, auch die verschachtelten
         }
-        if (visibleRows(dueToday, present, ownRow).length || todayEv.length) {
-          section(root, ctx, groupLabel(today, today), sortTasks(dueToday, opts.sort, opts.sortDir, orderKey(plugin)), today, false, false, present, todayEv, today, ownRow);
+        if (visibleRows(todayTasks, present, ownRow).length || todayEv.length) {
+          section(root, ctx, groupLabel(today, today), sortTasks(todayTasks, opts.sort, opts.sortDir, orderKey(plugin)), today, false, false, present, todayEv, today, ownRow);
         }
       } else {
         // Aktive Gruppierung ersetzt den Überfällig/Heute-Split. Die Termine gehören zu „Heute":
@@ -3319,7 +3335,10 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
 
 function navCount(plugin: OpalTasksPlugin, id: ViewId): number {
   const today = todayStr();
-  if (id === "heute") return plugin.index.overdue(today).length + plugin.index.dueToday(today).length;
+  if (id === "heute") {
+    const buckets = todayBuckets(plugin, today);
+    return buckets.overdue.length + buckets.today.length;
+  }
   if (id === "demnaechst") return plugin.index.upcoming(today).length;
   if (id === "wiederkehrend") return plugin.index.open().filter((tk) => tk.recurrence).length;
   return 0;

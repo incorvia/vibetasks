@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { Task, agendaDate } from "../src/types";
-import { isOverdueTask, isTodayTask, isUpcomingTask } from "../src/filterEngine";
+import { isOverdueTask, isTodayTask, isUpcomingTask, mergeTodayTaskBuckets } from "../src/filterEngine";
 
 /**
- * Die EINE Regel der Zeit-Ansichten:
- *   `due` ist die einzige Aufgaben-Zeitachse. Planung lebt in separaten Zeitblöcken.
+ * Die task-eigene Agenda-Regel:
+ *   `due` ist die einzige Zeitachse AUF DER AUFGABE. Planung lebt in separaten Zeitblöcken
+ *   und wird erst beim Aufbau der Heute-Ansicht als zweites Signal dazugenommen.
  *
- * Wichtigste Zusicherung dieser Datei: Jede Aufgabe fällt in HÖCHSTENS EINEN der drei Töpfe.
- * Genau daran ist die frühere Lösung gescheitert (dieselbe Aufgabe aus zwei Gründen sichtbar).
+ * Wichtigste Zusicherung der due-Prädikate: Jede Aufgabe fällt in HÖCHSTENS EINEN ihrer drei
+ * Töpfe. mergeTodayTaskBuckets dedupliziert danach die zusätzliche Planung innerhalb von Heute.
  */
 
 const TODAY = "2026-07-29";
@@ -76,5 +77,21 @@ describe("Zeit-Ansichten: Platzierung", () => {
         expect(bucket(mk({ due, scheduled })), `due=${due} scheduled=${scheduled}`).not.toBe("nirgends");
       }
     }
+  });
+
+  it("nimmt extern geplante Arbeit in Heute auf, ohne Fälligkeiten oder Überfällige zu duplizieren", () => {
+    const overdue = mk({ id: "late", due: GESTERN });
+    const dueToday = mk({ id: "due", due: TODAY });
+    const scheduledOnly = mk({ id: "planned" });
+    const futureDueScheduledToday = mk({ id: "future", due: MORGEN });
+
+    const result = mergeTodayTaskBuckets(
+      [overdue],
+      [dueToday],
+      [scheduledOnly, futureDueScheduledToday, dueToday, overdue],
+    );
+
+    expect(result.overdue.map((task) => task.id)).toEqual(["late"]);
+    expect(result.today.map((task) => task.id)).toEqual(["due", "planned", "future"]);
   });
 });

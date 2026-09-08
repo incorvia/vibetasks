@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SchedulingError, SchedulingService } from "../src/schedulingService";
 import { WorkTimerService } from "../src/workTimerService";
 import type { TimerService, TimeStore } from "../src/timeService";
-import type { Task, TimeBlock, WorkSession } from "../src/types";
+import { isAllDaySchedule, type Task, type TimeBlock, type WorkSession } from "../src/types";
 
 const task = (id: string, estimate = 45): Task => ({ id, title: `Task ${id}`, estimate, status: "open" } as Task);
 
@@ -17,7 +17,11 @@ function schedulingFixture() {
       blocks.set(value.id, value); return value;
     },
     updateBlock: async (id: string, patch: Partial<TimeBlock>) => {
-      const current = blocks.get(id); if (current) blocks.set(id, { ...current, ...patch });
+      const current = blocks.get(id); if (!current) return;
+      const updated = { ...current, ...patch } as TimeBlock & { date?: string; start?: string; duration?: number; allDay?: boolean };
+      if (isAllDaySchedule(updated)) { delete updated.start; delete updated.duration; }
+      else { delete updated.date; delete updated.allDay; }
+      blocks.set(id, updated);
     },
     cancelFutureBlocks: vi.fn(async () => undefined),
   };
@@ -47,6 +51,27 @@ describe("SchedulingService contract", () => {
       duration: 75,
       scope: { type: "task", id: "new", title_snapshot: "Just created" },
     });
+  });
+
+  it("stores a date-only schedule without an artificial start or duration", async () => {
+    const { blocks, service } = schedulingFixture();
+    const allDay = await service.scheduleTask("t1", { allDay: true, date: "2026-09-08" });
+
+    expect(allDay).toMatchObject({ allDay: true, date: "2026-09-08", kind: "task_schedule" });
+    expect(allDay).not.toHaveProperty("start");
+    expect(allDay).not.toHaveProperty("duration");
+
+    const timed = await service.scheduleTask("t1", { start: "2026-09-08T09:00:00-05:00", duration: 30 });
+    expect(timed.id).toBe(allDay.id);
+    expect(blocks.get(allDay.id)).toMatchObject({ start: "2026-09-08T14:00:00.000Z", duration: 30 });
+    expect(blocks.get(allDay.id)).not.toHaveProperty("date");
+    expect(blocks.get(allDay.id)).not.toHaveProperty("allDay");
+  });
+
+  it("rejects impossible date-only schedules", async () => {
+    const { service } = schedulingFixture();
+    await expect(service.scheduleTask("t1", { allDay: true, date: "2026-02-30" }))
+      .rejects.toMatchObject<Partial<SchedulingError>>({ code: "invalid_start" });
   });
 
   it("keeps allocations distinct from task schedules", async () => {

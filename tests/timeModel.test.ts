@@ -25,4 +25,15 @@ describe("time model", () => {
   it("does not render cancelled blocks", () => {
     expect(bucketBlocks([block({ status: "cancelled" })], ["2026-09-06"]).get("2026-09-06")).toEqual([]);
   });
+
+  it("places a date-only task schedule in the all-day bucket", () => {
+    const allDay: TimeBlock = {
+      id: "01ALLDAY", kind: "task_schedule", allDay: true, date: "2026-09-07",
+      scope: { type: "task", id: "t1", title_snapshot: "Write report" },
+      mode: "focus", selector: "manual", status: "planned", source: "manual",
+    };
+    const result = bucketBlocks([allDay], ["2026-09-06", "2026-09-07"]);
+    expect(result.get("2026-09-06")).toEqual([]);
+    expect(result.get("2026-09-07")?.[0]).toMatchObject({ block: allDay, startMin: null, endMin: null });
+  });
 });

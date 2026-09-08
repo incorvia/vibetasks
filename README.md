@@ -93,7 +93,7 @@ Each task can carry:
 - **Priority** (highest → lowest) with colored checkbox rings (P1/P2/P3).
 - **Due date & time** — the external deadline. It appears in Today, Upcoming, and as a deadline marker in calendars; it never occupies calendar time.
 - **Estimate** — expected total effort, displayed compactly as `~30m`, `~1h`, or `~1h30m`.
-- **Task schedule** — a task’s primary calendar placement. Dragging a task into a timed calendar slot sets or moves this start and duration without changing its estimate or deadline.
+- **Task schedule** — a task’s primary calendar placement. It can be a date-only plan (“sometime today”) or a timed start and duration, without changing the task’s estimate or deadline.
 - **Calendar task colors** — color scheduled tasks by priority, with one calendar color, or with a stable per-task color. Completed schedules remain in place with their status circle and a dimmed treatment.
 - **Time blocks** — explicit broader allocations for a task, project, or area, such as “30 minutes on Marketing.”
 - **Work sessions** — actual task time recorded by the timer. Planned and actual time remain separate.
@@ -341,6 +341,7 @@ The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.
 | Block title | ✅ | — (Opal Tasks wins) |
 | Block start | ✅ | ✅ written back |
 | Block duration / end | ✅ | ✅ written back |
+| Date-only schedule | ✅ all-day event | ✅ written back |
 | Scope, mode, selector | — | — (Opal Tasks metadata) |
 
 - On a conflict where both sides changed start/end, **Opal Tasks wins**.
@@ -367,6 +368,17 @@ An independent task application can also consume the same mdbase collection when
 filesystem access to the vault. No compatibility with TaskNotes or any particular third-party task
 lifecycle is claimed. Obsidian Sync remains private Obsidian-to-Obsidian synchronization; Opal Tasks
 does not route it through mdbase Connect or another cloud service.
+
+### Local automation API
+
+Local skills and scripts can read a normalized day snapshot and apply an explicitly approved plan
+through the versioned API at `app.plugins.plugins.opal_tasks.api.v1`. It exposes tasks, schedules,
+allocations, work sessions and read-only calendar events, with revision and overlap checks before
+multi-record writes. Scheduling, status changes and task creation use the same lifecycle services as
+the UI rather than editing time-log frontmatter directly.
+
+See [Automation API](docs/automation-api.md) for `obsidian eval` examples, the supported plan
+operations, validation behavior and change subscriptions.
 
 ## Commands
 

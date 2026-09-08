@@ -2,7 +2,7 @@ import { Menu, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
-import { Task, CalEvent, TimeBlock, agendaDate } from "./types";
+import { isAllDaySchedule, type Task, type CalEvent, type TimeBlock, type TimedTimeBlock, agendaDate } from "./types";
 import { PageLayout, ViewOptions } from "./filterEngine";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { isInboxLink } from "./taskService";
@@ -81,12 +81,18 @@ export interface CalendarAdd { project?: string | null; projectId?: string | nul
 /** Jeder Modus-Zeichner liefert diese Füll-Funktion: Aufgaben UND Termine des Zeitraums, jeweils
  *  nach Tag gebündelt. Das Gerüst bleibt stehen, nur der Inhalt wird neu gezeichnet. */
 type GridFiller = (tasks: Map<string, Task[]>, events: Map<string, DayEvent[]>, blocks: Map<string, BlockSlice[]>) => void;
-type BlockSlice = { block: TimeBlock; startMin: number; endMin: number };
+type TimedBlockSlice = { block: TimedTimeBlock; startMin: number; endMin: number };
+type AllDayBlockSlice = { block: TimeBlock; startMin: null; endMin: null };
+type BlockSlice = TimedBlockSlice | AllDayBlockSlice;
 
 export function bucketBlocks(blocks: TimeBlock[], days: string[]): Map<string, BlockSlice[]> {
   const out = new Map(days.map((day) => [day, [] as BlockSlice[]]));
   for (const block of blocks) {
     if (block.status === "cancelled") continue;
+    if (isAllDaySchedule(block)) {
+      if (out.has(block.date)) out.get(block.date)!.push({ block, startMin: null, endMin: null });
+      continue;
+    }
     const start = new Date(block.start), end = new Date(start.getTime() + block.duration * 60000);
     if (Number.isNaN(start.getTime())) continue;
     for (const day of days) {
@@ -598,7 +604,9 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
       const cell = alldayCells.get(day)!;
       cell.empty();
       for (const de of allDayEventsOf(dayEvents)) renderEventChip(cell, de);
-      const scheduledHere = new Set((blocks.get(day) ?? [])
+      const dayBlocks = blocks.get(day) ?? [];
+      for (const slice of dayBlocks) if (slice.startMin === null) renderBlockChip(cell, plugin, slice.block);
+      const scheduledHere = new Set(dayBlocks
         .filter((slice) => blockKind(slice.block) === "task_schedule" && slice.block.scope.type === "task")
         .map((slice) => slice.block.scope.id));
       for (const tk of dayTasks) if (!scheduledHere.has(tk.id)) renderChip(cell, plugin, tk);
@@ -609,7 +617,9 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
       }
       const timedEvents = dayEvents.filter((d): d is DayEvent & { startMin: number; endMin: number } => d.startMin !== null && d.endMin !== null)
         .map((d) => ({ kind: "event" as const, ...d, startMin: d.startMin, endMin: d.endMin }));
-      const timedBlocks = (blocks.get(day) ?? []).map((b) => ({ kind: "block" as const, ...b }));
+      const timedBlocks = dayBlocks
+        .filter((b): b is TimedBlockSlice => b.startMin !== null && b.endMin !== null)
+        .map((b) => ({ kind: "block" as const, ...b }));
       for (const b of layoutSlots([...timedEvents, ...timedBlocks], (a, z) => a.kind.localeCompare(z.kind))) {
         const h = Math.max(18, ((b.endMin - b.startMin) / 60) * HOUR_PX - 2);
         const setBox = (el: HTMLElement): void => {
@@ -759,7 +769,7 @@ function yToMin(clientY: number, col: HTMLElement, top?: number): number {
   return ((clientY - t) / HOUR_PX) * 60;
 }
 
-function startBlockResize(e: MouseEvent, el: HTMLElement, block: TimeBlock, startMin: number,
+function startBlockResize(e: MouseEvent, el: HTMLElement, block: TimedTimeBlock, startMin: number,
   plugin: OpalTasksPlugin): void {
   e.preventDefault(); e.stopPropagation();
   const col = el.parentElement!, doc = el.ownerDocument; el.addClass("is-resizing");
@@ -815,8 +825,10 @@ function renderBlockChip(parent: HTMLElement, plugin: OpalTasksPlugin, block: Ti
     chip.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, scheduledTask));
     renderCheck(chip, plugin, scheduledTask, { compact: true });
   }
-  const start = new Date(block.start);
-  chip.createSpan({ cls: "bt-calview-chip-time", text: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` });
+  if (!isAllDaySchedule(block)) {
+    const start = new Date(block.start);
+    chip.createSpan({ cls: "bt-calview-chip-time", text: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` });
+  }
   chip.createSpan({ cls: "bt-calview-chip-title", text: block.scope.title_snapshot });
   chip.onclick = (e) => {
     e.stopPropagation();

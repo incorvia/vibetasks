@@ -1,6 +1,6 @@
 import { Modal, Notice } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import type { TimeBlock, TimeBlockKind, TimeBlockMode, TimeBlockSelector, TimeScope, TimeScopeType } from "./types";
+import { isAllDaySchedule, type TimeBlock, type TimeBlockKind, type TimeBlockMode, type TimeBlockSelector, type TimeScope, type TimeScopeType } from "./types";
 import { parseDuration } from "./datePicker";
 import { formatDuration } from "./format";
 
@@ -15,8 +15,10 @@ export class TimeBlockModal extends Modal {
     const { contentEl } = this; contentEl.empty(); contentEl.addClass("bt-time-block-modal");
     const schedule = this.kind === "task_schedule";
     contentEl.createEl("h2", { text: this.existing ? (schedule ? "Edit task schedule" : "Edit time block") : (schedule ? "Schedule task" : "New time block") });
-    const start = contentEl.createEl("input", { type: "datetime-local" }); start.value = localInput(this.initialStart);
-    const duration = contentEl.createEl("input", { type: "text", attr: { placeholder: "30m · 1h · 3h" } }); duration.value = this.existing ? formatDuration(this.existing.duration) : "30m";
+    const start = contentEl.createEl("input", { type: "datetime-local" });
+    start.value = this.existing && isAllDaySchedule(this.existing) ? `${this.existing.date}T09:00` : localInput(this.initialStart);
+    const duration = contentEl.createEl("input", { type: "text", attr: { placeholder: "30m · 1h · 3h" } });
+    duration.value = this.existing && !isAllDaySchedule(this.existing) ? formatDuration(this.existing.duration) : "30m";
     const scopeType = contentEl.createEl("select");
     for (const type of ["task", "project", "area"] as TimeScopeType[]) scopeType.createEl("option", { value: type, text: type[0].toUpperCase() + type.slice(1) });
     const scopeId = contentEl.createEl("select");

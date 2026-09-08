@@ -5,7 +5,8 @@ Calendar, task-editor, command, CLI, and future AI entry points must use the sam
 ## SchedulingService
 
 - `getTaskSchedule(taskId)` returns the one planned primary schedule for a task.
-- `scheduleTask(taskId, { start, duration?, source? })` creates or moves that primary schedule. Its default duration is the task estimate, then 60 minutes.
+- `scheduleTask(taskId, { allDay: true, date, source? })` creates or moves a date-only primary schedule without inventing a midnight start or duration.
+- `scheduleTask(taskId, { start, duration?, source? })` creates or moves a timed primary schedule. Its default duration is the task estimate, then 60 minutes.
 - `unscheduleTask(taskId)` removes the primary schedule without changing the deadline or estimate.
 - `createAllocation(...)` and `updateAllocation(...)` manage explicit task/project/area time allocations.
 - `moveBlock`, `resizeBlock`, and `cancelBlock` are the shared calendar editing operations for either block kind.
@@ -27,3 +28,5 @@ Timers always resolve to a task. Completing a task delegates the task-status tra
 ## Storage boundary
 
 Both task schedules (`kind: task_schedule`) and explicit allocations (`kind: allocation`) are stored as blocks in canonical daily time logs. Work sessions are stored separately in those logs. This common storage shape is an implementation detail; callers choose an intent through one of the services rather than constructing records themselves.
+
+The Today view combines open tasks due today with open tasks whose planned primary schedule touches today. It de-duplicates tasks carrying both signals and keeps overdue tasks in the overdue section. Scheduling never writes or changes `due`.

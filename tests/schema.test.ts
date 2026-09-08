@@ -84,11 +84,11 @@ describe("nextSchemaVersion – was nach dem Lauf in der Datei steht", () => {
 
 describe("SCHEMA_STEPS – die Reihenfolge ist Vertrag", () => {
   it("steht fest und stimmt mit CURRENT_SCHEMA überein", () => {
-    expect(SCHEMA_STEPS).toEqual(["descriptions", "inboxRemoval", "titles", "recurrenceRRule", "timingModel", "stableRelationships", "stableRelationshipRepair"]);
+    expect(SCHEMA_STEPS).toEqual(["descriptions", "inboxRemoval", "titles", "recurrenceRRule", "timingModel", "stableRelationships", "stableRelationshipRepair", "allDaySchedules"]);
     expect(CURRENT_SCHEMA).toBe(SCHEMA_STEPS.length);
   });
 
   it("reruns relationship repair for vaults that already completed the first ID migration", () => {
-    expect(pendingSteps(6)).toEqual(["stableRelationshipRepair"]);
+    expect(pendingSteps(6)).toEqual(["stableRelationshipRepair", "allDaySchedules"]);
   });
 });

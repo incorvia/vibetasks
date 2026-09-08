@@ -5,8 +5,8 @@
 // nutzen dieselben Picker – keine Duplikate mehr.
 import { App, Platform, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, OpalTasksSettings, ScheduleDraft } from "./types";
-import { formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf, localDateTime } from "./format";
+import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, OpalTasksSettings, ScheduleDraft, isAllDaySchedule } from "./types";
+import { formatDate, formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf, localDateTime } from "./format";
 import { boardStatuses, statusLabel, statusIcon, statusTint, firstOpenStatus, isTrashed } from "./statuses";
 import { openDatePicker, parseDuration } from "./datePicker";
 import { formatReminder } from "./reminders";
@@ -152,7 +152,7 @@ function openDate(host: ChipHost, anchor: HTMLElement): void {
 }
 
 export function defaultScheduleDuration(current: ScheduleDraft | null, estimate: number | null | undefined): number {
-  if (current?.duration && current.duration > 0) return current.duration;
+  if (current && !isAllDaySchedule(current) && current.duration > 0) return current.duration;
   if (estimate && estimate > 0) return estimate;
   return 30;
 }
@@ -160,15 +160,20 @@ export function defaultScheduleDuration(current: ScheduleDraft | null, estimate:
 function openWhen(host: ChipHost, anchor: HTMLElement): void {
   const current = host.schedule?.() ?? null;
   let duration = defaultScheduleDuration(current, host.f.estimate);
-  openDatePicker(anchor, current ? localDateTime(current.start) : "", (value) => {
-    const start = new Date(value);
-    if (Number.isNaN(start.getTime()) || !duration || duration < 1) return;
-    host.setSchedule?.({ start: start.toISOString(), duration });
+  const currentValue = current ? (isAllDaySchedule(current) ? current.date : localDateTime(current.start)) : "";
+  openDatePicker(anchor, currentValue, (value) => {
+    const time = timeOf(value);
+    if (!time) host.setSchedule?.({ allDay: true, date: dateOf(value) });
+    else {
+      const start = new Date(value);
+      if (Number.isNaN(start.getTime()) || !duration || duration < 1) return;
+      host.setSchedule?.({ start: start.toISOString(), duration });
+    }
     host.rerender();
   }, {
     value: duration,
     onChange: (value) => { duration = value ?? 0; },
-  }, { commit: "confirm", requireTime: true, requireDuration: true });
+  }, { commit: "confirm", requireDurationWhenTimed: true });
 }
 
 function openEstimate(host: ChipHost, anchor: HTMLElement): void {
@@ -396,7 +401,9 @@ export const CHIPS: Record<ChipId, ChipDef> = {
     valueLabel: (_f, host) => {
       const value = host.schedule?.();
       if (!value) return "";
-      return `${formatDateTime(localDateTime(value.start))} · ${formatDuration(value.duration)}`;
+      return isAllDaySchedule(value)
+        ? formatDate(value.date)
+        : `${formatDateTime(localDateTime(value.start))} · ${formatDuration(value.duration)}`;
     },
     open: (host, a) => openWhen(host, a),
     clear: (host) => host.clearSchedule?.(),

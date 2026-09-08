@@ -85,17 +85,38 @@ export type TimeScopeType = "task" | "project" | "area";
 export type TimeBlockMode = "focus" | "blitz";
 export type TimeBlockSelector = "manual" | "next" | "ai";
 export type TimeBlockKind = "task_schedule" | "allocation";
-/** Unsaved primary calendar placement used by the task editors. It never belongs in task frontmatter. */
-export interface ScheduleDraft { start: string; duration: number }
 export interface TimeScope { type: TimeScopeType; id: string; title_snapshot: string }
-export interface TimeBlock {
-  id: string; start: string; duration: number; scope: TimeScope;
-  kind: TimeBlockKind;
+
+/** A date-only plan is deliberately not represented as a midnight/24-hour interval. */
+export type ScheduleDraft =
+  | { allDay: true; date: string }
+  | { allDay?: false; start: string; duration: number };
+
+interface TimeBlockBase {
+  id: string; scope: TimeScope; kind: TimeBlockKind;
   mode: TimeBlockMode; selector: TimeBlockSelector;
   status: "planned" | "completed" | "cancelled";
   source: "manual" | "drag" | "ai" | "import";
   gcal_event_id?: string; gcal_calendar_id?: string;
 }
+export interface TimedTimeBlock extends TimeBlockBase {
+  allDay?: false;
+  start: string;
+  duration: number;
+}
+export interface AllDayTaskSchedule extends TimeBlockBase {
+  kind: "task_schedule";
+  allDay: true;
+  date: string;
+  mode: "focus";
+  selector: "manual";
+}
+export type TimeBlock = TimedTimeBlock | AllDayTaskSchedule;
+export type NewTimeBlock = Omit<TimedTimeBlock, "id" | "status"> | Omit<AllDayTaskSchedule, "id" | "status">;
+export type TimeBlockPatch = Partial<TimeBlockBase & {
+  allDay: boolean; date: string; start: string; duration: number;
+}>;
+export const isAllDaySchedule = (value: ScheduleDraft | TimeBlock): value is Extract<typeof value, { allDay: true }> => value.allDay === true;
 export interface WorkSession {
   id: string; task_id: string; task_title_snapshot: string; block_id?: string;
   started_at: string; ended_at?: string; elapsed?: number; device_id: string;

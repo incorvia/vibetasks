@@ -113,6 +113,28 @@ export function upgradedRelationshipTypeDocument(original: string, type: RecordT
   return serializeDocument(parsed.frontmatter, parsed.body);
 }
 
+/** Add the date-only task-schedule shape without replacing user-added time-log fields. */
+export function upgradedAllDayScheduleTypeDocument(original: string): string {
+  const parsed = parseDocument(original);
+  if (parsed.frontmatter.kind !== "mdbase.type" || parsed.frontmatter.name !== "time_log") return original;
+  const schema = parsed.frontmatter.schema as Record<string, unknown> | undefined;
+  const value = schema?.value as Record<string, unknown> | undefined;
+  const properties = value?.properties as Record<string, unknown> | undefined;
+  const blocks = properties?.blocks as Record<string, unknown> | undefined;
+  const items = blocks?.items as Record<string, unknown> | undefined;
+  const itemProperties = items?.properties as Record<string, unknown> | undefined;
+  const defaults = ((DEFAULT_SCHEMAS.time_log.properties as Record<string, unknown>).blocks as Record<string, unknown>).items as Record<string, unknown>;
+  if (!items || !itemProperties) return original;
+  items.required = (Array.isArray(items.required) ? items.required : [])
+    .filter((field) => field !== "start" && field !== "duration");
+  const defaultProperties = defaults.properties as Record<string, unknown>;
+  itemProperties.allDay = defaultProperties.allDay;
+  itemProperties.date = defaultProperties.date;
+  items.oneOf = defaults.oneOf;
+  parsed.frontmatter.version = Math.max(Number(parsed.frontmatter.version) || 0, 3);
+  return serializeDocument(parsed.frontmatter, parsed.body);
+}
+
 function revisionOf(file: TFile): string {
   return `${file.stat.mtime}:${file.stat.size}`;
 }
@@ -409,6 +431,18 @@ export class MdbaseRepository extends Component {
       if (!(file instanceof TFile)) continue;
       const original = await this.app.vault.read(file);
       const next = upgradedRelationshipTypeDocument(original, type);
+      if (next !== original) await this.app.vault.modify(file, next);
+    }
+    await this.initializeCollection();
+  }
+
+  /** Upgrade the plugin-owned schedule discriminator while preserving other schema customizations. */
+  async upgradeTimeLogScheduleSchema(): Promise<void> {
+    const path = typeResourcePath("time_log");
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) {
+      const original = await this.app.vault.read(file);
+      const next = upgradedAllDayScheduleTypeDocument(original);
       if (next !== original) await this.app.vault.modify(file, next);
     }
     await this.initializeCollection();

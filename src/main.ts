@@ -1,5 +1,5 @@
 import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, MarkdownView, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
-import { OpalTasksSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
+import { isAllDaySchedule, OpalTasksSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
 import { applyDefaults, toDelta } from "./settingsDelta";
@@ -53,6 +53,7 @@ import { TimeBlockModal } from "./timeBlockModal";
 import { SchedulingService } from "./schedulingService";
 import { WorkTimerService } from "./workTimerService";
 import { migrateStableRelationships } from "./stableRelationships";
+import { AutomationTaskCreate, AutomationTaskPatch, OpalTasksAutomationApi } from "./automationApi";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -85,6 +86,8 @@ export default class OpalTasksPlugin extends Plugin {
   timeStore!: TimeStore;
   private timerSessions!: TimerService;
   scheduling!: SchedulingService;
+  /** Stable, JSON-friendly integration surface for Obsidian CLI/eval and other local clients. */
+  api!: OpalTasksAutomationApi;
   workTimer!: WorkTimerService;
   repository!: MdbaseRepository;
   gcalAuth!: GCalAuth;
@@ -185,6 +188,27 @@ export default class OpalTasksPlugin extends Plugin {
     // Änderung BEIDE Views doppelt zeichnet – im Profil ~110 ms je Zeichnung, also glatt
     // verdoppelte Freezes. renderAll() bleibt für explizite Anlässe (Layout-Wechsel, Settings).
     this.setupGCal();
+    this.api = new OpalTasksAutomationApi({
+      tasks: () => this.index.all(),
+      blocksIn: (from, to) => this.timeStore.blocksIn(from, to),
+      sessions: () => this.timeStore.sessions(),
+      statuses: () => this.statusList().map((status) => ({ ...status })),
+      calendarStatus: () => ({ active: this.gcalFeed.isActive(), ...this.gcalFeed.getStatus() }),
+      calendarEvents: async (date, refresh) => {
+        this.gcalFeed.setRange(date, date);
+        if (refresh) await this.gcalFeed.refresh();
+        return this.gcalFeed.eventsIn(date, date);
+      },
+      scheduleTask: (task, schedule) => this.scheduling.scheduleTask(task, { ...schedule, source: "ai" }),
+      unscheduleTask: (taskId) => this.scheduling.unscheduleTask(taskId),
+      updateTask: (task, patch) => this.updateAutomationTask(task, patch),
+      setTaskStatus: (task, status) => this.setTaskStatus(task, status),
+      createTask: (input) => this.createAutomationTask(input),
+      subscribeTasks: (cb) => this.index.subscribe(cb),
+      subscribeTime: (cb) => this.timeStore.subscribe(cb),
+      subscribeCalendar: (cb) => this.gcalFeed.onChange(cb),
+    });
+    this.register(() => this.api.dispose());
     // Reminder-Scanfenster: bei echtem Vorwert Verpasstes nachfeuern (auf Grace begrenzt),
     // bei Erstinstallation (0) ab jetzt starten -> kein Fehlalarm für heute Vergangenes.
     this.reminderScan = this.device.reminderLastScan || Date.now();
@@ -2408,6 +2432,7 @@ export default class OpalTasksPlugin extends Plugin {
         this.index.build();
         this.templates.build();
       }
+      else if (step === "allDaySchedules") await this.repository.upgradeTimeLogScheduleSchema();
       else await this.migrateTitles({ silent: true });
     }
     this.settings.schemaVersion = nextSchemaVersion(version);
@@ -2569,6 +2594,44 @@ export default class OpalTasksPlugin extends Plugin {
     await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (minutes) fm.estimate = minutes; else delete fm.estimate; });
   }
 
+  /** Narrow task-field mutation boundary used by the versioned automation API. Status and
+   *  schedules deliberately do not come through here: both have lifecycle-aware services. */
+  private async updateAutomationTask(task: Task, patch: AutomationTaskPatch): Promise<void> {
+    if ("due" in patch) await this.setTaskDate(task, "due", patch.due ?? "");
+    if ("estimate" in patch) await this.setTaskEstimate(task, patch.estimate ?? null);
+    if (patch.priority !== undefined) await this.setTaskPriority(task, patch.priority);
+  }
+
+  /** Create a normal Opal task for an automation plan. The preallocated ID lets the schedule be
+   *  written immediately without waiting for Obsidian's metadata cache to notice the new note. */
+  private async createAutomationTask(input: AutomationTaskCreate): Promise<Task> {
+    const id = newUlid();
+    const status = firstOpenStatus();
+    const due = input.due ? dateOf(input.due) : null;
+    const dueTime = input.due ? timeOf(input.due) : null;
+    const labels = [...new Set((input.labels ?? []).map(normalizeLabel).filter(Boolean))];
+    const file = await createTaskNote(this.app, this.settings, {
+      id,
+      title: input.title.trim(),
+      description: input.description,
+      status,
+      due,
+      dueTime,
+      estimate: input.estimate,
+      priority: input.priority,
+      labels,
+      projectId: input.projectId,
+    });
+    const created = rfc3339Now();
+    return {
+      id, path: file.path, title: input.title.trim(), titleInFm: true, status,
+      priority: input.priority ?? "normal", due, dueTime, estimate: input.estimate ?? null,
+      project: null, projectId: input.projectId ?? null, parent: null, parentId: null,
+      labels, description: input.description?.trim() ?? "", recurrence: null, recurBasis: "due",
+      reminders: [], sortOrder: null, created, completed: null, cancelled: null, externalId: null,
+    };
+  }
+
   private async timeSnapshotsForTask(task: Task): Promise<Partial<WorkSession>> {
     const snapshots: Partial<WorkSession> = {};
     if (task.project) {
@@ -2652,7 +2715,7 @@ export default class OpalTasksPlugin extends Plugin {
     const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(active.started_at)) / 1000));
     const clock = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
     const block = active.block_id ? this.timeStore.block(active.block_id) : null;
-    if (block && Date.now() >= Date.parse(block.start) + block.duration * 60_000 && !this.notifiedExpiredBlocks.has(block.id)) {
+    if (block && !isAllDaySchedule(block) && Date.now() >= Date.parse(block.start) + block.duration * 60_000 && !this.notifiedExpiredBlocks.has(block.id)) {
       this.notifiedExpiredBlocks.add(block.id);
       new Notice("Time block ended. The current timer will keep running until you stop or complete it.");
     }
@@ -3204,7 +3267,7 @@ export default class OpalTasksPlugin extends Plugin {
       allTasks: () => [],
       subscribe: (cb) => this.index.subscribe(cb),
       timeBlocks: () => this.timeStore.blocks(),
-      updateTimeBlockTiming: (id, start, duration) => this.scheduling.updateFromCalendar(id, start, duration),
+      updateTimeBlockTiming: (id, schedule) => this.scheduling.updateFromCalendar(id, schedule),
       setTimeBlockCalendarLink: (id, eventId, calendarId) => this.scheduling.setCalendarLink(id, eventId, calendarId),
       subscribeTime: (cb) => this.timeStore.subscribe(cb),
     };

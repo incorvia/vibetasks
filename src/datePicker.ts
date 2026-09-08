@@ -101,12 +101,15 @@ export type DatePickerOpts = {
   commit?: "live" | "confirm";
   requireTime?: boolean;      // confirm-Modus: ohne Uhrzeit lässt sich nicht bestätigen
   requireDuration?: boolean;  // confirm-Modus: ohne positive Dauer lässt sich nicht bestätigen
+  requireDurationWhenTimed?: boolean; // Datum allein ist gültig; sobald es eine Uhrzeit gibt, ist Dauer Pflicht
   confirmLabel?: string;      // Beschriftung des Bestätigen-Buttons
 };
 
 /** Pure confirmation guard so required date/time/duration behavior stays testable without DOM. */
 export function canConfirmDatePick(date: string, time: string | null, duration: number | null, opts?: DatePickerOpts): boolean {
-  return !!date && (!opts?.requireTime || !!time) && (!opts?.requireDuration || !!duration && duration > 0);
+  return !!date && (!opts?.requireTime || !!time)
+    && (!opts?.requireDuration || !!duration && duration > 0)
+    && (!opts?.requireDurationWhenTimed || !time || !!duration && duration > 0);
 }
 
 /** Datums-Picker: Eingabefeld + Schnellzeilen + Monatskalender + optional Uhrzeit/Dauer.
@@ -120,6 +123,7 @@ export function openDatePicker(
   const live = (opts?.commit ?? "live") === "live";
   const requireTime = !!opts?.requireTime;
   const requireDuration = !!opts?.requireDuration;
+  const requireDurationWhenTimed = !!opts?.requireDurationWhenTimed;
   openPopover(anchor, (pop, close) => {
     pop.addClass("bt-date");
     if (!live) pop.addClass("bt-date-confirm");
@@ -130,7 +134,7 @@ export function openDatePicker(
 
     // live: sofort melden. confirm: nur den Bestätigen-Button nachziehen, gemeldet wird in commit().
     const apply = () => { if (live) onPick(curDate ? combineDT(curDate, curTime) : ""); else renderFoot(); };
-    const canCommit = () => canConfirmDatePick(curDate, curTime, curDur, { requireTime, requireDuration });
+    const canCommit = () => canConfirmDatePick(curDate, curTime, curDur, { requireTime, requireDuration, requireDurationWhenTimed });
     const commit = () => { if (!canCommit()) return; onPick(combineDT(curDate, curTime)); close(); };
     // Schnellauswahl schließt sofort, SOLANGE der Uhrzeit-Bereich zu ist; sonst live anwenden.
     // Im confirm-Modus schließt sie nie – erst der Bestätigen-Button gibt den Wert heraus.

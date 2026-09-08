@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mergeEventBody } from "../src/gcalSync";
+import { blockEventBody, DEFAULT_GCAL_SETTINGS, mergeEventBody } from "../src/gcalSync";
+import type { TimeBlock } from "../src/types";
 
 /** So sieht ein Termin aus, den ein Nutzer in Google weiterbearbeitet hat. */
 const inGoogle = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -75,5 +76,21 @@ describe("mergeEventBody – in Google Ergänztes darf ein Push nicht löschen",
     expect(m.id).toBe("ev-1");
     expect(m.status).toBe("confirmed");
     expect(m.created).toBe("2026-01-01T10:00:00Z");
+  });
+});
+
+describe("time-block event mapping", () => {
+  it("maps a date-only schedule to a transparent Google all-day event", () => {
+    const block: TimeBlock = {
+      id: "b-all-day", kind: "task_schedule", allDay: true, date: "2026-09-08",
+      scope: { type: "task", id: "t1", title_snapshot: "Write report" },
+      mode: "focus", selector: "manual", status: "planned", source: "manual",
+    };
+
+    expect(blockEventBody(block, DEFAULT_GCAL_SETTINGS)).toMatchObject({
+      start: { date: "2026-09-08" },
+      end: { date: "2026-09-09" },
+      transparency: "transparent",
+    });
   });
 });

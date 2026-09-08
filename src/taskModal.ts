@@ -1,6 +1,6 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { ScheduleDraft, Task, TaskStatus } from "./types";
+import { isAllDaySchedule, ScheduleDraft, Task, TaskStatus } from "./types";
 import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, newId, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
@@ -77,6 +77,8 @@ export class TaskModal extends Modal {
   private readonly taskId: string;
   private scheduleDraft: ScheduleDraft | null;
   private scheduleDirty = false;
+  /** Keep the editor's timer action synchronized with timer changes from any surface. */
+  private timerUnsubscribe: (() => void) | null = null;
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
@@ -87,7 +89,9 @@ export class TaskModal extends Modal {
     const existingSchedule = existing && this.schedulingAllowed() ? plugin.scheduling.getTaskSchedule(existing.id) : null;
     this.scheduleDraft = opts.schedule
       ? { ...opts.schedule }
-      : existingSchedule ? { start: existingSchedule.start, duration: existingSchedule.duration } : null;
+      : existingSchedule ? (isAllDaySchedule(existingSchedule)
+        ? { allDay: true, date: existingSchedule.date }
+        : { start: existingSchedule.start, duration: existingSchedule.duration }) : null;
     this.scheduleDirty = !!opts.schedule;
     const seed = opts.seed;
     this.f = existing
@@ -333,11 +337,22 @@ export class TaskModal extends Modal {
 
     const actions = foot.createDiv({ cls: "bt-actions" });
     if (this.existing) {
-      const timer = actions.createEl("button", { attr: { "aria-label": "Start timer" } });
-      const active = this.plugin.workTimer.active(); setIcon(timer, active?.task_id === this.existing.id ? "square" : "play");
-      timer.onclick = () => active?.task_id === this.existing!.id
+      const timer = actions.createEl("button", { cls: "bt-timer-action" });
+      const renderTimer = (): void => {
+        const running = this.plugin.workTimer.active()?.task_id === this.existing!.id;
+        timer.empty();
+        setIcon(timer, running ? "square" : "play");
+        tip(timer, running ? "Stop timer" : "Start timer");
+        timer.toggleClass("is-active", running);
+      };
+      renderTimer();
+      // Read the current state at click time. Capturing it while building the footer left the
+      // button permanently wired as "start" even after that start had succeeded.
+      timer.onclick = () => this.plugin.workTimer.active()?.task_id === this.existing!.id
         ? void this.plugin.stopTaskTimer()
         : void this.plugin.startTaskTimer(this.existing!);
+      this.timerUnsubscribe?.();
+      this.timerUnsubscribe = this.plugin.workTimer.subscribe(renderTimer);
     }
     const cancel = actions.createEl("button", { text: t("btn_cancel") });
     cancel.onclick = () => { this.discarding = true; this.close(); };
@@ -346,6 +361,8 @@ export class TaskModal extends Modal {
   }
 
   onClose(): void {
+    this.timerUnsubscribe?.();
+    this.timerUnsubscribe = null;
     this.mobileViewportCleanup?.();
     this.mobileViewportCleanup = null;
     // Auto-Speichern beim Wegklicken / Esc / X (nur mit Titel). „Cancel" verwirft bewusst.
@@ -963,9 +980,10 @@ export class TaskModal extends Modal {
     if (!this.scheduleDirty || !this.schedulingAllowed()) return;
     try {
       if (this.scheduleDraft) {
-        await this.plugin.scheduling.scheduleTask({ id: this.taskId, title, estimate: this.f.estimate }, {
-          start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual",
-        });
+        await this.plugin.scheduling.scheduleTask({ id: this.taskId, title, estimate: this.f.estimate },
+          isAllDaySchedule(this.scheduleDraft)
+            ? { allDay: true, date: this.scheduleDraft.date, source: "manual" }
+            : { start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual" });
       } else {
         await this.plugin.scheduling.unscheduleTask(this.taskId);
       }

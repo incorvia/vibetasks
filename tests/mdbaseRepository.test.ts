@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TFile, parseYaml, stringifyYaml } from "obsidian";
-import { bindRepository, MdbaseRepository, MdbaseRepositoryError } from "../src/mdbaseRepository";
+import { bindRepository, MdbaseRepository, MdbaseRepositoryError, upgradedAllDayScheduleTypeDocument } from "../src/mdbaseRepository";
 import { TimeStore } from "../src/timeService";
 import { createTaskNote } from "../src/taskService";
 import type { OpalTasksSettings } from "../src/types";
@@ -83,6 +83,46 @@ describe("MdbaseRepository", () => {
     });
     expect(store.block(block.id)).toMatchObject({ start: "2026-09-06T14:30:00-05:00", duration: 45 });
     expect(store.blocksIn("2026-09-06", "2026-09-06")).toHaveLength(1);
+  });
+
+  it("persists a date-only task schedule without start or duration", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+    const store = new TimeStore(fake.app);
+    const block = await store.addBlock({
+      allDay: true, date: "2026-09-08", kind: "task_schedule",
+      scope: { type: "task", id: "task-1", title_snapshot: "Write report" },
+      mode: "focus", selector: "manual", source: "manual",
+    });
+
+    expect(store.block(block.id)).toMatchObject({ allDay: true, date: "2026-09-08" });
+    expect(store.block(block.id)).not.toHaveProperty("start");
+    expect(store.block(block.id)).not.toHaveProperty("duration");
+    expect(store.blocksIn("2026-09-08", "2026-09-08")).toHaveLength(1);
+  });
+
+  it("upgrades an existing time-log schema without discarding custom block fields", () => {
+    const original = `---\n${stringifyYaml({
+      kind: "mdbase.type", name: "time_log", version: 2,
+      schema: { dialect: "json-schema-2020-12", value: { type: "object", properties: {
+        blocks: { type: "array", items: { type: "object", required: ["id", "start", "duration"], properties: {
+          id: { type: "string" }, custom: { type: "string" },
+        } } },
+      } } },
+    })}---\nnotes\n`;
+    const upgraded = upgradedAllDayScheduleTypeDocument(original);
+    const yaml = upgraded.match(/^---\n([\s\S]*?)\n---/)![1];
+    const parsed = parseYaml(yaml) as Record<string, unknown>;
+    const schema = parsed.schema as { value: { properties: { blocks: { items: { required: string[]; properties: Record<string, unknown> } } } } };
+    const items = schema.value.properties.blocks.items;
+
+    expect(parsed.version).toBe(3);
+    expect(items.properties).toHaveProperty("custom");
+    expect(items.properties).toHaveProperty("allDay");
+    expect(items.properties).toHaveProperty("date");
+    expect(items.required).toEqual(["id"]);
+    expect(upgradedAllDayScheduleTypeDocument(upgraded)).toBe(upgraded);
   });
 
   it("initializes idempotently and performs lossless, revision-checked CRUD", async () => {

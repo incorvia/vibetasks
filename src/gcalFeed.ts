@@ -173,6 +173,7 @@ export class GCalFeed {
   private pollTimer: number | null = null;
   private running = false;
   private rerun: "ensure" | "refresh" | null = null;
+  private idleWaiters: (() => void)[] = [];
   private status: GCalFeedStatus = { loading: false, error: null, lastLoadedAt: null };
 
   constructor(private host: GCalFeedHost, private auth: GCalAuth) {
@@ -281,7 +282,14 @@ export class GCalFeed {
   // ── Laufwerk ──
   private async run(mode: "ensure" | "refresh"): Promise<void> {
     if (!this.isActive()) return;
-    if (this.running) { this.rerun = mode; return; }
+    // An automation caller can request a fresh range immediately after setRange() started its
+    // background ensure. In that case `refresh()` must wait for both passes; returning merely
+    // because another pass is active would hand the caller a stale day snapshot.
+    if (this.running) {
+      if (mode === "refresh" || this.rerun === null) this.rerun = mode;
+      await new Promise<void>((resolve) => this.idleWaiters.push(resolve));
+      return;
+    }
     this.running = true;
     this.setStatus({ loading: true, error: null });
     let failed: string | null = null;
@@ -312,7 +320,8 @@ export class GCalFeed {
       this.running = false;
       const next = this.rerun;
       this.rerun = null;
-      if (next) void this.run(next);
+      if (next) await this.run(next);
+      else for (const resolve of this.idleWaiters.splice(0)) resolve();
     }
   }
 

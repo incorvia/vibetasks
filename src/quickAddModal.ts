@@ -6,7 +6,7 @@
 // (Multi-Add / Brain-Dump). Der ⤢-Button öffnet den vollen Editor mit allem Übernommenen.
 import { Modal, Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Priority, ScheduleDraft, TaskStatus } from "./types";
+import { isAllDaySchedule, Priority, ScheduleDraft, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
 import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId, newId } from "./taskService";
 import { t, projectDisplayName } from "./i18n";
@@ -260,9 +260,10 @@ export class QuickAddModal extends Modal {
     let scheduleFailed = false;
     if (this.scheduleDraft) {
       try {
-        await this.plugin.scheduling.scheduleTask({ id: taskId, title, estimate: this.f.estimate }, {
-          start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual",
-        });
+        await this.plugin.scheduling.scheduleTask({ id: taskId, title, estimate: this.f.estimate },
+          isAllDaySchedule(this.scheduleDraft)
+            ? { allDay: true, date: this.scheduleDraft.date, source: "manual" }
+            : { start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual" });
       } catch {
         scheduleFailed = true;
       }

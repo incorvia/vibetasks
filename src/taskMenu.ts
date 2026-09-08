@@ -7,7 +7,7 @@
 import { setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { PageCtx } from "./pageCtx";
-import { Task } from "./types";
+import { isAllDaySchedule, Task } from "./types";
 import { openPopover, openPopoverAt, popRow } from "./popover";
 import { openDatePicker, quickDates } from "./datePicker";
 import { CHIPS, PRIOS, PRIO_KEY, ChipHost } from "./chips";
@@ -174,7 +174,10 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     else row("play", "Start timer", () => void plugin.startTaskTimer(task));
     row("calendar-clock", "Schedule task", () => {
       const existing = plugin.scheduling.getTaskSchedule(task.id);
-      new TimeBlockModal(plugin, existing ? new Date(existing.start) : new Date(), { type: "task", id: task.id, title_snapshot: task.title }, existing ?? undefined, "task_schedule").open();
+      const initial = existing
+        ? new Date(isAllDaySchedule(existing) ? `${existing.date}T09:00:00` : existing.start)
+        : new Date();
+      new TimeBlockModal(plugin, initial, { type: "task", id: task.id, title_snapshot: task.title }, existing ?? undefined, "task_schedule").open();
     });
     row("calendar-plus", "Plan time block", () => new TimeBlockModal(plugin, new Date(), { type: "task", id: task.id, title_snapshot: task.title }).open());
     pop.createDiv({ cls: "bt-plus-sep" });

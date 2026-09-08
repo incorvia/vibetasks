@@ -1,5 +1,5 @@
 import { App, TFile, requestUrl, Notice } from "obsidian";
-import { Task, TimeBlock } from "./types";
+import { isAllDaySchedule, type ScheduleDraft, type Task, type TimeBlock } from "./types";
 import { isTrashed, isDone } from "./statuses";
 import { isInboxLink } from "./taskService";
 import { resolveReminders } from "./reminders";
@@ -223,7 +223,7 @@ export interface GCalSyncHost {
   allTasks(): Task[];
   subscribe(cb: () => void): () => void;    // TaskIndex-Änderungen
   timeBlocks?(): TimeBlock[];
-  updateTimeBlockTiming?(id: string, start: string, duration: number): Promise<void>;
+  updateTimeBlockTiming?(id: string, schedule: ScheduleDraft): Promise<void>;
   setTimeBlockCalendarLink?(id: string, eventId: string | null, calendarId: string | null): Promise<void>;
   subscribeTime?(cb: () => void): () => void;
 }
@@ -358,15 +358,44 @@ function eventBody(task: Task, s: GCalSyncSettings): Record<string, unknown> {
   };
 }
 
-function blockSignature(block: TimeBlock): string { return JSON.stringify([block.start, block.duration, block.scope.title_snapshot, block.status]); }
-function blockEventBody(block: TimeBlock, s: GCalSyncSettings): Record<string, unknown> {
+function blockTimingSignature(value: TimeBlock | ScheduleDraft): unknown[] {
+  return isAllDaySchedule(value) ? ["date", value.date] : ["time", value.start, value.duration];
+}
+function blockSignature(block: TimeBlock): string {
+  return JSON.stringify([...blockTimingSignature(block), block.scope.title_snapshot, block.status]);
+}
+const nextDate = (date: string): string => {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(year, month - 1, day); value.setDate(value.getDate() + 1);
+  return isoDate(value);
+};
+export function blockEventBody(block: TimeBlock, s: GCalSyncSettings): Record<string, unknown> {
+  if (isAllDaySchedule(block)) return {
+    summary: block.scope.title_snapshot,
+    start: { date: block.date },
+    end: { date: nextDate(block.date) },
+    transparency: "transparent",
+    extendedProperties: { private: { syncSource: SYNC_SOURCE, btBlockId: block.id } },
+  };
   const startDate = new Date(block.start), endDate = new Date(startDate.getTime() + block.duration * 60000);
   return {
     summary: block.scope.title_snapshot,
     start: { dateTime: startDate.toISOString(), timeZone: s.timezone },
     end: { dateTime: endDate.toISOString(), timeZone: s.timezone },
+    transparency: "opaque",
     extendedProperties: { private: { syncSource: SYNC_SOURCE, btBlockId: block.id } },
   };
+}
+
+function eventBlockSchedule(event: Record<string, unknown> | null): ScheduleDraft | null {
+  const start = event?.start as { date?: string; dateTime?: string } | undefined;
+  const end = event?.end as { dateTime?: string } | undefined;
+  if (start?.date) return { allDay: true, date: start.date };
+  if (!start?.dateTime || !end?.dateTime) return null;
+  const from = new Date(start.dateTime), to = new Date(end.dateTime);
+  const duration = Math.round((to.getTime() - from.getTime()) / 60000);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || duration < 1) return null;
+  return { start: from.toISOString(), duration };
 }
 
 /** Event-Start → (due, dueTime) in lokaler Zeit. Ganztags: dateTime=null. */
@@ -501,13 +530,10 @@ export class GCalSync {
       }
       try {
         const current = await gcalRequest(this.auth, "GET", `/calendars/${enc(link.calendarId)}/events/${enc(link.eventId)}`);
-        const startRaw = (current.json?.start as { dateTime?: string } | undefined)?.dateTime;
-        const endRaw = (current.json?.end as { dateTime?: string } | undefined)?.dateTime;
-        const googleStart = startRaw ? new Date(startRaw) : null, googleEnd = endRaw ? new Date(endRaw) : null;
-        const googleDuration = googleStart && googleEnd ? Math.round((googleEnd.getTime() - googleStart.getTime()) / 60000) : null;
-        if (link.sig === sig && googleStart && googleDuration && (googleStart.toISOString() !== new Date(block.start).toISOString() || googleDuration !== block.duration)) {
-          await this.host.updateTimeBlockTiming(block.id, googleStart.toISOString(), googleDuration);
-          links[block.id].sig = blockSignature({ ...block, start: googleStart.toISOString(), duration: googleDuration });
+        const googleSchedule = eventBlockSchedule(current.json);
+        if (link.sig === sig && googleSchedule && JSON.stringify(blockTimingSignature(googleSchedule)) !== JSON.stringify(blockTimingSignature(block))) {
+          await this.host.updateTimeBlockTiming(block.id, googleSchedule);
+          links[block.id].sig = JSON.stringify([...blockTimingSignature(googleSchedule), block.scope.title_snapshot, block.status]);
         } else if (link.sig !== sig || link.calendarId !== cal) {
           await gcalRequest(this.auth, "PUT", `/calendars/${enc(cal)}/events/${enc(link.eventId)}`, mergeEventBody(current.json, blockEventBody(block, this.host.settings)));
           links[block.id] = { eventId: link.eventId, calendarId: cal, sig };

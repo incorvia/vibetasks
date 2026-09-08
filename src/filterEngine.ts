@@ -289,6 +289,20 @@ export const isUpcomingTask = (t: Task, today: string): boolean => {
   return !isOverdueTask(t, today) && !!d && d > today;
 };
 
+/** Compose the Today view's two independent signals: deadline placement on the task and
+ *  work placement in a task-schedule block. Overdue remains the stronger bucket and IDs are
+ *  de-duplicated so a task due and scheduled today is rendered only once. */
+export function mergeTodayTaskBuckets(overdue: Task[], dueToday: Task[], scheduledToday: Task[]): { overdue: Task[]; today: Task[] } {
+  const overdueIds = new Set(overdue.map((task) => task.id));
+  const seen = new Set<string>();
+  const today: Task[] = [];
+  for (const task of [...dueToday, ...scheduledToday]) {
+    if (overdueIds.has(task.id) || seen.has(task.id)) continue;
+    seen.add(task.id); today.push(task);
+  }
+  return { overdue, today };
+}
+
 /** Abstand beim Durchnummerieren. Lücken, damit spätere Züge reine Mittelwerte sind. */
 export const ORDER_GAP = 10;
 /** Ein zu schreibender Positionswert. */

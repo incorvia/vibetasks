@@ -135,10 +135,15 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     date: { type: "string", format: "date" },
     blocks: {
       type: "array", items: { type: "object", additionalProperties: true,
-        required: ["id", "start", "duration", "scope", "mode", "selector", "status", "source"],
+        required: ["id", "scope", "mode", "selector", "status", "source"],
+        oneOf: [
+          { required: ["start", "duration"], properties: { allDay: { enum: [false] } } },
+          { required: ["allDay", "date"], properties: { allDay: { const: true } } },
+        ],
         properties: {
           id: { type: "string", minLength: 1 }, start: { type: "string", format: "date-time" },
           duration: { type: "integer", minimum: 1 },
+          allDay: { type: "boolean" }, date: { type: "string", format: "date" },
           kind: { enum: ["task_schedule", "allocation"] },
           scope: { type: "object", additionalProperties: false, required: ["type", "id", "title_snapshot"], properties: {
             type: { enum: ["task", "project", "area"] }, id: { type: "string", minLength: 1 }, title_snapshot: { type: "string" },
@@ -215,7 +220,7 @@ export function typeDocument(type: RecordType): string {
   const frontmatter = {
     kind: "mdbase.type",
     name: type,
-    version: 2,
+    version: type === "time_log" ? 3 : 2,
     description: `Opal Tasks ${type} record`,
     match: { where: { type } },
     schema: { dialect: "json-schema-2020-12", value: DEFAULT_SCHEMAS[type] },
