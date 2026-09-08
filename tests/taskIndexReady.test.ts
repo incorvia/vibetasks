@@ -124,3 +124,23 @@ describe("Mehrfacher Aufbau", () => {
     expect(index.byLabel("health")).toHaveLength(2);
   });
 });
+
+describe("Stabile Projektbeziehungen im laufenden Index", () => {
+  it("behält Projekt-IDs beim Aufbau, damit später angelegte Aufgaben sofort im Projekt landen", () => {
+    const dateien = [
+      datei("_opal_tasks/projects/Garden.md", { type: "project", id: "project-garden", title: "Garden" }),
+    ];
+    const { index, feuern } = neuerIndex(dateien);
+    index.build();
+
+    const task = datei("_opal_tasks/tasks/Seeds.md", {
+      type: "task", id: "task-seeds", title: "Buy seeds", status: "todo", labels: [],
+      opal_project_id: "project-garden",
+    });
+    dateien.push(task);
+    feuern("mc:changed", task);
+
+    expect(index.get(task.path)?.project).toBe("_opal_tasks/projects/Garden.md");
+    expect(index.inbox().map((item) => item.path)).not.toContain(task.path);
+  });
+});

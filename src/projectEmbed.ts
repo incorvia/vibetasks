@@ -108,7 +108,7 @@ export class ProjectHeaderEmbed extends MarkdownRenderChild {
 
     const card = this.containerEl.createDiv({ cls: "bt-project-note-card" });
     card.style.setProperty("--bt-project-context", project.color || "var(--text-faint)");
-    const identity = renderProjectIdentity(card, project, () => void this.plugin.openPage({ kind: "project", key: project.path }));
+    const identity = renderProjectIdentity(card, project, () => void this.plugin.openOrActivatePage({ kind: "project", key: project.path }));
     const description = project.description.trim();
     if (description) identity.createDiv({ cls: "bt-project-note-description", text: description });
     const detail = identity.createDiv({ cls: "bt-project-note-detail" });

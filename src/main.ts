@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
+import { Plugin, Notice, TFile, TAbstractFile, WorkspaceLeaf, WorkspaceParent, PaneType, Platform, MarkdownView, moment, setIcon, addIcon, normalizePath, parseYaml } from "obsidian";
 import { OpalTasksSettings, Task, TaskStatus, Priority, StoredStatus, StatusKind, NavSection, NavSortMode, ChipId, ChipTier, CalEvent, DeviceState, DEFAULT_DEVICE_STATE, TimeBlock, TimeScope, WorkSession } from "./types";
 import { isDone, initStatuses, ensureStatusInvariants, firstOpenStatus, firstDoneStatus, firstCancelledStatus, isTrashed, DEFAULT_STATUSES, statusLabel } from "./statuses";
 import { schemaVersionOf, pendingSteps, nextSchemaVersion } from "./schema";
@@ -44,7 +44,7 @@ import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
 import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
-import { ensureLinkedProjectEmbeds, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
+import { ensureLinkedProjectEmbeds, linkedNoteEntryLine, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
 import { migrateTimingFields } from "./timingMigration";
 import { TimeStore, TimerService } from "./timeService";
 import { TimeDashboardModal } from "./timeDashboard";
@@ -586,6 +586,28 @@ export default class OpalTasksPlugin extends Plugin {
     await workspace.revealLeaf(leaf);   // awaited -> View vollständig geladen
     const view = leaf.view instanceof MainView ? leaf.view : null;
     view?.drawIfDirty();
+    this.renderNav();
+    return view;
+  }
+
+  /** Ordinary cross-surface navigation activates an exact existing dashboard tab before falling
+   *  back to openPage(). Explicit “new tab/right/window” actions continue to create new leaves. */
+  async openOrActivatePage(page: PageRef): Promise<MainView | null> {
+    const leaf = this.app.workspace.getLeavesOfType(VIEW_MAIN).find((candidate) => {
+      if (candidate.view instanceof MainView) return samePage(candidate.view.page, page);
+      const state = candidate.getViewState().state as { kind?: unknown; key?: unknown } | undefined;
+      return state?.kind === page.kind && state.key === page.key;
+    });
+    if (!leaf) return this.openPage(page);
+
+    await leaf.loadIfDeferred();
+    await this.app.workspace.revealLeaf(leaf);
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    const view = leaf.view instanceof MainView ? leaf.view : null;
+    if (view) {
+      this.lastMain = view;
+      view.drawIfDirty();
+    }
     this.renderNav();
     return view;
   }
@@ -1260,7 +1282,7 @@ export default class OpalTasksPlugin extends Plugin {
   private async runNoteProjectAction(note: TFile, action: Exclude<NoteProjectAction, null>): Promise<void> {
     try {
       const projectPath = await this.createProjectFromNote(note);
-      if (action.kind === "open") await this.activateProject(projectPath);
+      if (action.kind === "open") await this.openOrActivatePage({ kind: "project", key: projectPath });
       else new Notice(t("notice_project_from_note"));
     } catch (error) {
       console.error("Opal Tasks: failed to create embedded project", error);
@@ -1328,6 +1350,26 @@ export default class OpalTasksPlugin extends Plugin {
     return link ? this.app.metadataCache.getFirstLinkpathDest(link, collectionPath) : null;
   }
 
+  /** Open a companion note with Live Preview's selection below the generated header. Keeping the
+   *  user's current source/preview mode intact is less surprising than forcing Reading view. */
+  private async openLinkedCollectionNote(file: TFile, content: string): Promise<void> {
+    const existing = this.leafShowing(file.path);
+    if (existing) {
+      await existing.loadIfDeferred();
+      await this.app.workspace.revealLeaf(existing);
+      this.app.workspace.setActiveLeaf(existing, { focus: true });
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.openFile(file, { active: true });
+    if (!(leaf.view instanceof MarkdownView) || leaf.view.getMode() !== "source") return;
+    const line = Math.min(linkedNoteEntryLine(content), leaf.view.editor.lastLine());
+    const cursor = { line, ch: 0 };
+    leaf.view.editor.setCursor(cursor);
+    leaf.view.editor.scrollIntoView({ from: cursor, to: cursor });
+  }
+
   /** Open a project/area companion note, creating and linking one when it does not exist yet. */
   async openOrCreateCollectionNote(collectionPath: string): Promise<void> {
     const record = await this.repository.read(collectionPath);
@@ -1341,8 +1383,12 @@ export default class OpalTasksPlugin extends Plugin {
       await this.app.fileManager.processFrontMatter(linked, (fm: Record<string, unknown>) => { fm[OPAL_PROJECT_ID] = id; });
       if ("linked_note" in record.frontmatter) await this.repository.update(collectionPath, { linked_note: null });
       // This also upgrades companion notes made before the separate header embed existed.
-      await this.app.vault.process(linked, (content) => ensureLinkedProjectEmbeds(content, id));
-      await this.app.workspace.getLeaf("tab").openFile(linked);
+      let linkedContent = "";
+      await this.app.vault.process(linked, (content) => {
+        linkedContent = ensureLinkedProjectEmbeds(content, id);
+        return linkedContent;
+      });
+      await this.openLinkedCollectionNote(linked, linkedContent);
       return;
     }
 
@@ -1358,9 +1404,10 @@ export default class OpalTasksPlugin extends Plugin {
       path = normalizePath(`${folder ? folder + "/" : ""}${base} ${suffix++}.md`);
     }
 
-    const note = await this.app.vault.create(path, newLinkedProjectNoteContent(id));
+    const noteContent = newLinkedProjectNoteContent(id);
+    const note = await this.app.vault.create(path, noteContent);
     this.renderAll();
-    await this.app.workspace.getLeaf("tab").openFile(note);
+    await this.openLinkedCollectionNote(note, noteContent);
     new Notice(t("notice_linked_note_created"));
   }
 

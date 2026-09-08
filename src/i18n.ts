@@ -6,7 +6,7 @@ type Dict = Record<string, string>;
 
 const STRINGS: Record<string, Dict> = {
   en: {
-    context_linked_note: "Linked note", context_project_record: "Project record", context_area_record: "Area record",
+    context_linked_note: "Linked note", context_project_record: "Project record", context_area_record: "Area record", project_notes: "Notes", project_notes_add: "Add note",
     view_today: "Today", view_upcoming: "Upcoming", view_recurring: "Recurring", view_done: "Done",
     status_todo: "To-Do", status_doing: "In progress", status_done: "Done", status_cancelled: "Cancelled",
     layout_list: "List", layout_board: "Board", menu_cancel_task: "Cancel task",
@@ -348,7 +348,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Display", panel_layout: "Layout", panel_show_done: "Show completed", panel_subtasks: "Sub-tasks", panel_priority_swimlanes: "Priority swimlanes", panel_subs_compact: "Compact", panel_subs_indented: "Indented", panel_subs_hide: "Hide", panel_subs_show: "Show", subtasks_progress: "{0} of {1} done", no_label: "No label", more_actions: "More",
   },
   de: {
-    context_linked_note: "Verknüpfte Notiz", context_project_record: "Projektdatensatz", context_area_record: "Bereichsdatensatz",
+    context_linked_note: "Verknüpfte Notiz", context_project_record: "Projektdatensatz", context_area_record: "Bereichsdatensatz", project_notes: "Notizen", project_notes_add: "Notiz hinzufügen",
     view_today: "Heute", view_upcoming: "Demnächst", view_recurring: "Wiederkehrend", view_done: "Erledigt",
     status_todo: "To-Do", status_doing: "In Arbeit", status_done: "Erledigt", status_cancelled: "Abgebrochen",
     layout_list: "Liste", layout_board: "Board", menu_cancel_task: "Abbrechen",
@@ -687,7 +687,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Anzeige", panel_layout: "Layout", panel_show_done: "Erledigte anzeigen", panel_subtasks: "Unteraufgaben", panel_priority_swimlanes: "Prioritäts-Swimlanes", panel_subs_compact: "Kompakt", panel_subs_indented: "Eingerückt", panel_subs_hide: "Ausblenden", panel_subs_show: "Einblenden", subtasks_progress: "{0} von {1} erledigt", no_label: "Kein Label", more_actions: "Mehr",
   },
   es: {
-    context_linked_note: "Nota vinculada", context_project_record: "Registro de proyecto", context_area_record: "Registro de área",
+    context_linked_note: "Nota vinculada", context_project_record: "Registro de proyecto", context_area_record: "Registro de área", project_notes: "Notas", project_notes_add: "Añadir nota",
     view_today: "Hoy", view_upcoming: "Próximas", view_recurring: "Recurrentes", view_done: "Completadas",
     status_todo: "Por hacer", status_doing: "En curso", status_done: "Hecho", status_cancelled: "Cancelada",
     layout_list: "Lista", layout_board: "Tablero", menu_cancel_task: "Cancelar tarea",
@@ -1026,7 +1026,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Vista", panel_layout: "Diseño", panel_show_done: "Mostrar completadas", panel_subtasks: "Subtareas", panel_priority_swimlanes: "Carriles de prioridad", panel_subs_compact: "Compacto", panel_subs_indented: "Sangrado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} completadas", no_label: "Sin etiqueta", more_actions: "Más",
   },
   pt: {
-    context_linked_note: "Nota vinculada", context_project_record: "Registro do projeto", context_area_record: "Registro da área",
+    context_linked_note: "Nota vinculada", context_project_record: "Registro do projeto", context_area_record: "Registro da área", project_notes: "Notas", project_notes_add: "Adicionar nota",
     view_today: "Hoje", view_upcoming: "Próximas", view_recurring: "Recorrentes", view_done: "Concluídas",
     status_todo: "A fazer", status_doing: "Em andamento", status_done: "Feito", status_cancelled: "Cancelada",
     layout_list: "Lista", layout_board: "Quadro", menu_cancel_task: "Cancelar tarefa",
@@ -1365,7 +1365,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Exibição", panel_layout: "Layout", panel_show_done: "Mostrar concluídas", panel_subtasks: "Subtarefas", panel_priority_swimlanes: "Raias de prioridade", panel_subs_compact: "Compacto", panel_subs_indented: "Recuado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} concluídas", no_label: "Sem etiqueta", more_actions: "Mais",
   },
   fr: {
-    context_linked_note: "Note liée", context_project_record: "Fiche de projet", context_area_record: "Fiche de domaine",
+    context_linked_note: "Note liée", context_project_record: "Fiche de projet", context_area_record: "Fiche de domaine", project_notes: "Notes du projet", project_notes_add: "Ajouter une note",
     view_today: "Aujourd'hui", view_upcoming: "À venir", view_recurring: "Récurrentes", view_done: "Terminées",
     status_todo: "À faire", status_doing: "En cours", status_done: "Terminé", status_cancelled: "Annulée",
     layout_list: "Liste", layout_board: "Tableau", menu_cancel_task: "Annuler la tâche",
@@ -1704,7 +1704,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Affichage", panel_layout: "Disposition", panel_show_done: "Afficher les terminées", panel_subtasks: "Sous-tâches", panel_priority_swimlanes: "Couloirs de priorité", panel_subs_compact: "Compact", panel_subs_indented: "Indenté", panel_subs_hide: "Masquer", panel_subs_show: "Afficher", subtasks_progress: "{0} sur {1} terminées", no_label: "Sans étiquette", more_actions: "Plus",
   },
   tr: {
-    context_linked_note: "Bağlı not", context_project_record: "Proje kaydı", context_area_record: "Alan kaydı",
+    context_linked_note: "Bağlı not", context_project_record: "Proje kaydı", context_area_record: "Alan kaydı", project_notes: "Notlar", project_notes_add: "Not ekle",
     view_today: "Bugün", view_upcoming: "Yaklaşan", view_recurring: "Yinelenen", view_done: "Tamamlanan",
     status_todo: "Yapılacak", status_doing: "Devam ediyor", status_done: "Bitti", status_cancelled: "İptal edildi",
     layout_list: "Liste", layout_board: "Pano", menu_cancel_task: "Görevi iptal et",
@@ -2043,7 +2043,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Görünüm", panel_layout: "Düzen", panel_show_done: "Tamamlananları göster", panel_subtasks: "Alt görevler", panel_priority_swimlanes: "Öncelik kulvarları", panel_subs_compact: "Derli toplu", panel_subs_indented: "Girintili", panel_subs_hide: "Gizle", panel_subs_show: "Göster", subtasks_progress: "{1} görevden {0} tamamlandı", no_label: "Etiketsiz", more_actions: "Daha fazla",
   },
   zh: {
-    context_linked_note: "关联笔记", context_project_record: "项目记录", context_area_record: "领域记录",
+    context_linked_note: "关联笔记", context_project_record: "项目记录", context_area_record: "领域记录", project_notes: "笔记", project_notes_add: "添加笔记",
     view_today: "今天", view_upcoming: "即将到来", view_recurring: "重复", view_done: "已完成",
     status_todo: "待办", status_doing: "进行中", status_done: "完成", status_cancelled: "已取消",
     layout_list: "列表", layout_board: "看板", menu_cancel_task: "取消任务",
@@ -2382,7 +2382,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "显示", panel_layout: "布局", panel_show_done: "显示已完成", panel_subtasks: "子任务", panel_priority_swimlanes: "优先级泳道", panel_subs_compact: "紧凑", panel_subs_indented: "缩进", panel_subs_hide: "隐藏", panel_subs_show: "显示", subtasks_progress: "已完成 {0}/{1}", no_label: "无标签", more_actions: "更多",
   },
   ru: {
-    context_linked_note: "Связанная заметка", context_project_record: "Карточка проекта", context_area_record: "Карточка области",
+    context_linked_note: "Связанная заметка", context_project_record: "Карточка проекта", context_area_record: "Карточка области", project_notes: "Заметки", project_notes_add: "Добавить заметку",
     view_today: "Сегодня", view_upcoming: "Предстоящие", view_recurring: "Повторяющиеся", view_done: "Выполнено",
     status_todo: "К выполнению", status_doing: "В процессе", status_done: "Готово", status_cancelled: "Отменена",
     layout_list: "Список", layout_board: "Доска", menu_cancel_task: "Отменить задачу",
@@ -2721,7 +2721,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Вид", panel_layout: "Макет", panel_show_done: "Показывать выполненные", panel_subtasks: "Подзадачи", panel_priority_swimlanes: "Дорожки приоритета", panel_subs_compact: "Компактно", panel_subs_indented: "С отступом", panel_subs_hide: "Скрыть", panel_subs_show: "Показать", subtasks_progress: "{0} из {1} выполнено", no_label: "Без метки", more_actions: "Ещё",
   },
   ja: {
-    context_linked_note: "リンク済みノート", context_project_record: "プロジェクトレコード", context_area_record: "エリアレコード",
+    context_linked_note: "リンク済みノート", context_project_record: "プロジェクトレコード", context_area_record: "エリアレコード", project_notes: "ノート", project_notes_add: "ノートを追加",
     view_today: "今日", view_upcoming: "近日予定", view_recurring: "繰り返し", view_done: "完了",
     status_todo: "未着手", status_doing: "進行中", status_done: "完了", status_cancelled: "キャンセル済み",
     layout_list: "リスト", layout_board: "ボード", menu_cancel_task: "タスクをキャンセル",
@@ -3060,7 +3060,7 @@ const STRINGS: Record<string, Dict> = {
     view_display: "表示", panel_layout: "レイアウト", panel_show_done: "完了を表示", panel_subtasks: "サブタスク", panel_priority_swimlanes: "優先度スイムレーン", panel_subs_compact: "コンパクト", panel_subs_indented: "インデント", panel_subs_hide: "非表示", panel_subs_show: "表示", subtasks_progress: "{1} 件中 {0} 件完了", no_label: "ラベルなし", more_actions: "その他",
   },
   it: {
-    context_linked_note: "Nota collegata", context_project_record: "Record progetto", context_area_record: "Record area",
+    context_linked_note: "Nota collegata", context_project_record: "Record progetto", context_area_record: "Record area", project_notes: "Note", project_notes_add: "Aggiungi nota",
     view_today: "Oggi", view_upcoming: "Prossime", view_recurring: "Ricorrenti", view_done: "Completate",
     status_todo: "Da fare", status_doing: "In corso", status_done: "Fatto", status_cancelled: "Annullata",
     layout_list: "Elenco", layout_board: "Bacheca", menu_cancel_task: "Annulla attività",

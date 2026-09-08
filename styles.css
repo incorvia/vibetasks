@@ -478,7 +478,7 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  background: var(--background-primary-alt);
+  background: var(--background-primary);
   overflow: hidden;
 }
 .bt-project-note-card::before {
@@ -2302,6 +2302,70 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-page-desc[role="button"]:hover { color: var(--bt-meta-gray); text-decoration: underline; }
 .bt-page-desc[role="button"]:focus-visible { outline: 1px solid var(--background-modifier-border-focus); outline-offset: 2px; border-radius: 3px; }
 
+/* Project/Area dashboard → companion note. This is deliberately a preview card, not an embedded
+   editor: task management keeps Opal's generated UI while long-form writing stays in Markdown. */
+.bt-view button.bt-project-note-preview {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 18px;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  height: auto;
+  min-height: 48px;
+  margin: var(--bt-page-content-gap) 0 0;
+  padding: 11px 12px;
+  appearance: none;
+  transform: none;
+  border: 1px solid var(--background-modifier-border) !important;
+  border-radius: var(--radius-m);
+  background: var(--background-primary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: var(--text-normal);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bt-view button.bt-project-note-preview:hover,
+.bt-view button.bt-project-note-preview:active {
+  transform: none;
+  border-color: var(--background-modifier-border-hover) !important;
+  background: var(--background-modifier-hover) !important;
+  box-shadow: none !important;
+}
+.bt-view button.bt-project-note-preview:focus-visible {
+  transform: none;
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+.bt-project-note-preview-icon,
+.bt-project-note-preview-arrow { display: inline-flex; color: var(--text-muted); }
+.bt-project-note-preview-icon svg { width: 20px; height: 20px; }
+.bt-project-note-preview-arrow svg { width: 16px; height: 16px; }
+.bt-project-note-preview-copy { display: flex; min-width: 0; max-width: 80ch; flex-direction: column; gap: 2px; white-space: normal; }
+.bt-project-note-preview-title { overflow: hidden; font-size: var(--font-ui-small); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.bt-project-note-preview-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.bt-view button.bt-project-note-preview.is-empty {
+  border-style: dashed !important;
+  background: transparent !important;
+  color: var(--text-muted);
+}
+/* The preview already supplies the first page-body gap; task groups only need their ordinary
+   inter-group rhythm after it. */
+.bt-project-note-preview + .bt-content-group { margin-top: var(--bt-content-group-gap); }
+
 .bt-facet-dd.is-stale { border-color: var(--text-error); border-style: dashed; }
 /* … und die Zeile im Popover, die den Grund nennt. */
 .bt-facet-pop .bt-row.is-stale .bt-row-lbl { color: var(--text-error); }
@@ -3441,6 +3505,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
     position: static; width: auto; margin: 0 0 0 auto; justify-content: flex-end; flex-wrap: nowrap;
   }
   .bt-view .bt-record-title { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .bt-view .bt-project-note-preview-excerpt { display: none; }
   .bt-view .bt-page-desc.is-empty { display: none; }
   .bt-view .bt-page-add-lbl, .bt-view .bt-anzeige-lbl { display: none; }
   .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
@@ -3498,6 +3563,8 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   position: static; width: auto; margin: 0 0 0 auto; justify-content: flex-end; flex-wrap: nowrap;
 }
 .bt-view.bt-mobile .bt-record-title { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.bt-view.bt-mobile .bt-project-note-preview { padding-block: 10px; }
+.bt-view.bt-mobile .bt-project-note-preview-excerpt { display: none; }
 .bt-view.bt-mobile .bt-page-top h1 { font-size: 1.5em; }
 .bt-view.bt-mobile .bt-page-desc { display: none; }
 .bt-view.bt-mobile .bt-page-add-lbl,

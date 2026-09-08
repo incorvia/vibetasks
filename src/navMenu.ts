@@ -159,7 +159,7 @@ export function buildItemMenu(menu: Menu, plugin: OpalTasksPlugin, item: NavMenu
     const linked = plugin.linkedCollectionNote(item.key);
     if (linked) {
       menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_open_linked_note")).setIcon("external-link")
-        .onClick(() => void plugin.app.workspace.getLeaf("tab").openFile(linked)));
+        .onClick(() => void plugin.openOrCreateCollectionNote(item.key)));
     } else {
       menu.addItem((m) => m.setSection("bt-open").setTitle(t("menu_create_linked_note")).setIcon("file-plus-2")
         .onClick(() => void plugin.openOrCreateCollectionNote(item.key)));

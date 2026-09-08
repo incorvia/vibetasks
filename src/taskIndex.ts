@@ -272,7 +272,7 @@ export class TaskIndex extends Component {
     // Ordner-gebundener Index (Vorlagen): alles ausserhalb geht ihn nichts an – auch nicht der
     // Projekt-Zweig unten, der sonst bei JEDER fremden Dateiänderung im Vault eine Meldung
     // auslöste und damit die Vorlagen-Ansicht grundlos neu zeichnen liesse.
-    if (this.scope.restrictTo && !this.inScope(f.path)) { this.remove(f.path, notify); return; }
+    if (this.scope.restrictTo && !this.inScope(f.path)) { this.remove(f.path, notify, false); return; }
     const t = this.parse(f);
     if (!t) {
       // Keine Aufgabe – aber PROJEKT-/BEREICHS-Notizen beeinflussen den Index trotzdem: ihr
@@ -286,7 +286,12 @@ export class TaskIndex extends Component {
       const proj = isProjectType(type) || this.isMappedProjectPath(f.path);
       if (proj) this.projPathDirty = true;
       if (notify && proj) this.notify();
-      this.remove(f.path, notify);
+      // `upsert` has just refreshed this file's entry in `recordPaths` above. Removing the task
+      // projection must not remove that record identity again: project/area IDs live here even
+      // though those records are (correctly) not tasks in this index. If we discard the identity,
+      // every task created later in the same session keeps its valid `opal_project_id` but cannot
+      // resolve it to a project path and is consequently shown in the Inbox until a full rebuild.
+      this.remove(f.path, notify, false);
       return;
     }
     const prev = this.byPath.get(f.path);
@@ -299,8 +304,10 @@ export class TaskIndex extends Component {
     if (notify) this.notify();
   }
 
-  private remove(path: string, notify = true): void {
-    for (const [id, record] of this.recordPaths) if (record.path === path) this.recordPaths.delete(id);
+  private remove(path: string, notify = true, removeRecord = true): void {
+    if (removeRecord) {
+      for (const [id, record] of this.recordPaths) if (record.path === path) this.recordPaths.delete(id);
+    }
     const t = this.byPath.get(path);
     this.commentCounts.delete(path);
     if (!t) return;

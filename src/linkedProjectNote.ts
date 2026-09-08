@@ -9,6 +9,124 @@ export type NoteProjectAction = { kind: "convert" } | { kind: "open"; path: stri
 
 export interface LinkedProjectIdentity { id: string; path: string | null }
 
+/** Cursor destination when a dashboard opens its companion note. The generated header itself must
+ *  not receive the selection: Live Preview exposes the raw fenced block on the active line. */
+export function linkedNoteEntryLine(content: string): number {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  for (let start = 0; start < lines.length; start++) {
+    if (!/^\s*```opal_tasks\s*$/.test(lines[start])) continue;
+    const endOffset = lines.slice(start + 1).findIndex((line) => /^\s*```\s*$/.test(line));
+    if (endOffset < 0) continue;
+    const end = start + 1 + endOffset;
+    const source = lines.slice(start + 1, end).join("\n");
+    if (!/^view:\s*project\s*$/m.test(source) || !/^section:\s*header\s*$/m.test(source)) {
+      start = end;
+      continue;
+    }
+    return Math.min(end + 1, Math.max(0, lines.length - 1));
+  }
+
+  // Defensive fallback for a manually damaged note: stay below frontmatter and a leading H1.
+  let line = 0;
+  if (lines[0]?.trim() === "---") {
+    const end = lines.findIndex((candidate, index) => index > 0 && candidate.trim() === "---");
+    if (end >= 0) line = end + 1;
+  }
+  while (line < lines.length && !lines[line].trim()) line++;
+  if (/^#\s+/.test(lines[line] ?? "")) line++;
+  return Math.min(line, Math.max(0, lines.length - 1));
+}
+
+/**
+ * A note preview should describe the note, not expose its scaffolding. Return the first prose
+ * paragraph or list item after ignoring frontmatter, headings, comments and fenced blocks (the
+ * latter includes Opal Tasks' own header/task embeds). An empty result is intentional: callers can
+ * still offer a dependable “Notes” affordance without showing a misleading `# Notes` excerpt.
+ */
+export function linkedNoteExcerpt(content: string, maxLength = 240): string | null {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  let start = 0;
+  if (lines[0]?.trim() === "---") {
+    const end = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+    if (end >= 0) start = end + 1;
+  }
+
+  const visible: string[] = [];
+  let fence: { char: string; length: number } | null = null;
+  let inComment = false;
+  for (const source of lines.slice(start)) {
+    let line = source;
+    if (inComment) {
+      const end = line.indexOf("-->");
+      if (end < 0) continue;
+      line = line.slice(end + 3);
+      inComment = false;
+    }
+    while (line.includes("<!--")) {
+      const begin = line.indexOf("<!--");
+      const end = line.indexOf("-->", begin + 4);
+      if (end >= 0) line = line.slice(0, begin) + line.slice(end + 3);
+      else { line = line.slice(0, begin); inComment = true; break; }
+    }
+
+    const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (!fence) fence = { char: marker[0], length: marker.length };
+      else if (marker[0] === fence.char && marker.length >= fence.length) fence = null;
+      continue;
+    }
+    if (!fence) visible.push(line);
+  }
+
+  const plain = (value: string): string => value
+    .replace(/^\s*>\s?/, "")
+    .replace(/^\s*(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/, "")
+    .replace(/!\[\[[^\]]+\]\]/g, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g,
+      (_match, target: string, alias: string | undefined) => alias ?? target.split("/").pop() ?? target)
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_~`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const shorten = (value: string): string => {
+    if (value.length <= maxLength) return value;
+    const clipped = value.slice(0, Math.max(1, maxLength - 1));
+    const boundary = clipped.lastIndexOf(" ");
+    return `${clipped.slice(0, boundary > maxLength * 0.6 ? boundary : clipped.length).trimEnd()}…`;
+  };
+
+  for (let index = 0; index < visible.length; index++) {
+    const raw = visible[index];
+    const stripped = raw.replace(/^\s*>\s?/, "");
+    if (!stripped.trim()) continue;
+    if (/^\s{0,3}#{1,6}(?:\s+|$)/.test(stripped)) continue;
+    // Setext heading: skip both its text and underline.
+    if (/^\s*(?:=+|-+)\s*$/.test(visible[index + 1] ?? "")) { index++; continue; }
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(stripped)) continue;
+    if (/^\s*!\[\[[^\]]+\]\]\s*$/.test(stripped)) continue;
+
+    const listItem = /^\s*(?:[-+*]|\d+[.)])\s+/.test(stripped);
+    if (listItem) {
+      const excerpt = plain(stripped);
+      if (excerpt) return shorten(excerpt);
+      continue;
+    }
+
+    const paragraph = [stripped];
+    for (let next = index + 1; next < visible.length; next++) {
+      const candidate = visible[next].replace(/^\s*>\s?/, "");
+      if (!candidate.trim() || /^\s{0,3}#{1,6}(?:\s+|$)/.test(candidate)
+        || /^\s*(?:[-+*]|\d+[.)])\s+/.test(candidate)) break;
+      paragraph.push(candidate);
+    }
+    const excerpt = plain(paragraph.join(" "));
+    if (excerpt) return shorten(excerpt);
+  }
+  return null;
+}
+
 /** Reuse both valid and stale markers; only a note without a marker receives a fresh identity. */
 export function linkedProjectIdentity(
   projectId: unknown,

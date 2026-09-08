@@ -31,6 +31,7 @@ import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
 import { entityIcon, renderProjectIdentity } from "./entityPresentation";
 import { boardProjection, BoardProjection, isCompactPane } from "./responsive";
+import { linkedNoteExcerpt } from "./linkedProjectNote";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -621,7 +622,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     : top.createEl("h1", { cls: !isInbox && !ctx.embedded ? "bt-record-heading" : "" });
   if (ctx.embedded && meta) {
     c.style.setProperty("--bt-project-context", meta.color || "var(--text-faint)");
-    renderProjectIdentity(heading, meta, () => void plugin.openPage({ kind: "project", key: meta.path }));
+    renderProjectIdentity(heading, meta, () => void plugin.openOrActivatePage({ kind: "project", key: meta.path }));
   } else if (!isInbox && !ctx.embedded) {
     const recordLabel = `Opal Tasks · ${t(meta?.type === "area" ? "context_area_record" : "context_project_record")}`;
     const recordIcon = heading.createSpan({
@@ -636,6 +637,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   pageHeader(top, ctx, heading,
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded && !meta, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
+  if (!ctx.embedded && meta) projectNotePreview(root, plugin, meta.path);
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
@@ -661,6 +663,33 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   }
   else renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name, projectId: meta?.id, status: meta?.workflowStatus, priority: meta?.priority },
       () => noteHeadSig(plugin, isInbox ? null : projectPath));
+}
+
+/** The project dashboard remains the primary surface; this compact bridge opens (or creates) the
+ *  ordinary companion note. Its prose is loaded lazily so the synchronous task render never waits
+ *  on a vault read. If the page has already redrawn by then, the detached card is left untouched. */
+function projectNotePreview(root: HTMLElement, plugin: OpalTasksPlugin, projectPath: string): void {
+  const linked = plugin.linkedCollectionNote(projectPath);
+  const card = root.createEl("button", {
+    cls: "bt-project-note-preview" + (linked ? "" : " is-empty"),
+    attr: { type: "button", "aria-label": t(linked ? "menu_open_linked_note" : "menu_create_linked_note") },
+  });
+  const icon = card.createSpan({ cls: "bt-project-note-preview-icon" });
+  setIcon(icon, linked ? "file-text" : "file-plus-2");
+  const copy = card.createSpan({ cls: "bt-project-note-preview-copy" });
+  copy.createSpan({ cls: "bt-project-note-preview-title", text: t(linked ? "project_notes" : "project_notes_add") });
+  const arrow = card.createSpan({ cls: "bt-project-note-preview-arrow" });
+  setIcon(arrow, "chevron-right");
+  card.onclick = () => void plugin.openOrCreateCollectionNote(projectPath);
+
+  if (!linked) return;
+  void plugin.app.vault.cachedRead(linked).then((content) => {
+    if (!card.isConnected) return;
+    const excerpt = linkedNoteExcerpt(content);
+    if (!excerpt) return;
+    const preview = copy.createSpan({ cls: "bt-project-note-preview-excerpt", text: excerpt });
+    preview.setAttr("title", excerpt);
+  }).catch(() => undefined);
 }
 
 let draggedAreaProject: string | null = null;

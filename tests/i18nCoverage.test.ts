@@ -10,7 +10,7 @@ const KEYS = ["menu_open_new_tab", "menu_open_right", "menu_open_window", "plan_
 const PROJECT_NOTE_KEYS = [
   "cmd_project_from_note", "menu_project_from_note", "menu_open_opal_project",
   "notice_project_from_note", "notice_project_from_note_failed",
-  "notice_project_note_required", "notice_project_record_already",
+  "notice_project_note_required", "notice_project_record_already", "project_notes", "project_notes_add",
 ];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
