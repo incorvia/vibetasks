@@ -12,6 +12,7 @@ const PROJECT_NOTE_KEYS = [
   "notice_project_from_note", "notice_project_from_note_failed",
   "notice_project_note_required", "notice_project_record_already", "project_notes", "project_notes_add",
 ];
+const PROJECT_LIFECYCLE_KEYS = ["nav_recently_completed", "project_completed_notice"];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -67,6 +68,21 @@ describe("Notiz-zu-Projekt: in jeder Sprache übersetzt", () => {
       for (const [i, key] of PROJECT_NOTE_KEYS.entries()) {
         expect(t(key), `${loc}/${key} fehlt`).not.toBe(key);
         expect(t(key), `${loc}/${key} ist englisch`).not.toBe(en[i]);
+      }
+    }
+    setLocale("en");
+  });
+});
+
+describe("Completed-project lifecycle: translated in every locale", () => {
+  it("does not silently fall back to English", () => {
+    setLocale("en");
+    const en = PROJECT_LIFECYCLE_KEYS.map((key) => t(key, "Project"));
+    for (const locale of LOCALES.filter((value) => value !== "en")) {
+      setLocale(locale);
+      for (const [index, key] of PROJECT_LIFECYCLE_KEYS.entries()) {
+        expect(t(key, "Project"), `${locale}/${key} fehlt`).not.toBe(key);
+        expect(t(key, "Project"), `${locale}/${key} ist englisch`).not.toBe(en[index]);
       }
     }
     setLocale("en");

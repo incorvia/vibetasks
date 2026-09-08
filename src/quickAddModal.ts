@@ -6,9 +6,9 @@
 // (Multi-Add / Brain-Dump). Der ⤢-Button öffnet den vollen Editor mit allem Übernommenen.
 import { Modal, Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Priority, TaskStatus } from "./types";
+import { Priority, ScheduleDraft, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
-import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId } from "./taskService";
+import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId, newId } from "./taskService";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { todayStr } from "./format";
@@ -32,6 +32,8 @@ export class QuickAddModal extends Modal {
   private input!: HTMLInputElement;
   private chipBar!: HTMLElement;
   private projektBtn!: HTMLButtonElement;
+  private taskId = newId("");
+  private scheduleDraft: ScheduleDraft | null = null;
 
   /** `opts` belegt die Schnellerfassung aus dem Kontext der aufrufenden Seite vor – genauso wie
    *  der „+ Aufgabe"-Knopf unter dem Seitentitel (Label-Seite -> Label, Heute -> heute, …). */
@@ -161,6 +163,9 @@ export class QuickAddModal extends Modal {
       toggleDetails: () => this.openInFull(true),
       detailsOpen: () => false,
       chipEnabled: () => true,
+      schedule: () => this.scheduleDraft,
+      setSchedule: (draft) => { this.scheduleDraft = draft; },
+      clearSchedule: () => { this.scheduleDraft = null; },
     };
   }
 
@@ -242,8 +247,9 @@ export class QuickAddModal extends Modal {
     const title = this.titleValue();
     if (!title) { new Notice(t("err_enter_taskname")); return; }
     const newLabels = newlyIntroducedLabels(this.f.labels, this.plugin.getLabels().map((label) => label.name));
+    const taskId = this.taskId;
     await createTaskNote(this.app, this.plugin.settings, {
-      title, status: this.f.status,
+      id: taskId, title, status: this.f.status,
       due: this.f.due, dueTime: this.f.dueTime, estimate: this.f.estimate,
       priority: this.f.priority, labels: this.f.labels,
       recurrence: this.f.recurrence, recurBasis: this.f.recurBasis,
@@ -251,8 +257,18 @@ export class QuickAddModal extends Modal {
       project: this.f.project,
       projectId: this.f.projectId,
     });
+    let scheduleFailed = false;
+    if (this.scheduleDraft) {
+      try {
+        await this.plugin.scheduling.scheduleTask({ id: taskId, title, estimate: this.f.estimate }, {
+          start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual",
+        });
+      } catch {
+        scheduleFailed = true;
+      }
+    }
     await this.plugin.showNewTaskLabels(newLabels);
-    new Notice(t("qa_added"));
+    new Notice(t(scheduleFailed ? "schedule_save_failed" : "qa_added"));
     // Für die nächste Aufgabe zurücksetzen (Projekt beibehalten).
     const project = this.f.project;
     const projectId = this.f.projectId;
@@ -262,6 +278,7 @@ export class QuickAddModal extends Modal {
       priority: "normal", labels: [], recurrence: null, recurBasis: "due", reminders: [], parent: null, parentId: null,
     };
     this.cleanTitle = ""; this.duePinned = false; this.nl = emptyQuickEntryState();
+    this.taskId = newId(""); this.scheduleDraft = null;
     this.input.value = "";
     this.renderChips();
     this.input.focus();
@@ -285,6 +302,9 @@ export class QuickAddModal extends Modal {
       parentId: this.f.parentId, projectId: this.f.projectId,
     };
     this.close();
-    new TaskModal(this.plugin, undefined, project, { defaultTitle: title, seed, openDetails, duePinned: this.duePinned }).open();
+    new TaskModal(this.plugin, undefined, project, {
+      defaultTitle: title, seed, schedule: this.scheduleDraft ? { ...this.scheduleDraft } : null,
+      openDetails, duePinned: this.duePinned,
+    }).open();
   }
 }

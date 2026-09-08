@@ -5,7 +5,7 @@ export type Priority = "highest" | "high" | "medium" | "normal" | "low" | "lowes
 
 /** Attribut-Chips in den Eingabe-Modalen (Schnelleingabe + voller Editor). Reihenfolge und
  *  Sichtbarkeit sind über die Einstellungen konfigurierbar (chipOrder/chipTiers). */
-export type ChipId = "status" | "due" | "estimate" | "priority" | "label" | "recurrence" | "reminder" | "parent" | "details";
+export type ChipId = "status" | "when" | "due" | "estimate" | "priority" | "label" | "recurrence" | "reminder" | "parent" | "details";
 /** Sichtbarkeits-Stufe eines Chips:
  *  shown   = immer in der Chip-Leiste (leer = Add-Icon, gesetzt = Wert)
  *  onValue = nur sichtbar, sobald ein Wert gesetzt ist; leer nur über „+ Weitere Aktionen"
@@ -17,7 +17,7 @@ export type ChipSurface = "editor" | "quickAdd";
 export interface ChipProfile { order?: ChipId[]; tiers?: Partial<Record<ChipId, ChipTier>>; }
 /** Kanonische Reihenfolge (= bisheriges Render-Verhalten). Fehlt ein Chip in profile.order,
  *  wird er hier ergänzt; fehlt sein Tier, gilt "shown" (nichts ändert sich per Default). */
-export const CHIP_IDS: ChipId[] = ["status", "due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details"];
+export const CHIP_IDS: ChipId[] = ["status", "when", "due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details"];
 
 /** Art eines Status – steuert Verhalten (nicht nur die Spalte):
  *  open = aktive Phase · done = terminal (Zeitstempel/Wiederholung/Ausblenden) · cancelled = Papierkorb. */
@@ -85,6 +85,8 @@ export type TimeScopeType = "task" | "project" | "area";
 export type TimeBlockMode = "focus" | "blitz";
 export type TimeBlockSelector = "manual" | "next" | "ai";
 export type TimeBlockKind = "task_schedule" | "allocation";
+/** Unsaved primary calendar placement used by the task editors. It never belongs in task frontmatter. */
+export interface ScheduleDraft { start: string; duration: number }
 export interface TimeScope { type: TimeScopeType; id: string; title_snapshot: string }
 export interface TimeBlock {
   id: string; start: string; duration: number; scope: TimeScope;

@@ -8,7 +8,7 @@ import { takeFromBudget, repaintCount, rowsForScroll, columnFirstPaint, placehol
 import { Task, TaskStatus, NavSection, Priority } from "./types";
 import { todayStr, combineDT, dateOf, groupLabel } from "./format";
 import { openDatePicker } from "./datePicker";
-import { listProjectsAndAreas, listManaged, projectsInArea, tasksInArea, projectAreaName, priorityBucket, taskMatchesProjectCell, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists, ProjItem } from "./taskService";
+import { listProjectsAndAreas, listManaged, projectsInArea, tasksInArea, projectAreaName, priorityBucket, taskMatchesProjectCell, isAreaPath, isInboxLink, isRecentlyCompletedProject, baseName, openTaskNote, INBOX_KEY, ProjLists, ProjItem } from "./taskService";
 import { listFilters, readFilter, FilterItem } from "./filterService";
 import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
 import { FilterModal } from "./filterModal";
@@ -73,15 +73,13 @@ function openInlineTaskEditor(ctx: PageCtx, task: Task, row: HTMLElement): void 
   if (current) closeInlineTaskEditor(ctx.id, false);
 
   const slot = row.parentElement!.createDiv({ cls: "bt-inline-editor-slot" });
-  // In einer 300px-Kanban-Spalte wäre der volle Editor unbrauchbar schmal. Dort klappt er als
-  // pane-breite Fläche über dem Board auf; in der Liste bleibt er direkt an seiner Aufgabe.
-  const board = row.closest<HTMLElement>(".bt-kanban");
-  if (board) {
-    slot.addClasses(["bt-sizer", "bt-inline-board"]);
-    board.insertAdjacentElement("beforebegin", slot);
-  } else {
-    row.insertAdjacentElement("afterend", slot);
-  }
+  // Keep the editor and its title together. The title input replaces the title in `row`, so
+  // hoisting only the editor body above a Kanban board split one form across two distant places:
+  // a seemingly titleless panel above the board and a lone input inside the selected card.
+  // A board card now expands in its own column just like a list row; the narrow-column layout is
+  // handled by the board-specific editor styles rather than by moving half of the editor.
+  if (row.closest(".bt-kanban")) slot.addClass("bt-inline-board-card");
+  row.insertAdjacentElement("afterend", slot);
   row.addClass("is-editing");
   row.setAttr("draggable", "false");
   const modal = new TaskModal(ctx.plugin, task);
@@ -2725,6 +2723,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
 // ── Linke Navigation ─────────────────────────────────────────────
 interface NavItemOpts {
   cls?: string; icon: string; iconColor?: string | null; label: string; count?: number; countKey?: string;
+  suffix?: string;
   active?: boolean; onClick: () => void; onContext?: (e: MouseEvent) => void; onDropTask?: (task: Task) => void;
   /** Wohin der Eintrag führt. Nur dafür da, Strg-/Mittelklick zu bedienen – der normale Klick
    *  läuft weiter über onClick (Einträge wie „Suchen" haben gar keine Seite und lassen es weg). */
@@ -2762,6 +2761,7 @@ function navItem(c: HTMLElement, plugin: OpalTasksPlugin, o: NavItemOpts): void 
   // abgeschnitten wird, es füllt per flex:1 ohnehin die freie Breite, und ein aria-label an
   // der Zeile würde für Screenreader den Zähler daneben verschlucken („Reisen" statt „Reisen 22").
   tipWhenClipped(lbl, lbl, o.label);
+  if (o.suffix) item.createSpan({ cls: "bt-nav-suffix", text: o.suffix });
   // Zähler-Span IMMER anlegen (auch bei 0 – dann leer): nur so kann ihn der Badge-Füller später
   // beschreiben, ohne die Seitenleiste neu zu bauen. o.countKey registriert ihn dafür.
   if (o.countKey || o.count) {
@@ -2892,6 +2892,19 @@ function navHead(c: HTMLElement, plugin: OpalTasksPlugin, id: string, title: str
   return collapsed;
 }
 
+/** Compact collapsible heading for generated groups that have no create/manage action. */
+function navGroupHead(c: HTMLElement, plugin: OpalTasksPlugin, id: string, title: string): boolean {
+  const collapsed = plugin.isNavCollapsed(id);
+  const head = c.createDiv({ cls: "bt-nav-head bt-nav-group-head" });
+  const toggle = head.createDiv({ cls: "bt-nav-head-toggle", attr: { role: "button", tabindex: "0", "aria-expanded": String(!collapsed) } });
+  toggle.createSpan({ cls: "bt-nav-head-lbl", text: title });
+  const chev = head.createSpan({ cls: "bt-nav-head-chevron", attr: { role: "button", tabindex: "0", "aria-expanded": String(!collapsed) } });
+  setIcon(chev, collapsed ? "chevron-right" : "chevron-down");
+  activate(toggle, () => void plugin.toggleNavSection(id));
+  activate(chev, () => void plugin.toggleNavSection(id));
+  return collapsed;
+}
+
 interface ReorderEntry { key: string; name: string; icon: string; color: string | null; }
 
 /** Sidebar-Sortiermodus für EINE Sektion: „Fertig"-Leiste + per Griff ziehbare Zeilen.
@@ -2963,16 +2976,17 @@ function navCounts(plugin: OpalTasksPlugin, tpls: TemplateInfo[], pa: ProjLists,
 }
 
 /** Struktur-Signatur OHNE Zahlen: gleich = dieselben Einträge in derselben Form. */
-function navSignature(plugin: OpalTasksPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): string {
+function navSignature(plugin: OpalTasksPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[], archivedProjects: ProjItem[]): string {
   const { bereiche, projekte } = pa;
   const proj = (p: ProjItem): string =>
     // `areaId` is structural: changing it moves a project between the top-level section and an
     // Area. Omitting it made tryPatchNav treat that edit as a badge-only change, leaving the old
     // hierarchy mounted until some unrelated full redraw occurred.
-    [p.path, p.name, p.icon, p.color, p.hidden, p.areaId, projectAreaName(p.area), p.workflowStatus, p.priority].join("~");
+    [p.path, p.name, p.icon, p.color, p.hidden, p.areaId, projectAreaName(p.area), p.workflowStatus, p.completed, p.priority].join("~");
   return JSON.stringify({
     areas: plugin.sortProjItems("areas", bereiche).map(proj),
     projects: plugin.sortProjItems("projects", projekte).map(proj),
+    archivedProjects: archivedProjects.map((p) => p.path),
     filters: plugin.sortFilters(flts).map((f) => [f.path, f.name, f.icon, f.color, f.hidden].join("~")),
     labels: plugin.getVisibleLabels().map((n) => n + "~" + plugin.getLabelColor(n)),
     // Nicht die ANZAHL der Labels, sondern OB die Hinweiszeile steht. Die Zahl springt beim Start
@@ -3017,7 +3031,8 @@ export function tryPatchNav(c: HTMLElement, plugin: OpalTasksPlugin): boolean {
   const tpls = plugin.sortTemplates(listTemplates(plugin));
   const pa = listProjectsAndAreas(plugin.app);
   const flts = listFilters(plugin.app);
-  if (m.sig !== navSignature(plugin, tpls, pa, flts)) return false;
+  const archivedProjects = listManaged(plugin.app).archived.filter((p) => p.type === "project");
+  if (m.sig !== navSignature(plugin, tpls, pa, flts, archivedProjects)) return false;
   const counts = navCounts(plugin, tpls, pa, flts);
   for (const [key, el] of m.badges) {
     const n = counts.get(key) ?? 0;
@@ -3053,6 +3068,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   // Durchlauf über alle Notizen des Vaults – das gehört nicht mehrfach in eine Zeichnung.
   const pa = listProjectsAndAreas(plugin.app);
   const { bereiche, projekte } = pa;
+  const archivedProjects = listManaged(plugin.app).archived.filter((p) => p.type === "project");
   const flts = listFilters(plugin.app);
   const tpls = plugin.sortTemplates(listTemplates(plugin));
   // Live-Vorschau der Icon-Farbe (Farb-Picker): überschreibt für EINEN Eintrag die gespeicherte Farbe.
@@ -3170,6 +3186,14 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     }
   }
 
+  // Completed projects leave their normal Area/Project position immediately. They remain
+  // reachable in a distinct, subdued group for three days; the lifecycle reconciler archives
+  // them after that window.
+  const activeProjects = projekte.filter((p) => !isDone(p.workflowStatus));
+  const recentlyCompleted = projekte.filter((p) => isRecentlyCompletedProject(p))
+    .sort((a, b) => (b.completed ?? "").localeCompare(a.completed ?? ""));
+  const visibleRecentlyCompleted = recentlyCompleted.filter((project) => !project.hidden);
+
   // Bereiche: „+" öffnet das Neu-Modal (Name + Farbe), legt als type:area an.
   if (bereiche.length) {
     const areasCollapsed = navHead(c, plugin, "areas", t("group_area"), t("pick_new_area"), "", redraw,
@@ -3178,7 +3202,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     if (plugin.reorderSec === "areas") projItems(orderedAreas, "bt-nav-area", "area");
     else if (!areasCollapsed) {
       for (const area of orderedAreas.filter((x) => !x.hidden)) {
-        const children = plugin.sortProjItems("projects", projectsInArea(area, projekte));
+        const children = plugin.sortProjItems("projects", projectsInArea(area, activeProjects));
         const visibleChildren = children.filter((project) => !project.hidden);
         const collapseKey = "area:" + area.id;
         const collapsed = plugin.isNavCollapsed(collapseKey);
@@ -3195,7 +3219,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   // erscheinen ausschließlich eingerückt unter ihrer Area.
   const activeAreas = new Set(bereiche.map((a) => baseName(a.path).toLowerCase()));
   const activeAreaIds = new Set(bereiche.map((a) => a.id));
-  const unassigned = projekte.filter((p) => {
+  const unassigned = activeProjects.filter((p) => {
     const area = projectAreaName(p.area);
     return p.areaId ? !activeAreaIds.has(p.areaId) : !area || !activeAreas.has(area.toLowerCase());
   });
@@ -3203,6 +3227,30 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     const projCollapsed = navHead(c, plugin, "projects", t("group_project"), t("pick_new_project"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "project").open());
     if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", unassigned), "bt-nav-project", "project");
+  }
+
+  if (visibleRecentlyCompleted.length) {
+    const collapsed = navGroupHead(c, plugin, "recently-completed", t("nav_recently_completed"));
+    if (!collapsed) {
+      for (const p of visibleRecentlyCompleted) {
+        navItem(c, plugin, {
+          cls: "bt-nav-project bt-nav-project-completed", icon: "check-circle", iconColor: navColor(p.path, p.color),
+          label: p.name, suffix: t("status_done"), active: isActive("project", p.path),
+          page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
+          onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: "projects", key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: "project" }); m.showAtMouseEvent(e); },
+        });
+      }
+    }
+  }
+
+  // A permanent route back to auto-archived projects. This also fixes the otherwise awkward
+  // all-projects-archived case, where the normal Projects heading no longer exists.
+  if (archivedProjects.length) {
+    navItem(c, plugin, {
+      cls: "bt-nav-archive", icon: "archive", label: t("tab_archive"), count: archivedProjects.length,
+      active: isActive("manage", "projects"), page: { kind: "manage", key: "projects" },
+      onClick: () => void plugin.activateManage("projects", "archive"),
+    });
   }
 
   // Labels folgen auf die vollständige Bereichs-/Projekt-Hierarchie: „+" öffnet das Neu-Modal,
@@ -3261,7 +3309,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   }
 
   navBadges = null;
-  navMounts.set(c, { sig: navSignature(plugin, tpls, pa, flts), badges });
+  navMounts.set(c, { sig: navSignature(plugin, tpls, pa, flts, archivedProjects), badges });
 }
 
 function navCount(plugin: OpalTasksPlugin, id: ViewId): number {

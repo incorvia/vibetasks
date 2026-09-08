@@ -23,7 +23,7 @@ const AUFGABE: Task = {
 
 const LISTE: ProjItem = {
   id: "project-1", name: "Haus", path: "Opal Tasks/Projects/Haus.md", icon: "home", color: "#e05c4a",
-  type: "project", hidden: true, archived: true, workflowStatus: "doing", priority: "high", description: "Alles rund ums Haus",
+  type: "project", hidden: true, archived: true, workflowStatus: "doing", completed: null, priority: "high", description: "Alles rund ums Haus",
 };
 
 /** Frontmatter-Wert holen, egal ob der Schlüssel konfiguriert wurde. */
@@ -97,6 +97,13 @@ describe("Liste → Export → Frontmatter", () => {
     expect(fm.priority).toBe("high");
   });
 
+  it("preserves the project completion clock used by delayed archiving", () => {
+    const completed = "2026-08-20T12:00:00Z";
+    const el = toExportList({ ...LISTE, workflowStatus: "done", completed });
+    expect(el.completed).toBe(completed);
+    expect(importedListFrontmatter(el, "type").completed).toBe(completed);
+  });
+
   it("exportiert BERECHNETE Symbole nicht – sonst entstuende beim Import eines aus dem Nichts", () => {
     // Bereiche bekommen im Modell immer „circle-small", Projekte ohne eigenes Symbol „list-checks".
     expect(toExportList({ ...LISTE, type: "area", icon: "circle-small" }).icon).toBeNull();
@@ -141,10 +148,10 @@ describe("Alte Exporte bleiben lesbar", () => {
   });
 });
 
-describe("Exportformat v5", () => {
-  it("uses stable IDs and advertises version 5", () => {
+describe("Exportformat v6", () => {
+  it("uses stable IDs and advertises version 6", () => {
     const task = toExportTask(AUFGABE);
-    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(5);
+    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(6);
     expect(task).toMatchObject({ id: "t-abc", projectId: "project-1", parentId: "task-parent-1" });
     expect(task).not.toHaveProperty("project");
     expect(task).not.toHaveProperty("parent");

@@ -7,7 +7,7 @@ import { fieldKey } from "./fieldNames";
 import { combineDT } from "./format";
 import { listFilters, createFilterNote, FilterItem } from "./filterService";
 import { FilterCriteria, ViewOptions } from "./filterEngine";
-import { isKnownStatus } from "./statuses";
+import { isDone, isKnownStatus } from "./statuses";
 import { t } from "./i18n";
 import { newUlid, repositoryFor, rfc3339Now } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
@@ -15,11 +15,12 @@ import { migratedDeadline } from "./timingMigration";
 import { OPAL_AREA_ID, OPAL_PARENT_ID, OPAL_PROJECT_ID } from "./stableRelationships";
 
 const EXPORT_FORMAT = "opal_tasks";
-const EXPORT_VERSION = 5;
+const EXPORT_VERSION = 6;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
 // v4 = kanonisches Zeitmodell · v5 = Beziehungen per stabiler ID und neue lokale IDs beim Import.
+// v6 = completion timestamp for the three-day completed-project grace period.
 //
 // Die Zahl ist eine ANGABE, keine Schranke: `parseExport` prüft sie bewusst nicht. Ältere Dateien
 // bleiben lesbar (die neuen Felder sind optional und fehlen dann einfach), und eine v3-Datei lässt
@@ -79,6 +80,7 @@ export interface ExportList {
   area?: string | null;
   areaId?: string | null;
   workflow_status?: TaskStatus;
+  completed?: string | null;
   priority?: Priority;
 }
 
@@ -219,6 +221,7 @@ export function toExportList(p: ProjItem): ExportList {
     id: p.id, name: p.name, type: p.type, color: p.color, archived: p.archived,
     icon, description: p.description || "", hidden: p.hidden,
     ...(p.type === "project" ? { workflow_status: p.workflowStatus, priority: p.priority } : {}),
+    ...(p.type === "project" && p.completed ? { completed: p.completed } : {}),
     ...(p.areaId ? { areaId: p.areaId } : {}),
   };
 }
@@ -271,6 +274,7 @@ export function importedListFrontmatter(list: ExportList, typeName: string, ids:
     modified: now,
     status: list.archived ? "archived" : "active",
     workflow_status: list.type === "project" ? (list.workflow_status || "todo") : undefined,
+    completed: list.type === "project" && isDone(list.workflow_status || "todo") ? (list.completed || now) : undefined,
     priority: list.type === "project" && list.priority && list.priority !== "normal" ? list.priority : undefined,
     [OPAL_AREA_ID]: list.type === "project"
       ? (Object.prototype.hasOwnProperty.call(ids, "areaId") ? ids.areaId : list.areaId ?? undefined)

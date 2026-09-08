@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { dateOf, timeOf, combineDT, formatDuration, formatDateTime } from "../src/format";
-import { parseTime, parseDuration } from "../src/datePicker";
+import { canConfirmDatePick, parseTime, parseDuration } from "../src/datePicker";
 import { setLocale } from "../src/i18n";
 
 beforeEach(() => setLocale("en"));
@@ -74,5 +74,17 @@ describe("parseDuration (frei)", () => {
   it("leer/— -> null", () => {
     expect(parseDuration("")).toBeNull();
     expect(parseDuration("—")).toBeNull();
+  });
+});
+
+describe("scheduled start confirmation", () => {
+  const required = { commit: "confirm" as const, requireTime: true, requireDuration: true };
+
+  it("requires date, time, and a positive duration", () => {
+    expect(canConfirmDatePick("2026-09-08", "09:30", 30, required)).toBe(true);
+    expect(canConfirmDatePick("", "09:30", 30, required)).toBe(false);
+    expect(canConfirmDatePick("2026-09-08", null, 30, required)).toBe(false);
+    expect(canConfirmDatePick("2026-09-08", "09:30", null, required)).toBe(false);
+    expect(canConfirmDatePick("2026-09-08", "09:30", 0, required)).toBe(false);
   });
 });

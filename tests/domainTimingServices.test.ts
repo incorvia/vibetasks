@@ -37,6 +37,18 @@ describe("SchedulingService contract", () => {
     expect(service.getTaskSchedule("t1")).toMatchObject({ id: first.id, duration: 30 });
   });
 
+  it("schedules a newly created task from an explicit snapshot before the task index sees it", async () => {
+    const { service } = schedulingFixture();
+    const schedule = await service.scheduleTask({ id: "new", title: "Just created", estimate: 75 }, {
+      start: "2026-09-08T09:00:00-05:00",
+    });
+
+    expect(schedule).toMatchObject({
+      duration: 75,
+      scope: { type: "task", id: "new", title_snapshot: "Just created" },
+    });
+  });
+
   it("keeps allocations distinct from task schedules", async () => {
     const { service } = schedulingFixture();
     const allocation = await service.createAllocation({

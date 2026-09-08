@@ -59,7 +59,7 @@ A single dashboard with a left sidebar:
 
 Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**.
 
-**Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. Projects can belong to an area; areas do not nest.
+**Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. Projects can belong to an area; areas do not nest. When a project is completed, it moves to a muted **Recently completed** sidebar group for three days and is then archived automatically; the persistent Archive shortcut lets you restore it later.
 
 ### Saved filters & smart views
 Build custom queries — by project/area, label, priority, status, date range and more — and **save them to the sidebar** as reusable smart views, each with its own color. Per-view display options (layout, grouping, sorting, show completed) are remembered.

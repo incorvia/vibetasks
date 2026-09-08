@@ -100,6 +100,7 @@ export async function ensureFolder(app: App, path: string): Promise<void> {
 }
 
 export interface TaskFields {
+  id?: string;                       // optional preallocated identity for create + schedule workflows
   title: string;
   titleInFrontmatter?: boolean;  // Titel ins Frontmatter (Default) statt in eine „# Überschrift".
                                  // Explizit false setzen die Kopier-Wege, wenn das Original seinen
@@ -306,7 +307,7 @@ export async function createTaskNote(app: App, settings: OpalTasksSettings, f: T
   const parentId = canonicalRelationshipId(app, f.parentId, f.parent, [recordType]);
   const frontmatter: Record<string, unknown> = {
     type: recordType,
-    id: newUlid(),
+    id: f.id ?? newUlid(),
     // Regelfall: der Titel steht hier. Nur wenn er ausdrücklich in den Text soll, bleibt das
     // Feld leer (null wird von buildFrontmatter verworfen) und newTaskBody schreibt die H1.
     title: f.title,
@@ -403,6 +404,8 @@ export interface ProjItem {
   id: string; name: string; path: string; icon: string; color: string | null;
   type: "project" | "area"; hidden: boolean; archived: boolean;
   workflowStatus: TaskStatus;
+  /** Moment the project entered a done workflow status. Areas never carry this value. */
+  completed: string | null;
   priority: Priority;
   area?: string | null;
   areaId?: string | null;
@@ -472,6 +475,7 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       area: typeof fm?.area === "string" ? fm.area : null,
       areaId: typeof fm?.[OPAL_AREA_ID] === "string" ? fm[OPAL_AREA_ID] : null,
       workflowStatus: typeof fm?.workflow_status === "string" && isKnownStatus(fm.workflow_status) ? fm.workflow_status : firstOpenStatus(),
+      completed: typeof fm?.completed === "string" ? fm.completed : null,
       priority: (["highest", "high", "medium", "normal", "low", "lowest"] as string[]).includes(String(fm?.priority)) ? fm!.priority as Priority : "normal",
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
     }];
@@ -548,6 +552,30 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
   return { active, archived };
 }
 
+/** Completed projects remain visible in the sidebar for this grace period before archiving. */
+export const PROJECT_COMPLETION_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Parse a persisted completion stamp without letting malformed user frontmatter expire a project. */
+export function projectCompletedAt(project: Pick<ProjItem, "completed">): number | null {
+  if (!project.completed) return null;
+  const value = Date.parse(project.completed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** A done project with no valid stamp is recent until the lifecycle reconciler backfills one. */
+export function isRecentlyCompletedProject(project: Pick<ProjItem, "type" | "workflowStatus" | "completed">, now = Date.now()): boolean {
+  if (project.type !== "project" || !isDone(project.workflowStatus)) return false;
+  const completed = projectCompletedAt(project);
+  return completed === null || now - completed < PROJECT_COMPLETION_GRACE_MS;
+}
+
+/** Only a valid, elapsed completion stamp is safe to archive automatically. */
+export function shouldAutoArchiveProject(project: Pick<ProjItem, "type" | "workflowStatus" | "completed" | "archived">, now = Date.now()): boolean {
+  if (project.archived || project.type !== "project" || !isDone(project.workflowStatus)) return false;
+  const completed = projectCompletedAt(project);
+  return completed !== null && now - completed >= PROJECT_COMPLETION_GRACE_MS;
+}
+
 export interface CreatedProjectRecord { name: string; id: string; path: string }
 
 /** Create a project/area and return both its presentation name and immutable identity. */
@@ -562,7 +590,7 @@ export async function createProjectRecord(app: App, settings: OpalTasksSettings,
   const now = rfc3339Now();
   const id = newUlid();
   const areaId = !asArea ? relationshipId(app, area, ["area"]) : null;
-  const fm: Record<string, unknown> = { type, id, title: name.trim(), status: "active", workflow_status: !asArea ? workflowStatus : undefined, priority: !asArea && priority !== "normal" ? priority : undefined, [OPAL_AREA_ID]: areaId, area: !asArea && !areaId ? legacyRelationshipLink(area) : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
+  const fm: Record<string, unknown> = { type, id, title: name.trim(), status: "active", workflow_status: !asArea ? workflowStatus : undefined, completed: !asArea && isDone(workflowStatus) ? now : undefined, priority: !asArea && priority !== "normal" ? priority : undefined, [OPAL_AREA_ID]: areaId, area: !asArea && !areaId ? legacyRelationshipLink(area) : undefined, color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: now, modified: now };
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await repositoryFor(app).create({ type, path: dest, frontmatter: fm, body: "\n" });
@@ -592,8 +620,26 @@ export async function setProjectWorkflow(app: App, path: string, workflowStatus:
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
   await updateRecord(app, file, (fm) => {
+    const previous = typeof fm.workflow_status === "string" && isKnownStatus(fm.workflow_status)
+      ? fm.workflow_status : firstOpenStatus();
     fm.workflow_status = workflowStatus;
+    // Like task completion stamps, this belongs to the done state: set on entry, retain while
+    // moving between done statuses, and remove when the project is reopened.
+    if (isDone(workflowStatus) && (!isDone(previous) || typeof fm.completed !== "string" || !Number.isFinite(Date.parse(fm.completed)))) {
+      fm.completed = rfc3339Now();
+    } else if (!isDone(workflowStatus) && isDone(previous)) {
+      delete fm.completed;
+    }
     if (priority === "normal") delete fm.priority; else fm.priority = priority;
+  });
+}
+
+/** Backfill/repair the completion clock independently of the project's visible workflow status. */
+export async function setProjectCompleted(app: App, path: string, completed: string | null): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  await updateRecord(app, file, (fm) => {
+    if (completed) fm.completed = completed; else delete fm.completed;
   });
 }
 
@@ -610,7 +656,14 @@ export function isAreaPath(app: App, path: string): boolean {
 export async function setProjectArchived(app: App, path: string, archived: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await updateRecord(app, file, (fm) => { fm.status = archived ? "archived" : "active"; });
+  await updateRecord(app, file, (fm) => {
+    fm.status = archived ? "archived" : "active";
+    // Restoring a completed project is an explicit decision to make it visible again. Restart
+    // its grace period so the next lifecycle sweep cannot immediately put it back in Archive.
+    if (!archived && typeof fm.workflow_status === "string" && isDone(fm.workflow_status)) {
+      fm.completed = rfc3339Now();
+    }
+  });
 }
 
 /** Sichtbarkeit in der Nav umschalten (nav_hidden gesetzt = ausgeblendet). */

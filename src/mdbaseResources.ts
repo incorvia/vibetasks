@@ -74,6 +74,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
   project: extend(common("project"), {
     status: { enum: ["active", "archived"] },
     workflow_status: { enum: DEFAULT_MDBASE_STATUSES.map((s) => s.id) },
+    completed: { type: "string", format: "date-time" },
     priority: { enum: [...DEFAULT_PRIORITIES] },
     priority_swimlanes: { type: "boolean" },
     icon: { type: "string" },

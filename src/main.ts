@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setProjectCompleted, projectCompletedAt, shouldAutoArchiveProject, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -116,6 +116,7 @@ export default class OpalTasksPlugin extends Plugin {
    *  Eine WeakMap, damit ein geschlossener Tab hier nichts festhält. */
   private planTabIcons = new WeakMap<WorkspaceLeaf, string>();
   private reminderScan = 0;                              // Obergrenze des zuletzt geprüften Zeitfensters (Epoch-ms)
+  private projectLifecycleRunning = false;
 
   async onload(): Promise<void> {
     registerIcons();
@@ -215,6 +216,7 @@ export default class OpalTasksPlugin extends Plugin {
       }
       this.index.build();
       this.templates.build();   // eigener, ordner-gebundener Durchgang – siehe TEMPLATE_SCOPE
+      await this.reconcileCompletedProjects();
       this.renderAll();
       this.applyStartPage();   // wiederhergestellten Tab auf die eingestellte Startseite schicken
       await this.runPendingMigrations();   // Einmal-Migrationen beim ersten Start nach dem Update
@@ -240,6 +242,9 @@ export default class OpalTasksPlugin extends Plugin {
     });
     // Alle 30 s prüfen, welche Erinnerungen im Fenster (letzter Scan, jetzt] fällig wurden.
     this.registerInterval(window.setInterval(() => this.scanReminders(), 30_000));
+    // Completion expiry is deliberately coarse: the promise is "three days", not a countdown.
+    // The startup run above handles time spent with Obsidian closed; this handles a long session.
+    this.registerInterval(window.setInterval(() => void this.reconcileCompletedProjects(), 15 * 60_000));
 
     this.registerView(VIEW_MAIN, (leaf: WorkspaceLeaf) => new MainView(leaf, this));
     this.registerView(VIEW_NAV, (leaf: WorkspaceLeaf) => new NavView(leaf, this));
@@ -1424,8 +1429,48 @@ export default class OpalTasksPlugin extends Plugin {
     await setProjectParentArea(this.app, path, area);
   }
   async updateProjectWorkflow(path: string, workflowStatus: TaskStatus, priority: Priority): Promise<void> {
+    const before = [...listManaged(this.app).active, ...listManaged(this.app).archived]
+      .find((project) => project.path === path);
     this.refreshOnChange(path);
     await setProjectWorkflow(this.app, path, workflowStatus, priority);
+    if (before && !isDone(before.workflowStatus) && isDone(workflowStatus)) {
+      const frag = createFragment((f) => {
+        f.appendText(t("project_completed_notice", before.name) + " ");
+        const undo = f.createEl("a", { text: t("archive_undo"), href: "#" });
+        undo.onclick = (e) => {
+          e.preventDefault();
+          void this.updateProjectWorkflow(path, before.workflowStatus, before.priority);
+        };
+      });
+      new Notice(frag, 8000);
+    }
+  }
+
+  /**
+   * Keep the completed-project grace period durable and self-healing.
+   *
+   * Older completed projects have no `completed` field. Giving them a fresh stamp provides the
+   * promised three visible days after upgrading instead of surprising the user with an immediate
+   * archive. Invalid hand-written timestamps receive the same safe treatment.
+   */
+  private async reconcileCompletedProjects(): Promise<void> {
+    if (this.projectLifecycleRunning) return;
+    this.projectLifecycleRunning = true;
+    try {
+      const now = Date.now();
+      const stamp = rfc3339Now();
+      const projects = listManaged(this.app).active.filter((project) => project.type === "project" && isDone(project.workflowStatus));
+      for (const project of projects) {
+        if (projectCompletedAt(project) === null) {
+          this.refreshOnChange(project.path);
+          await setProjectCompleted(this.app, project.path, stamp);
+        } else if (shouldAutoArchiveProject(project, now)) {
+          await this.archiveProject(project.path, true);
+        }
+      }
+    } finally {
+      this.projectLifecycleRunning = false;
+    }
   }
   async archiveProject(path: string, archived: boolean): Promise<void> {
     this.refreshOnChange(path);

@@ -1270,8 +1270,17 @@ body {
 .bt-nav-label .bt-nav-ic { color: var(--bt-nav-label); }
 .bt-nav-area .bt-nav-ic { color: var(--bt-nav-area); }
 .bt-nav-project .bt-nav-ic { color: var(--bt-nav-project); }
+.bt-nav-archive .bt-nav-ic { color: var(--text-muted); }
 .bt-nav-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bt-nav-count { color: var(--text-muted); font-size: 0.82em; flex-shrink: 0; }
+.bt-nav-suffix {
+  flex-shrink: 0; padding: 1px 5px; border-radius: 999px;
+  background: var(--background-modifier-hover); color: var(--text-muted);
+  font-size: calc(0.68em * var(--bt-nav-scale, 1)); font-weight: 600;
+}
+.bt-nav-project-completed { color: var(--text-muted); }
+.bt-nav-project-completed .bt-nav-ic { opacity: 0.75; }
+.bt-nav-group-head { padding-top: 10px; }
 /* Sichtbarer Tastatur-Fokus (Regel 40) – nur bei Keyboard-Fokus, nicht bei Maus. */
 .bt-nav-item:focus-visible,
 .bt-nav-head-toggle:focus-visible,
@@ -2077,6 +2086,32 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-kanban-list > .bt-task::after { display: none; }
 .bt-kanban-list > .bt-task:active { cursor: grabbing; }
 .bt-kanban-list > .bt-task.is-dragging { opacity: 0.45; }
+
+/* Opening a board card edits it in place. Keep the selected card and editor body as one surface;
+   these rules come after the generic Kanban-card rules so the latter cannot restore the card's
+   four rounded corners or grab cursor while it is being edited. */
+.bt-kanban-list > .bt-task.is-editing {
+  cursor: default;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  padding-bottom: 4px;
+}
+.bt-kanban-list > .bt-task.is-editing + .bt-inline-board-card {
+  margin-top: -6px; /* cancel the list's card gap so both halves meet */
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+/* A column can be only 260px wide. Stack the project and action rows so every editor control
+   remains reachable without widening the column or overflowing into a neighbouring card. */
+.bt-kanban-list > .bt-inline-board-card .bt-foot { flex-wrap: wrap; }
+.bt-kanban-list > .bt-inline-board-card .bt-project-actions { width: 100%; }
+.bt-kanban-list > .bt-inline-board-card .bt-projekt { flex: 1 1 auto; }
+.bt-kanban-list > .bt-inline-board-card .bt-actions {
+  width: 100%;
+  margin-left: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
 
 .bt-view button.bt-kanban-add {
   display: flex; align-items: center; justify-content: center; gap: 6px;

@@ -4,7 +4,7 @@ import { ProjItem, priorityBucket, projectAreaName, projectsInArea, taskMatchesP
 
 const item = (name: string, type: "project" | "area", extra: Partial<ProjItem> = {}): ProjItem => ({
   id: name, name, path: `_opal_tasks/projects/${name}.md`, icon: type === "area" ? "circle-small" : "list-checks",
-  color: null, type, hidden: false, archived: false, workflowStatus: "todo", priority: "normal",
+  color: null, type, hidden: false, archived: false, workflowStatus: "todo", completed: null, priority: "normal",
   description: "", ...extra,
 });
 

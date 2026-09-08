@@ -2,6 +2,7 @@ import type { Task, TimeBlock, TimeBlockMode, TimeBlockSelector, TimeScope } fro
 import { blockKind, TimeStore } from "./timeService";
 
 export type ScheduleSource = TimeBlock["source"];
+export type SchedulableTask = Pick<Task, "id" | "title" | "estimate">;
 export interface AllocationInput {
   scope: TimeScope; start: string | Date; duration: number;
   mode?: TimeBlockMode; selector?: TimeBlockSelector; source?: ScheduleSource;
@@ -32,15 +33,16 @@ const durationValue = (value: number): number => {
 export class SchedulingService {
   constructor(private store: TimeStore, private taskById: (id: string) => Task | undefined) {}
 
-  getTaskSchedule(taskOrId: Task | string): TimeBlock | null {
+  getTaskSchedule(taskOrId: Pick<Task, "id"> | string): TimeBlock | null {
     const id = typeof taskOrId === "string" ? taskOrId : taskOrId.id;
     return this.store.blocksFor({ type: "task", id, title_snapshot: "" })
       .filter((block) => blockKind(block) === "task_schedule" && block.status !== "cancelled")
       .sort((a, b) => b.start.localeCompare(a.start))[0] ?? null;
   }
 
-  async scheduleTask(taskId: string, input: { start: string | Date; duration?: number; source?: ScheduleSource }): Promise<TimeBlock> {
-    const task = this.taskById(taskId);
+  async scheduleTask(taskOrId: SchedulableTask | string, input: { start: string | Date; duration?: number; source?: ScheduleSource }): Promise<TimeBlock> {
+    const task = typeof taskOrId === "string" ? this.taskById(taskOrId) : taskOrId;
+    const taskId = typeof taskOrId === "string" ? taskOrId : taskOrId.id;
     if (!task) throw new SchedulingError("task_not_found", `No task with id ${taskId}.`);
     const existing = this.getTaskSchedule(taskId);
     const values = {

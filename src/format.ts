@@ -38,6 +38,14 @@ export const dateOf = (iso: string): string => iso.slice(0, 10);
 export const timeOf = (iso: string): string | null => { const m = iso.match(/T(\d{2}:\d{2})/); return m ? m[1] : null; };
 export const combineDT = (date: string, time: string | null | undefined): string => (time ? date + "T" + time : date);
 
+/** Absolute timestamp -> local date-picker/display value, without leaking its UTC components. */
+export function localDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const z = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
 /** Ganze Tage von heute bis zum ISO-Datum (0 = heute, 1 = morgen, -1 = gestern). Nur der
  *  Datums-Teil zählt (Uhrzeit ignoriert) – gleiche Rechnung wie formatDate. */
 export function dayOffset(iso: string, today = todayStr()): number {

@@ -100,8 +100,14 @@ export function quickDates(): QuickDate[] {
 export type DatePickerOpts = {
   commit?: "live" | "confirm";
   requireTime?: boolean;      // confirm-Modus: ohne Uhrzeit lässt sich nicht bestätigen
+  requireDuration?: boolean;  // confirm-Modus: ohne positive Dauer lässt sich nicht bestätigen
   confirmLabel?: string;      // Beschriftung des Bestätigen-Buttons
 };
+
+/** Pure confirmation guard so required date/time/duration behavior stays testable without DOM. */
+export function canConfirmDatePick(date: string, time: string | null, duration: number | null, opts?: DatePickerOpts): boolean {
+  return !!date && (!opts?.requireTime || !!time) && (!opts?.requireDuration || !!duration && duration > 0);
+}
 
 /** Datums-Picker: Eingabefeld + Schnellzeilen + Monatskalender + optional Uhrzeit/Dauer.
  *  onPick("") = kein Datum. value darf "YYYY-MM-DD" oder "YYYY-MM-DDTHH:mm" sein.
@@ -113,6 +119,7 @@ export function openDatePicker(
 ): void {
   const live = (opts?.commit ?? "live") === "live";
   const requireTime = !!opts?.requireTime;
+  const requireDuration = !!opts?.requireDuration;
   openPopover(anchor, (pop, close) => {
     pop.addClass("bt-date");
     if (!live) pop.addClass("bt-date-confirm");
@@ -123,7 +130,7 @@ export function openDatePicker(
 
     // live: sofort melden. confirm: nur den Bestätigen-Button nachziehen, gemeldet wird in commit().
     const apply = () => { if (live) onPick(curDate ? combineDT(curDate, curTime) : ""); else renderFoot(); };
-    const canCommit = () => !!curDate && (!requireTime || !!curTime);
+    const canCommit = () => canConfirmDatePick(curDate, curTime, curDur, { requireTime, requireDuration });
     const commit = () => { if (!canCommit()) return; onPick(combineDT(curDate, curTime)); close(); };
     // Schnellauswahl schließt sofort, SOLANGE der Uhrzeit-Bereich zu ist; sonst live anwenden.
     // Im confirm-Modus schließt sie nie – erst der Bestätigen-Button gibt den Wert heraus.
@@ -255,6 +262,7 @@ export function openDatePicker(
 
       // Dauer-Zeile: FREIE Eingabe + Overlay-Dropdown (genau wie die Uhrzeit).
       if (dur) {
+        const durationChanged = () => { dur.onChange(curDur); if (!live) renderFoot(); };
         const drow = timeWrap.createDiv({ cls: "bt-dur-row" });
         drow.createSpan({ cls: "bt-time-label", text: t("duration_label") });
         const dfield = drow.createDiv({ cls: "bt-time-field" });
@@ -267,14 +275,14 @@ export function openDatePicker(
           for (const d of DUR_OPTS) {
             const it = ddrop.createDiv({ cls: "bt-time-opt" + (curDur === d ? " is-sel" : ""), text: d ? formatDuration(d) : "—" });
             if (curDur === d) selEl = it;
-            it.onmousedown = (e) => { e.preventDefault(); curDur = d; di.value = d ? formatDuration(d) : ""; dur.onChange(d); ddrop.removeClass("is-open"); };
+            it.onmousedown = (e) => { e.preventDefault(); curDur = d; di.value = d ? formatDuration(d) : ""; durationChanged(); ddrop.removeClass("is-open"); };
           }
           ddrop.addClass("is-open");
           if (selEl) ddrop.scrollTop = Math.max(0, selEl.offsetTop - 44);
         };
         di.onfocus = () => { openDdrop(); window.setTimeout(() => di.select(), 0); };
         di.onblur = () => { window.setTimeout(() => ddrop.removeClass("is-open"), 150); di.value = curDur ? formatDuration(curDur) : ""; };
-        di.oninput = () => { curDur = parseDuration(di.value); dur.onChange(curDur); };   // Tippen sofort übernehmen
+        di.oninput = () => { curDur = parseDuration(di.value); durationChanged(); };   // Tippen sofort übernehmen
         di.onkeydown = (ev) => {
           if (ev.key === "Escape") ddrop.removeClass("is-open");
           else if (ev.key === "Enter") { ev.preventDefault(); ddrop.removeClass("is-open"); di.blur(); }

@@ -5,8 +5,8 @@
 // nutzen dieselben Picker – keine Duplikate mehr.
 import { App, Platform, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, OpalTasksSettings } from "./types";
-import { formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf } from "./format";
+import { Priority, TaskStatus, ChipId, ChipTier, ChipSurface, ChipProfile, CHIP_IDS, OpalTasksSettings, ScheduleDraft } from "./types";
+import { formatDateTime, formatDuration, formatEstimate, combineDT, dateOf, timeOf, localDateTime } from "./format";
 import { boardStatuses, statusLabel, statusIcon, statusTint, firstOpenStatus, isTrashed } from "./statuses";
 import { openDatePicker, parseDuration } from "./datePicker";
 import { formatReminder } from "./reminders";
@@ -106,6 +106,9 @@ export interface ChipHost {
   toggleDetails?(anchor: HTMLElement): void;  // Details-Chip (Editor: Log · Schnelleingabe: Beschreibung)
   detailsOpen?(): boolean;                // Offen-Zustand des Details-Chips
   chipEnabled?(id: ChipId): boolean;      // Chip in diesem Modal überhaupt anbieten (Default true)
+  schedule?(): ScheduleDraft | null;      // staged primary placement; stored outside task frontmatter
+  setSchedule?(draft: ScheduleDraft): void;
+  clearSchedule?(): void;
 }
 
 /** Eine Chip-Definition. `kind` steuert das Rendering: value = Wert-Chip mit ✕, status = fixes
@@ -146,6 +149,26 @@ function openDate(host: ChipHost, anchor: HTMLElement): void {
     keepRecurrenceAnchored(f); host.pinDue();
     host.rerender();
   });
+}
+
+export function defaultScheduleDuration(current: ScheduleDraft | null, estimate: number | null | undefined): number {
+  if (current?.duration && current.duration > 0) return current.duration;
+  if (estimate && estimate > 0) return estimate;
+  return 30;
+}
+
+function openWhen(host: ChipHost, anchor: HTMLElement): void {
+  const current = host.schedule?.() ?? null;
+  let duration = defaultScheduleDuration(current, host.f.estimate);
+  openDatePicker(anchor, current ? localDateTime(current.start) : "", (value) => {
+    const start = new Date(value);
+    if (Number.isNaN(start.getTime()) || !duration || duration < 1) return;
+    host.setSchedule?.({ start: start.toISOString(), duration });
+    host.rerender();
+  }, {
+    value: duration,
+    onChange: (value) => { duration = value ?? 0; },
+  }, { commit: "confirm", requireTime: true, requireDuration: true });
 }
 
 function openEstimate(host: ChipHost, anchor: HTMLElement): void {
@@ -367,6 +390,17 @@ export const CHIPS: Record<ChipId, ChipDef> = {
     open: (host, a) => openStatus(host, a),
     clear: () => { /* Status ist nie leer */ },
   },
+  when: {
+    id: "when", icon: "calendar-clock", nameKey: "chip_when", kind: "value",
+    isSet: (_f, host) => !!host.schedule?.(),
+    valueLabel: (_f, host) => {
+      const value = host.schedule?.();
+      if (!value) return "";
+      return `${formatDateTime(localDateTime(value.start))} · ${formatDuration(value.duration)}`;
+    },
+    open: (host, a) => openWhen(host, a),
+    clear: (host) => host.clearSchedule?.(),
+  },
   due: {
     id: "due", icon: "flag", nameKey: "chip_deadline", kind: "value",
     isSet: (f) => !!f.due,
@@ -438,12 +472,12 @@ export const CHIPS: Record<ChipId, ChipDef> = {
  *  gespeichertes Profil hat). Tiers nur für nicht-„shown" Chips gelistet (Rest = shown). */
 export const DEFAULT_CHIP_PROFILES: Record<ChipSurface, ChipProfile> = {
   editor: {
-    order: ["due", "estimate", "priority", "label", "details", "recurrence", "reminder", "parent", "status"],
-    tiers: { parent: "onValue", status: "hidden" },
+    order: ["when", "due", "estimate", "priority", "label", "details", "recurrence", "reminder", "parent", "status"],
+    tiers: { due: "onValue", parent: "onValue", status: "hidden" },
   },
   quickAdd: {
-    order: ["due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details", "status"],
-    tiers: { recurrence: "onValue", reminder: "onValue", parent: "onValue", details: "hidden", status: "hidden" },
+    order: ["when", "due", "estimate", "priority", "label", "recurrence", "reminder", "parent", "details", "status"],
+    tiers: { due: "onValue", recurrence: "onValue", reminder: "onValue", parent: "onValue", details: "hidden", status: "hidden" },
   },
 };
 

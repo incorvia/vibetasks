@@ -1,7 +1,7 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
+import { ScheduleDraft, Task, TaskStatus } from "./types";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, newId, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
@@ -16,7 +16,6 @@ import { CHIPS, ChipHost, ChipFields, chipsCompact, resolveChipOrder, isInline, 
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { attachLinkSuggest } from "./linkSuggest";
-import { TimeBlockModal } from "./timeBlockModal";
 import { isCompactPane } from "./responsive";
 
 // PRIOS/PRIO_KEY leben jetzt in chips.ts (gemeinsam mit der Schnelleingabe); hier re-exportiert,
@@ -75,12 +74,21 @@ export class TaskModal extends Modal {
    *  software keyboard), even though the expanded editor itself remains inside the task list. */
   private mobileViewportCleanup: (() => void) | null = null;
   private compact = false;
+  private readonly taskId: string;
+  private scheduleDraft: ScheduleDraft | null;
+  private scheduleDirty = false;
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
   constructor(private plugin: OpalTasksPlugin, private existing?: Task, private defaultProject?: string,
-              private opts: { hideProjekt?: boolean; parent?: string; parentId?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string; projectId?: string | null }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
+              private opts: { hideProjekt?: boolean; parent?: string; parentId?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string; projectId?: string | null }; schedule?: ScheduleDraft | null; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
     super(plugin.app);
+    this.taskId = existing?.id ?? newId("");
+    const existingSchedule = existing && this.schedulingAllowed() ? plugin.scheduling.getTaskSchedule(existing.id) : null;
+    this.scheduleDraft = opts.schedule
+      ? { ...opts.schedule }
+      : existingSchedule ? { start: existingSchedule.start, duration: existingSchedule.duration } : null;
+    this.scheduleDirty = !!opts.schedule;
     const seed = opts.seed;
     this.f = existing
       ? {
@@ -325,12 +333,6 @@ export class TaskModal extends Modal {
 
     const actions = foot.createDiv({ cls: "bt-actions" });
     if (this.existing) {
-      const schedule = this.plugin.scheduling.getTaskSchedule(this.existing.id);
-      const scheduleButton = actions.createEl("button", { attr: { "aria-label": schedule ? "Edit task schedule" : "Schedule task" } });
-      setIcon(scheduleButton, "calendar-clock");
-      tip(scheduleButton, schedule ? `Scheduled ${new Date(schedule.start).toLocaleString()} · ${schedule.duration}m` : "Schedule task");
-      scheduleButton.onclick = () => new TimeBlockModal(this.plugin, schedule ? new Date(schedule.start) : new Date(),
-        { type: "task", id: this.existing!.id, title_snapshot: this.existing!.title }, schedule ?? undefined, "task_schedule").open();
       const timer = actions.createEl("button", { attr: { "aria-label": "Start timer" } });
       const active = this.plugin.workTimer.active(); setIcon(timer, active?.task_id === this.existing.id ? "square" : "play");
       timer.onclick = () => active?.task_id === this.existing!.id
@@ -586,9 +588,14 @@ export class TaskModal extends Modal {
       toggleDetails: () => this.toggleDetails(),
       detailsOpen: () => !this.logWrap.hasClass("bt-hidden"),
       // Elternaufgaben-Chip im festen „+ Subtask"-Modus (opts.parent) ausblenden – Parent steht fest.
-      chipEnabled: (id) => id === "parent" ? !this.opts.parent : true,
+      chipEnabled: (id) => id === "parent" ? !this.opts.parent : id === "when" ? this.schedulingAllowed() : true,
+      schedule: () => this.scheduleDraft,
+      setSchedule: (draft) => { this.scheduleDraft = draft; this.scheduleDirty = true; },
+      clearSchedule: () => { this.scheduleDraft = null; this.scheduleDirty = true; },
     };
   }
+
+  private schedulingAllowed(): boolean { return (this.opts.scope?.target?.type ?? "task") === "task"; }
 
   private renderChips(): void {
     const bar = this.chipBar; bar.empty();
@@ -942,11 +949,30 @@ export class TaskModal extends Modal {
       const sortOrder = this.opts.insertBefore
         ? await this.plugin.prepareTaskInsert(this.opts.insertBefore.parentPath, this.opts.insertBefore.beforePath)
         : undefined;
-      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title,
+      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, id: this.taskId, title,
         parent: this.f.parent ?? this.opts.parent ?? null, parentId: this.f.parentId ?? this.opts.parentId ?? null, sortOrder }, this.editScope.target);
       await this.log.flush(file);
     }
+    await this.persistSchedule(title);
     await this.plugin.showNewTaskLabels(newLabels);
+  }
+
+  /** Schedules live in daily time logs, not task frontmatter. Commit only after the task note so
+   *  creation never leaves an orphan block; an explicit task snapshot avoids metadata-cache lag. */
+  private async persistSchedule(title: string): Promise<void> {
+    if (!this.scheduleDirty || !this.schedulingAllowed()) return;
+    try {
+      if (this.scheduleDraft) {
+        await this.plugin.scheduling.scheduleTask({ id: this.taskId, title, estimate: this.f.estimate }, {
+          start: this.scheduleDraft.start, duration: this.scheduleDraft.duration, source: "manual",
+        });
+      } else {
+        await this.plugin.scheduling.unscheduleTask(this.taskId);
+      }
+      this.scheduleDirty = false;
+    } catch {
+      new Notice(t("schedule_save_failed"));
+    }
   }
 
   /** Löschen = Aufgabe UND alle Unteraufgaben in den Papierkorb (sonst verwaisen Kinder).

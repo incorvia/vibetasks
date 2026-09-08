@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { TFile, parseYaml, stringifyYaml } from "obsidian";
 import { bindRepository, MdbaseRepository, MdbaseRepositoryError } from "../src/mdbaseRepository";
 import { TimeStore } from "../src/timeService";
+import { createTaskNote } from "../src/taskService";
+import type { OpalTasksSettings } from "../src/types";
 
 type FakeFile = TFile & { path: string; basename: string; extension: string; stat: { mtime: number; size: number } };
 
@@ -57,6 +59,17 @@ function fakeApp() {
 }
 
 describe("MdbaseRepository", () => {
+  it("keeps a preallocated task identity for create-and-schedule workflows", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+
+    const id = "01K4Y6J7M8N9P0Q1R2S3T4V5W6";
+    const file = await createTaskNote(fake.app, { itemsFolder: "_opal_tasks/tasks" } as OpalTasksSettings, { id, title: "Scheduled on creation" });
+
+    expect((await repository.read(file.path))?.id).toBe(id);
+  });
+
   it("makes a newly dragged time block visible without waiting for metadataCache", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);
