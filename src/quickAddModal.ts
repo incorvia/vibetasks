@@ -27,6 +27,7 @@ export class QuickAddModal extends Modal {
   };
   private cleanTitle = "";
   private duePinned = false;        // Datum manuell gesetzt/geleert -> Parser überschreibt nicht mehr
+  private schedulePinned = false;   // geplanten Block manuell gesetzt/geleert -> dito
   private nl: QuickEntryState = emptyQuickEntryState();  // aus dem Titel Erkanntes (trennt es von Manuellem)
   private readonly defaultProject: string | null;   // Projekt-Fallback, wenn @Projekt wieder entfernt wird (null = Eingang)
   private input!: HTMLInputElement;
@@ -98,9 +99,12 @@ export class QuickAddModal extends Modal {
       today: todayStr(),
       projects: knownProjectNames(this.app),
       defaultProject: this.defaultProject,
+      schedule: this.scheduleDraft,
+      schedulePinned: this.schedulePinned,
     });
     this.cleanTitle = r.title;
     Object.assign(this.f, r.fields);
+    this.scheduleDraft = r.schedule;
     this.f.projectId = relationshipId(this.app, this.f.project, ["project", "area"]);
     this.nl = r.state;
   }
@@ -128,6 +132,16 @@ export class QuickAddModal extends Modal {
     // (der escapte Text setzt nichts mehr). KEIN pinDue: das Escape im Titel IST der Zustand,
     // ein spaeter getipptes „uebermorgen" soll wieder erkannt werden.
     this.f.due = null; this.f.dueTime = null;
+    this.parse();
+    return true;
+  }
+
+  private unparseSchedule(): boolean {
+    const next = escapeTriggers(this.f.title, [this.nl.scheduleDateSrc, this.nl.scheduleTimeSrc]);
+    if (next === this.f.title) return false;
+    this.f.title = next;
+    this.input.value = next;
+    this.scheduleDraft = null;
     this.parse();
     return true;
   }
@@ -164,8 +178,15 @@ export class QuickAddModal extends Modal {
       detailsOpen: () => false,
       chipEnabled: () => true,
       schedule: () => this.scheduleDraft,
-      setSchedule: (draft) => { this.scheduleDraft = draft; },
-      clearSchedule: () => { this.scheduleDraft = null; },
+      setSchedule: (draft) => {
+        this.scheduleDraft = draft; this.schedulePinned = true;
+        this.nl.scheduleDateSrc = ""; this.nl.scheduleTimeSrc = ""; this.nl.scheduleFromTitle = false;
+      },
+      clearSchedule: () => {
+        this.scheduleDraft = null; this.schedulePinned = true;
+        this.nl.scheduleDateSrc = ""; this.nl.scheduleTimeSrc = ""; this.nl.scheduleFromTitle = false;
+      },
+      unparseSchedule: () => this.unparseSchedule(),
     };
   }
 
@@ -278,7 +299,7 @@ export class QuickAddModal extends Modal {
       due: null, dueTime: null, estimate: null,
       priority: "normal", labels: [], recurrence: null, recurBasis: "due", reminders: [], parent: null, parentId: null,
     };
-    this.cleanTitle = ""; this.duePinned = false; this.nl = emptyQuickEntryState();
+    this.cleanTitle = ""; this.duePinned = false; this.schedulePinned = false; this.nl = emptyQuickEntryState();
     this.taskId = newId(""); this.scheduleDraft = null;
     this.input.value = "";
     this.renderChips();
@@ -305,7 +326,7 @@ export class QuickAddModal extends Modal {
     this.close();
     new TaskModal(this.plugin, undefined, project, {
       defaultTitle: title, seed, schedule: this.scheduleDraft ? { ...this.scheduleDraft } : null,
-      openDetails, duePinned: this.duePinned,
+      openDetails, duePinned: this.duePinned, schedulePinned: this.schedulePinned,
     }).open();
   }
 }

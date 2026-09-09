@@ -58,6 +58,53 @@ describe("applyQuickEntry – Determinismus", () => {
   });
 });
 
+describe("applyQuickEntry – Marvin-kompatible Modifier", () => {
+  it("erstellt aus +datum eine ganztägige Planung ohne Deadline", () => {
+    const r = run("Bericht +tomorrow");
+    expect(r.title).toBe("Bericht");
+    expect(r.fields.due).toBeNull();
+    expect(r.schedule).toEqual({ allDay: true, date: MORGEN });
+  });
+
+  it("nutzt bei +datum mit Uhrzeit die Schaetzung als Blocklaenge", () => {
+    const r = run("Bericht +tomorrow 9am ~1h30m");
+    expect(r.fields.estimate).toBe(90);
+    expect(r.schedule && "start" in r.schedule ? r.schedule.duration : null).toBe(90);
+    const start = r.schedule && "start" in r.schedule ? new Date(r.schedule.start) : null;
+    expect(start?.getFullYear()).toBe(2026);
+    expect(start?.getMonth()).toBe(5);
+    expect(start?.getDate()).toBe(16);
+    expect(start?.getHours()).toBe(9);
+  });
+
+  it("nimmt eine titelgesteuerte Planung zurueck, wenn der Modifier verschwindet", () => {
+    const first = run("Bericht +tomorrow");
+    const second = applyQuickEntry("Bericht", first.fields, first.state, opts({ schedule: first.schedule }));
+    expect(second.schedule).toBeNull();
+  });
+
+  it("laesst eine manuell gepinnte Planung in Ruhe", () => {
+    const manual = { allDay: true as const, date: "2026-12-24" };
+    const r = run("Bericht +tomorrow", { o: { schedule: manual, schedulePinned: true } });
+    expect(r.schedule).toEqual(manual);
+  });
+
+  it("behaelt due als Deadline und akzeptiert *p1", () => {
+    const r = run("Bericht due tomorrow *p1");
+    expect(r.title).toBe("Bericht");
+    expect(r.fields.due).toBe(MORGEN);
+    expect(r.fields.priority).toBe("highest");
+    expect(r.schedule).toBeNull();
+  });
+
+  it("kann Planung und Deadline am selben Task setzen", () => {
+    const r = run("Bericht +tomorrow due Friday");
+    expect(r.title).toBe("Bericht");
+    expect(r.fields.due).toBe("2026-06-19");
+    expect(r.schedule).toEqual({ allDay: true, date: MORGEN });
+  });
+});
+
 describe("applyQuickEntry – der Titel besitzt, was er gesetzt hat", () => {
   /** Tippt den Text Zeichen fuer Zeichen – so, wie das Modal bei jedem Tastendruck parst. */
   const tippen = (raw: string) => {

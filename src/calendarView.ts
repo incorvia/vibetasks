@@ -3,7 +3,7 @@ import type OpalTasksPlugin from "./main";
 import { PageCtx } from "./pageCtx";
 import { dragTask, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { isAllDaySchedule, type Task, type CalEvent, type TimeBlock, type TimedTimeBlock, agendaDate } from "./types";
-import { PageLayout, ViewOptions } from "./filterEngine";
+import { FilterSort, PageLayout, SortDir, ViewOptions, hasSortDir, sortTasks } from "./filterEngine";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { isInboxLink } from "./taskService";
 import { combineDT, todayStr } from "./format";
@@ -45,6 +45,10 @@ const MIN_DUR = 15;
 const TWO_LINE_PX = 34;          // darunter passen Uhrzeit + Titel nicht untereinander -> eine Zeile
 const DAY_START_HOUR = 7;        // Startansicht der Wochenansicht (nicht Mitternacht)
 let movingBlockId: string | null = null;
+
+/** Date and deadline cannot distinguish tasks in this panel: by definition, every task here has
+ * neither. Keep the menu to the sort modes that produce a meaningful order. */
+const UNSCHEDULED_SORTS: FilterSort[] = ["smart", "manual", "priority", "created", "title"];
 
 // Angezeigter Zeitraum je Seite UND TAB (transient wie boardScroll – ein Reload startet wieder
 // bei „heute“). Der Tab gehört in den Schlüssel: zwei Kalender-Tabs derselben Seite blätterten
@@ -137,7 +141,8 @@ const mounts = new WeakMap<HTMLElement, CalMount>();
 function calSignature(ctx: PageCtx, opts: ViewOptions): string {
   const key = pageKey(ctx);
   const today = todayStr();
-  return [key, opts.calMode, anchors.get(key) ?? today, opts.showDone, opts.calPanel, today, JSON.stringify(ctx.crit)].join("|");
+  return [key, opts.calMode, anchors.get(key) ?? today, opts.showDone, opts.calPanel,
+    opts.calPanelSort, opts.calPanelSortDir, today, JSON.stringify(ctx.crit)].join("|");
 }
 
 /** Versucht, den bereits gezeichneten Kalender in `c` nur nachzufüllen. true = erledigt,
@@ -304,7 +309,7 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
       const scrim = body.createDiv({ cls: "bt-calview-panel-scrim" });
       scrim.onclick = () => ctx.setCalPanel(false);
     }
-    fillPanel = renderUnscheduled(body, plugin, add, mobile ? () => ctx.setCalPanel(false) : undefined);
+    fillPanel = renderUnscheduled(body, ctx, add, mobile ? () => ctx.setCalPanel(false) : undefined);
   }
 
   /** Nur die aufgabenabhängigen Teile neu zeichnen (Gerüst bleibt stehen). Termine werden bei
@@ -688,8 +693,10 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
 
 /** Seitenleiste „Undatiert": baut das Gerüst und liefert den Füller für die Kartenliste.
  *  Von hier per Drag ins Raster; der Drop setzt `due` – die Aufgabe verschwindet dann aus der Liste. */
-function renderUnscheduled(body: HTMLElement, plugin: OpalTasksPlugin, add: CalendarAdd,
+function renderUnscheduled(body: HTMLElement, ctx: PageCtx, add: CalendarAdd,
   closePanel?: () => void): (tasks: Task[]) => void {
+  const plugin = ctx.plugin;
+  const { calPanelSort: sortMode, calPanelSortDir: sortDir } = ctx.opts;
   const panel = body.createDiv({ cls: "bt-calview-panel" });
   // Rückweg: eine Aufgabe aus dem Raster HIERHIN ziehen entfernt ihr Datum (setTaskDate löscht das
   // Frontmatter-Feld bei leerem Wert). Das Ziel ist der ganze Panel-Rahmen, nicht nur die Liste –
@@ -699,6 +706,38 @@ function renderUnscheduled(body: HTMLElement, plugin: OpalTasksPlugin, add: Cale
   const head = panel.createDiv({ cls: "bt-calview-panel-head" });
   head.createSpan({ cls: "bt-calview-panel-title", text: t("cal_unscheduled") });
   const count = head.createSpan({ cls: "bt-calview-panel-count" });
+  const sort = head.createEl("button", {
+    cls: "bt-calview-panel-sort",
+    attr: {
+      type: "button",
+      "aria-label": `${t("filter_sort")}: ${t("filter_sort_" + sortMode)}`,
+      "aria-haspopup": "menu",
+    },
+  });
+  setIcon(sort.createSpan({ cls: "bt-calview-panel-sort-ic" }), "arrow-up-down");
+  sort.createSpan({ cls: "bt-calview-panel-sort-label", text: t("filter_sort_" + sortMode) });
+  setIcon(sort.createSpan({ cls: "bt-calview-panel-sort-chev" }), "chevron-down");
+  tip(sort, `${t("filter_sort")}: ${t("filter_sort_" + sortMode)}`);
+  sort.onclick = (event) => {
+    event.stopPropagation();
+    const menu = new Menu();
+    for (const mode of UNSCHEDULED_SORTS) {
+      menu.addItem((item) => item
+        .setTitle(t("filter_sort_" + mode))
+        .setChecked(sortMode === mode)
+        .onClick(() => ctx.setOption({ calPanelSort: mode })));
+    }
+    if (hasSortDir(sortMode)) {
+      menu.addSeparator();
+      for (const dir of (["asc", "desc"] as SortDir[])) {
+        menu.addItem((item) => item
+          .setTitle(t("filter_dir_" + dir))
+          .setChecked(sortDir === dir)
+          .onClick(() => ctx.setOption({ calPanelSortDir: dir })));
+      }
+    }
+    menu.showAtMouseEvent(event);
+  };
   if (closePanel) {
     const close = head.createEl("button", { cls: "bt-calview-panel-close" });
     close.setAttr("aria-label", t("btn_close"));
@@ -726,7 +765,7 @@ function renderUnscheduled(body: HTMLElement, plugin: OpalTasksPlugin, add: Cale
       list.createDiv({ cls: "bt-calview-panel-empty", text: t("cal_unscheduled_empty") });
       return;
     }
-    for (const tk of [...tasks].sort((a, b) => a.title.localeCompare(b.title))) {
+    for (const tk of sortTasks(tasks, sortMode, sortDir, (task) => plugin.index.orderKey(task))) {
       const card = list.createDiv({ cls: "bt-calview-panel-card" });
       decorate(card, plugin, tk);
       renderCheck(card, plugin, tk, { compact: true });

@@ -174,6 +174,20 @@ describe("writeViewOptions – Notiz bleibt schlank", () => {
     expect(fm.subtasks).toBe("standalone");
   });
 
+  it("round-trips the Unscheduled panel sort without coupling it to the page sort", () => {
+    const fm: Record<string, unknown> = {};
+    writeViewOptions(fm, { ...DEFAULT_OPTIONS, calPanelSort: "priority", calPanelSortDir: "desc" });
+
+    expect(fm.calPanelSort).toBe("priority");
+    expect(fm.calPanelSortDir).toBe("desc");
+    expect(fm.sort).toBeUndefined();
+    expect(readViewOptions(fm)).toMatchObject({
+      sort: "smart",
+      calPanelSort: "priority",
+      calPanelSortDir: "desc",
+    });
+  });
+
   it("räumt den abgelösten Schlüssel showSubtasks weg", () => {
     const fm: Record<string, unknown> = { showSubtasks: true };
     writeViewOptions(fm, readViewOptions({ showSubtasks: true }));

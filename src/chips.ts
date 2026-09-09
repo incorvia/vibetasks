@@ -42,6 +42,9 @@ export const PRIOS: { value: Priority; key: string; color: string }[] = [
   { value: "medium", key: "prio_3", color: "#3b82f6" },
   { value: "normal", key: "prio_4", color: "#9ca3af" },
 ];
+// A priority-grouped board reads as a progression: lowest priority on the left, highest on the
+// right. Keep PRIOS itself highest-first for pickers, sorting and swimlanes.
+export const KANBAN_PRIOS: readonly { value: Priority; key: string; color: string }[] = [...PRIOS].reverse();
 export const PRIO_KEY: Record<Priority, string> = {
   highest: "prio_1", high: "prio_2", medium: "prio_3", normal: "prio_4", low: "prio_4", lowest: "prio_4",
 };
@@ -96,6 +99,8 @@ export interface ChipHost {
   /** ✕ am Datums-Chip: Kam der Wert aus dem Titel („morgen"), dort den Auslöser escapen, statt nur
    *  das Feld zu leeren – sonst bliebe das Wort aus dem Titel gestrippt. true = übernommen. */
   unparseDue?(): boolean;
+  /** Same behavior for a `+tomorrow` schedule parsed from the title. */
+  unparseSchedule?(): boolean;
   /** Same behavior for an estimate parsed from a `~30m` title token. */
   unparseEstimate?(): boolean;
   /** Dasselbe fuer den Wiederholungs-Chip („jeden tag" -> „\jeden \tag"). */
@@ -406,7 +411,7 @@ export const CHIPS: Record<ChipId, ChipDef> = {
         : `${formatDateTime(localDateTime(value.start))} · ${formatDuration(value.duration)}`;
     },
     open: (host, a) => openWhen(host, a),
-    clear: (host) => host.clearSchedule?.(),
+    clear: (host) => { if (host.unparseSchedule?.()) return; host.clearSchedule?.(); },
   },
   due: {
     id: "due", icon: "flag", nameKey: "chip_deadline", kind: "value",

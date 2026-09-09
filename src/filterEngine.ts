@@ -78,6 +78,8 @@ export interface ViewOptions {
   sortDir: SortDir;        // Richtung von Sortierung + Gruppen-Reihenfolge
   calMode: CalMode;        // nur im Kalender-Layout: Jahr/Monat/Woche/Tag
   calPanel: boolean;       // nur im Kalender-Layout: Seitenleiste „Undatiert" offen?
+  calPanelSort: FilterSort; // eigene Sortierung der „Undatiert"-Seitenleiste
+  calPanelSortDir: SortDir; // Richtung dieser Sortierung; für smart/manual ohne Wirkung
   /** Area-Kanban: Priorität als zweite Achse. Fehlt = an (neue Areas und Altbestände). */
   prioritySwimlanes?: boolean;
   /** Kanban: auch Status-Spalten/Prioritäts-Lanes ohne sichtbaren Inhalt zeichnen. */
@@ -97,7 +99,7 @@ export const DEFAULT_CRITERIA: FilterCriteria = {
 // erst das Layout (effectiveSubtasks).
 export const DEFAULT_OPTIONS: ViewOptions = {
   layout: "list", sort: "smart", group: "none", showDone: false, sortDir: "asc",
-  calMode: "3day", calPanel: true, showEmptyBoardAxes: true,
+  calMode: "3day", calPanel: true, calPanelSort: "title", calPanelSortDir: "asc", showEmptyBoardAxes: true,
 };
 
 /** Im UI wählbare Zeiträume/Sortierungen/Gruppierungen (Reihenfolge = Anzeige). */

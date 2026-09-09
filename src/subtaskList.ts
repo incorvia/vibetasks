@@ -8,8 +8,8 @@
 // (subscribe) statt selbst zu zählen, damit Änderungen aus Listen/Kalender sofort ankommen.
 import { Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { Task } from "./types";
-import { createTaskNote, EditScope, todayIso } from "./taskService";
+import { isAllDaySchedule, Task } from "./types";
+import { createTaskNote, EditScope, newId, todayIso } from "./taskService";
 import { formatDateTime, combineDT, dueWhen, dueDist, todayStr } from "./format";
 import { applyQuickEntry, emptyQuickEntryState } from "./quickEntry";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
@@ -241,11 +241,14 @@ export class SubtaskList {
   private async create(raw: string): Promise<void> {
     const parent = this.host.parent();
     if (!parent || this.busy) return;
+    const taskId = newId("");
+    const schedulingAllowed = (this.host.scope().target?.type ?? "task") === "task";
     const r = applyQuickEntry(raw,
       { due: null, dueTime: null, priority: "normal", labels: [], project: null, recurrence: null },
       emptyQuickEntryState(),
       // Kein `projects`: @Projekt bleibt außen vor – eine Unteraufgabe erbt das Projekt der Hauptaufgabe.
-      { enabled: this.plugin.settings.parseNaturalLanguage, frozen: false, duePinned: false, today: todayIso() });
+      { enabled: this.plugin.settings.parseNaturalLanguage, frozen: false, duePinned: false,
+        today: todayIso(), scheduleEnabled: schedulingAllowed });
     const title = r.title.trim();
     if (!title) return;
     this.busy = true;
@@ -253,7 +256,7 @@ export class SubtaskList {
     if (inp) inp.value = "";
     try {
       await createTaskNote(this.plugin.app, this.plugin.settings, {
-        ...r.fields, title,
+        ...r.fields, id: taskId, title,
         project: this.host.projectBase(),
         projectId: parent.projectId,
         parent: parent.path.split("/").pop()!.replace(/\.md$/, ""),
@@ -263,9 +266,21 @@ export class SubtaskList {
       console.error("Opal Tasks: create subtask failed", err);
       new Notice(t("err_subtask_create"));
       if (inp) inp.value = raw;
-    } finally {
       this.busy = false;
       inp?.focus();
+      return;
     }
+    if (r.schedule && schedulingAllowed) {
+      try {
+        await this.plugin.scheduling.scheduleTask({ id: taskId, title, estimate: r.fields.estimate },
+          isAllDaySchedule(r.schedule)
+            ? { allDay: true, date: r.schedule.date, source: "manual" }
+            : { start: r.schedule.start, duration: r.schedule.duration, source: "manual" });
+      } catch {
+        new Notice(t("schedule_save_failed"));
+      }
+    }
+    this.busy = false;
+    inp?.focus();
   }
 }

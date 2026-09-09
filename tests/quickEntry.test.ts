@@ -205,9 +205,62 @@ describe("parseQuickEntry – Prioritaet", () => {
   it("erkennt !1-!4", () => {
     expect(parseQuickEntry("wichtig !1").priority).toBe("highest");
   });
+  it("erkennt Marvin-kompatibles *p1-*p4", () => {
+    expect(parseQuickEntry("wichtig *p1")).toMatchObject({ priority: "highest", title: "wichtig" });
+    expect(parseQuickEntry("spaeter *p4")).toMatchObject({ priority: "normal", title: "spaeter" });
+  });
   it("greift nicht mitten im Wort", () => {
     expect(parseQuickEntry("Kapitel p12 lesen").priority).toBeNull();
     expect(parseQuickEntry("Top1 Liste").priority).toBeNull();
+  });
+});
+
+describe("parseQuickEntry – explizites Datumsziel", () => {
+  it("routet +datum in die Planung statt in die Deadline", () => {
+    const r = parseQuickEntry("Bericht +tomorrow");
+    expect(r).toMatchObject({
+      title: "Bericht", scheduleDate: "2026-06-16", scheduleTime: "", faellig: "", time: "",
+    });
+  });
+
+  it("nimmt Uhrzeit und Schaetzung in denselben geplanten Eintrag auf", () => {
+    const r = parseQuickEntry("Bericht +tomorrow at 9am ~1h30m");
+    expect(r).toMatchObject({
+      title: "Bericht", scheduleDate: "2026-06-16", scheduleTime: "09:00", estimate: 90,
+    });
+  });
+
+  it("unterstuetzt +uhrzeit mit heute als geplantem Tag", () => {
+    expect(parseQuickEntry("Anruf +9am")).toMatchObject({
+      title: "Anruf", scheduleDate: "2026-06-15", scheduleTime: "09:00", faellig: "",
+    });
+  });
+
+  it("entfernt das explizite due vor einer Deadline", () => {
+    expect(parseQuickEntry("Bericht due tomorrow at 9am")).toMatchObject({
+      title: "Bericht", faellig: "2026-06-16", time: "09:00", scheduleDate: "",
+    });
+  });
+
+  it.each([
+    "Bericht +tomorrow due Friday",
+    "Bericht due Friday +tomorrow",
+  ])("kann Planung und Deadline gemeinsam lesen: %s", (raw) => {
+    expect(parseQuickEntry(raw)).toMatchObject({
+      title: "Bericht", scheduleDate: "2026-06-16", faellig: "2026-06-19",
+    });
+  });
+
+  it("laesst due als normales Wort stehen, wenn es nicht direkt ein Datum einleitet", () => {
+    expect(parseQuickEntry("Due diligence tomorrow")).toMatchObject({
+      title: "Due diligence", faellig: "2026-06-16", scheduleDate: "",
+    });
+  });
+
+  it("kann den Plus-Ausloeser als woertlichen Titel schuetzen", () => {
+    expect(parseQuickEntry("Notiz \\+tomorrow")).toMatchObject({
+      title: "Notiz +tomorrow", scheduleDate: "", faellig: "",
+    });
   });
 });
 

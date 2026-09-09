@@ -47,6 +47,7 @@ export class TaskModal extends Modal {
   private subs!: SubtaskList;          // Unteraufgaben-Sektion (über dem Kommentar-Log)
   private subsWrap!: HTMLElement;
   private duePinned = false;          // true sobald Datum manuell gesetzt -> NL überschreibt nicht mehr
+  private schedulePinned = false;     // true sobald Planung manuell gesetzt/geleert wurde
   private cleanTitle = "";            // Titel ohne erkannte Datum-/Label-Token
   private nl: QuickEntryState = emptyQuickEntryState();  // aus dem Titel Erkanntes (trennt es von Manuellem)
   /** Aufgaben des Vaults oder eine Vorlage (s. EditScope). Wird an JEDES Kindmodal und an die
@@ -83,7 +84,7 @@ export class TaskModal extends Modal {
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
   constructor(private plugin: OpalTasksPlugin, private existing?: Task, private defaultProject?: string,
-              private opts: { hideProjekt?: boolean; parent?: string; parentId?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string; projectId?: string | null }; schedule?: ScheduleDraft | null; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
+              private opts: { hideProjekt?: boolean; parent?: string; parentId?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string; projectId?: string | null }; schedule?: ScheduleDraft | null; openDetails?: boolean; duePinned?: boolean; schedulePinned?: boolean; stacked?: boolean; scope?: EditScope; insertBefore?: { parentPath: string | null; beforePath: string | null } } = {}) {
     super(plugin.app);
     this.taskId = existing?.id ?? newId("");
     const existingSchedule = existing && this.schedulingAllowed() ? plugin.scheduling.getTaskSchedule(existing.id) : null;
@@ -122,6 +123,7 @@ export class TaskModal extends Modal {
           project: defaultProject ?? null, projectId: seed?.projectId ?? relationshipId(this.app, defaultProject, ["project", "area"]),
         };
     if (opts.duePinned) this.duePinned = true;   // aus der Schnelleingabe übernommen (⤢)
+    if (opts.schedulePinned) this.schedulePinned = true;
   }
 
   /** Den vollwertigen Editor ohne Overlay in einen Listen-/Karten-Slot einhängen. Quick Add und
@@ -514,6 +516,7 @@ export class TaskModal extends Modal {
    *  Datum nur, solange nicht manuell gesetzt; Labels werden ergänzt. */
   private applyParse(): void {
     const previousProject = this.f.project;
+    const previousSchedule = JSON.stringify(this.scheduleDraft);
     const r = applyQuickEntry(this.f.title, {
       due: this.f.due ?? null, dueTime: this.f.dueTime ?? null, priority: this.f.priority ?? "normal",
       labels: this.f.labels ?? [], project: this.f.project ?? null,
@@ -542,9 +545,14 @@ export class TaskModal extends Modal {
       // Fällt das @-Wort wieder aus dem Titel, gilt wieder das Projekt der Seite, aus der dieser
       // Dialog geöffnet wurde (nicht stur „Eingang").
       defaultProject: this.defaultProject ?? null,
+      schedule: this.scheduleDraft,
+      schedulePinned: this.schedulePinned,
+      scheduleEnabled: this.schedulingAllowed(),
     });
     this.cleanTitle = r.title;
     Object.assign(this.f, r.fields);
+    this.scheduleDraft = r.schedule;
+    if (JSON.stringify(this.scheduleDraft) !== previousSchedule) this.scheduleDirty = true;
     if (this.f.project !== previousProject) this.f.projectId = relationshipId(this.app, this.f.project, ["project", "area"]);
     this.nl = r.state;
   }
@@ -572,6 +580,17 @@ export class TaskModal extends Modal {
     // (der escapte Text setzt nichts mehr). KEIN pinDue: das Escape im Titel IST der Zustand,
     // ein spaeter getipptes „uebermorgen" soll wieder erkannt werden.
     this.f.due = null; this.f.dueTime = null;
+    this.applyParse();
+    return true;
+  }
+
+  private unparseSchedule(): boolean {
+    const next = escapeTriggers(this.f.title, [this.nl.scheduleDateSrc, this.nl.scheduleTimeSrc]);
+    if (next === this.f.title) return false;
+    this.f.title = next;
+    this.titleInput.value = next;
+    this.scheduleDraft = null;
+    this.scheduleDirty = true;
     this.applyParse();
     return true;
   }
@@ -607,8 +626,15 @@ export class TaskModal extends Modal {
       // Elternaufgaben-Chip im festen „+ Subtask"-Modus (opts.parent) ausblenden – Parent steht fest.
       chipEnabled: (id) => id === "parent" ? !this.opts.parent : id === "when" ? this.schedulingAllowed() : true,
       schedule: () => this.scheduleDraft,
-      setSchedule: (draft) => { this.scheduleDraft = draft; this.scheduleDirty = true; },
-      clearSchedule: () => { this.scheduleDraft = null; this.scheduleDirty = true; },
+      setSchedule: (draft) => {
+        this.scheduleDraft = draft; this.scheduleDirty = true; this.schedulePinned = true;
+        this.nl.scheduleDateSrc = ""; this.nl.scheduleTimeSrc = ""; this.nl.scheduleFromTitle = false;
+      },
+      clearSchedule: () => {
+        this.scheduleDraft = null; this.scheduleDirty = true; this.schedulePinned = true;
+        this.nl.scheduleDateSrc = ""; this.nl.scheduleTimeSrc = ""; this.nl.scheduleFromTitle = false;
+      },
+      unparseSchedule: () => this.unparseSchedule(),
     };
   }
 

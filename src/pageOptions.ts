@@ -53,6 +53,8 @@ export function readViewOptions(fm: Record<string, unknown> | Partial<ViewOption
     sortDir: oneOf<SortDir>(o.sortDir, SORT_DIRS, DEFAULT_OPTIONS.sortDir),
     calMode: oneOf<CalMode>(o.calMode, CAL_MODES, defaultCalMode),
     calPanel: o.calPanel !== false,   // Default: offen
+    calPanelSort: oneOf<FilterSort>(o.calPanelSort, SORTS, DEFAULT_OPTIONS.calPanelSort),
+    calPanelSortDir: oneOf<SortDir>(o.calPanelSortDir, SORT_DIRS, DEFAULT_OPTIONS.calPanelSortDir),
     prioritySwimlanes: typeof o.priority_swimlanes === "boolean" ? o.priority_swimlanes : undefined,
     showEmptyBoardAxes: o.showEmptyBoardAxes !== false,
   };
@@ -71,6 +73,8 @@ export function writeViewOptions(fm: Record<string, unknown>, o: ViewOptions,
   setOrDel("sortDir", o.sortDir, DEFAULT_OPTIONS.sortDir);
   setOrDel("calMode", o.calMode, defaultCalMode);
   setOrDel("calPanel", o.calPanel, DEFAULT_OPTIONS.calPanel);
+  setOrDel("calPanelSort", o.calPanelSort, DEFAULT_OPTIONS.calPanelSort);
+  setOrDel("calPanelSortDir", o.calPanelSortDir, DEFAULT_OPTIONS.calPanelSortDir);
   setOrDel("showEmptyBoardAxes", o.showEmptyBoardAxes, DEFAULT_OPTIONS.showEmptyBoardAxes);
   if (typeof o.prioritySwimlanes === "boolean") fm.priority_swimlanes = o.prioritySwimlanes;
   else delete fm.priority_swimlanes;   // absent = Area enabled / Project disabled

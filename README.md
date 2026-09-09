@@ -111,6 +111,8 @@ Add tasks at the speed of thought. The quick-add modal understands plain sentenc
 
 > `Write report tomorrow p1 #work`
 > `Write report ~1h30m tomorrow p1 #work`
+> `Write report +tomorrow at 9am ~1h30m *p1 #work`
+> `Submit report due Friday`
 > `Bericht schreiben morgen um 07:30 #arbeit`
 > `Escribir informe mañana #importante`
 
@@ -122,15 +124,16 @@ Recognized tokens are stripped from the title automatically:
 
 | What | Examples |
 | --- | --- |
-| **Date** | `today`, `tomorrow`, `day after tomorrow`, `in 3 days`, `next week`, `next monday`, a bare weekday (`friday`), `3 Jul` / `July 3rd`, `20.06.2026`, `06/20/2026`, `2026-06-20` |
+| **Deadline** | `today`, `tomorrow`, `due Friday`, `day after tomorrow`, `in 3 days`, `next week`, `next monday`, a bare weekday (`friday`), `3 Jul` / `July 3rd`, `20.06.2026`, `06/20/2026`, `2026-06-20` |
+| **Scheduled / When** | `+tomorrow`, `+tomorrow at 9am`, `+9am` (today) |
 | **Time** | `at 7:30`, `7:30`, `7pm`, `at 7`, `um 20.15`, `um 2015` (four digits and the dot form need `at`/`um` in front — otherwise `Sort photos from 2015` would become a time) |
 | **Recurrence** | `every day`, `daily`, `every week`, `weekly`, `every 3 days`, `every 2 weeks`, `every 3 months`, `yearly` |
-| **Priority** | `p1`–`p4` or `!1`–`!4` |
+| **Priority** | `p1`–`p4`, `!1`–`!4`, or Marvin-style `*p1`–`*p4` |
 | **Label** | `#work` — any label, created on the fly |
 | **Project** | `@project` — existing projects and areas only |
 | **Estimate** | `~30m`, `~1h`, `~1h30m`, `~1.5h` |
 
-A time or a recurrence without a date is anchored to **today**: a time needs a day to be shown and saved, and a recurrence without a date would never come back.
+A time or a recurrence without a date is anchored to **today**: a time needs a day to be shown and saved, and a recurrence without a date would never come back. Prefix a date or time with `+` when it is planned work rather than a deadline; scheduled work is stored as a separate time block.
 
 **Not recognized** (use the chips instead): reminders, status and parent.
 

@@ -1,4 +1,5 @@
-// Quick-Entry-Parser (zweisprachig). Zerlegt Freitext in { title, faellig, time, tags, priority }.
+// Gemeinsamer Natural-Language-Parser fuer alle Erfassungsflaechen. Zerlegt Freitext in Titel,
+// Deadline, geplante Arbeit, Labels, Projekt, Schaetzung, Wiederholung und Prioritaet.
 // Erkennt inline #Labels, gängige Datumsphrasen, Uhrzeiten und Prioritäten (DE + EN);
 // gibt den um die erkannten Token bereinigten Titel zurück. Portiert aus tasks-ui.js.
 //
@@ -8,7 +9,7 @@
 // Satzzeichen des Nutzers, nicht Syntax). Siehe mask() unten.
 import { Chrono } from "chrono-node";
 import { chronoFallback } from "./chronoLocale";
-import { Priority } from "./types";
+import { Priority, ScheduleDraft } from "./types";
 import { firstOccurrence } from "./recurrence";
 
 const z = (n: number) => String(n).padStart(2, "0");
@@ -111,7 +112,10 @@ export interface QuickEntry {
   title: string; faellig: string; time: string; tags: string[]; priority: Priority | null; project: string | null;
   estimate: number | null;
   recurrence: string | null;
-  faelligSrc: string; timeSrc: string; recurSrc: string; estimateSrc: string;
+  /** Marvin-kompatibles `+datum`: geplante Arbeit statt Deadline. Zeit leer = ganztägig. */
+  scheduleDate: string; scheduleTime: string;
+  faelligSrc: string; timeSrc: string; scheduleDateSrc: string; scheduleTimeSrc: string;
+  recurSrc: string; estimateSrc: string;
 }
 
 // `projects` = bekannte Projekt-/Bereichsnamen. Nur damit wird @Projekt erkannt (Zuordnung nur
@@ -121,7 +125,7 @@ export interface QuickEntry {
 // `chronos` = Rückfall-Parser für Sprachen, die die Regeln hier nicht können. Für de/en/tr leer,
 // dort ändert sich nichts. Hereingereicht statt intern geholt -> ohne Locale-Zustand testbar.
 export function parseQuickEntry(raw: string, projects: string[] = [], now: Date = new Date(),
-                                chronos: Chrono[] = chronoFallback()): QuickEntry {
+                                chronos: Chrono[] = chronoFallback(), scheduleEnabled = true): QuickEntry {
   let text = " " + (raw || "") + " ";
 
   // Wörtlichen Text ausblenden – muss VOR jeder Regel laufen (auch vor den Labels, damit
@@ -337,14 +341,14 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
   });
 
   // Uhrzeit, Teil 2: ohne Vorwort („07:30", „7 uhr", „7pm"). Erster Treffer gewinnt.
-  grabTime(/(?:^|\s)(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?![a-z])/i, (m) => { let h = +m[1] % 12; if (m[3].toLowerCase() === "pm") h += 12; return hm(h, m[2] ? +m[2] : 0); });
-  grabTime(/(?:^|\s)(\d{1,2}):(\d{2})(?!\d)/, (m) => hm(+m[1], +m[2]));
+  grabTime(/(?:^|[\s+])(?:(?:at|um)\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?![a-z])/i, (m) => { let h = +m[1] % 12; if (m[3].toLowerCase() === "pm") h += 12; return hm(h, m[2] ? +m[2] : 0); });
+  grabTime(/(?:^|[\s+])(\d{1,2}):(\d{2})(?!\d)/, (m) => hm(+m[1], +m[2]));
   grabTime(/(?:^|\s)(?:um|at)\s*(\d{1,2})(?:\s*uhr)?(?![\d:])/i, (m) => hm(+m[1], 0));
   grabTime(/(?:^|\s)(\d{1,2})\s*uhr(?!\d)/i, (m) => hm(+m[1], 0));
 
-  // Priorität: „p1"–„p4" bzw. „!1"–„!4". p1 = höchste.
+  // Priorität: „p1"–„p4", „!1"–„!4" und Marvin-kompatibel „*p1"–„*p4". p1 = höchste.
   let priority: Priority | null = null;
-  const pm = text.match(/(?:^|\s)[p!]([1-4])(?![\wäöüßÄÖÜ])/i);
+  const pm = text.match(/(?:^|\s)(?:\*p|[p!])([1-4])(?![\wäöüßÄÖÜ])/i);
   if (pm) { priority = (["highest", "high", "medium", "normal"] as Priority[])[+pm[1] - 1]; text = text.replace(pm[0], " "); }
 
   // Rücktausch NACH dem Kollabieren der Leerzeichen: eigene Formatierung im geschützten Text bleibt.
@@ -359,7 +363,73 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
   // an, die nichts tut.
   if (recurrence) faellig = firstOccurrence(recurrence, faellig || iso(now)) ?? faellig;
 
-  return { title: unmask(text.replace(/\s{2,}/g, " ").trim()), faellig, time, tags: [...new Set(tags)], priority, project, estimate, recurrence, faelligSrc, timeSrc, recurSrc, estimateSrc };
+  // Explizite Datumsziele werden ERST nach der normalen Datums-/Zeit-Erkennung geroutet. So bleibt
+  // genau ein Satz Regeln fuer „morgen", Monatsnamen, lokalisierte chrono-Treffer und Uhrzeiten.
+  // Der Modifier muss direkt vor dem erkannten Datum oder der erkannten Uhrzeit stehen; dadurch
+  // bleibt etwa „due diligence tomorrow" ein Titel mit einer normalen Tomorrow-Deadline.
+  const directive = (kind: "schedule" | "due", src: string): string => {
+    if (!src) return "";
+    const body = src.trim().split(/\s+/).map(rxEsc).join("\\s+");
+    const head = kind === "schedule" ? "\\+\\s*" : "due\\s+";
+    const m = raw.match(new RegExp("(?:^|\\s)(" + head + body + ")(?=$|[^\\p{L}\\p{N}])", "iu"));
+    return m?.[1] ?? "";
+  };
+
+  let scheduleDate = "", scheduleTime = "", scheduleDateSrc = "", scheduleTimeSrc = "";
+  if (scheduleEnabled) {
+    const plusDate = directive("schedule", faelligSrc);
+    const plusTime = directive("schedule", timeSrc);
+    if ((plusDate || plusTime) && (faellig || time)) {
+      scheduleDate = faellig || iso(now);
+      scheduleTime = time;
+      scheduleDateSrc = plusDate || faelligSrc;
+      scheduleTimeSrc = plusTime || timeSrc;
+      // Bei „+ tomorrow" bleibt das Plus nach dem Datumstreffer allein stehen. „+tomorrow" wird
+      // schon als fuehrendes Grenzzeichen zusammen mit dem Datum entfernt.
+      text = text.replace(/(?:^|\s)\+(?=\s|$)/, " ");
+      faellig = ""; time = ""; faelligSrc = ""; timeSrc = "";
+    }
+  }
+
+  if (!scheduleDate) {
+    const dueDate = directive("due", faelligSrc);
+    const dueTime = directive("due", timeSrc);
+    if (dueDate || dueTime) {
+      text = text.replace(re("due"), " ");
+      if (dueDate) faelligSrc = dueDate;
+      if (dueTime) timeSrc = dueTime;
+    }
+  }
+
+  let title = unmask(text.replace(/\s{2,}/g, " ").trim());
+  // Ein Task kann sowohl geplant als auch faellig sein. Der Kernparser nimmt absichtlich nur den
+  // ersten freien Datums-/Zeit-Treffer; wenn der bereinigte Rest noch den ANDEREN expliziten
+  // Modifier enthaelt, laeuft derselbe Parser genau einmal auf diesem Rest und beide Ziele werden
+  // zusammengefuehrt. Unmarkierte zweite Datumswoerter bleiben Titeltext.
+  const wantsSchedule = !scheduleDate && /(?:^|\s)\+\s*\S/u.test(raw);
+  const wantsDue = !faellig && /(?:^|\s)due\s+\S/iu.test(raw);
+  if (wantsSchedule || wantsDue) {
+    const extra = parseQuickEntry(title, projects, now, chronos, scheduleEnabled);
+    let used = false;
+    if (wantsSchedule && extra.scheduleDate) {
+      scheduleDate = extra.scheduleDate; scheduleTime = extra.scheduleTime;
+      scheduleDateSrc = extra.scheduleDateSrc; scheduleTimeSrc = extra.scheduleTimeSrc;
+      used = true;
+    }
+    if (wantsDue && extra.faellig && /^due(?:\s|$)/i.test(extra.faelligSrc)) {
+      faellig = extra.faellig; time = extra.time;
+      faelligSrc = extra.faelligSrc; timeSrc = extra.timeSrc;
+      used = true;
+    }
+    if (used) title = extra.title;
+  }
+
+  return {
+    title, faellig, time,
+    scheduleDate, scheduleTime, scheduleDateSrc, scheduleTimeSrc,
+    tags: [...new Set(tags)], priority, project, estimate, recurrence,
+    faelligSrc, timeSrc, recurSrc, estimateSrc,
+  };
 }
 
 // ── Parse-Ergebnis auf die Eingabefelder anwenden ──
@@ -373,10 +443,15 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
  *  im Titel escapen soll (Wort bleibt Text) statt das Feld nur zu leeren. */
 export interface QuickEntryState {
   labels: string[]; project: string | null;
-  dueSrc: string; timeSrc: string; recurSrc: string; estimateSrc: string;
+  dueSrc: string; timeSrc: string; scheduleDateSrc: string; scheduleTimeSrc: string;
+  recurSrc: string; estimateSrc: string;
   dueFromTitle: boolean;   // f.due stammt aus dem Titel (Datumswort ODER Anker) -> darf zurueck
+  scheduleFromTitle: boolean;
 }
-export const emptyQuickEntryState = (): QuickEntryState => ({ labels: [], project: null, dueSrc: "", timeSrc: "", recurSrc: "", estimateSrc: "", dueFromTitle: false });
+export const emptyQuickEntryState = (): QuickEntryState => ({
+  labels: [], project: null, dueSrc: "", timeSrc: "", scheduleDateSrc: "", scheduleTimeSrc: "",
+  recurSrc: "", estimateSrc: "", dueFromTitle: false, scheduleFromTitle: false,
+});
 
 /** Setzt vor jedes Wort der Auslöser einen Backslash – das ✕ am Datums-Chip tippt ihn also für den
  *  Nutzer. Pro Wort statt Anführungszeichen ums Ganze: die blieben sonst im Titel stehen.
@@ -411,17 +486,21 @@ export interface QuickEntryOptions {
                                     // Bezugspunkt für ALLES: auch „morgen" im Text rechnet dagegen.
   projects?: string[];              // bekannte Projekt-/Bereichsnamen ([] = kein @Projekt-Erkennen)
   defaultProject?: string | null;   // Fallback, wenn ein erkanntes @Projekt wieder entfernt wird
+  schedule?: ScheduleDraft | null;       // geplanter Block lebt ausserhalb des Task-Frontmatters
+  schedulePinned?: boolean;         // manuell gesetzt/geleert -> Titel ueberschreibt ihn nicht
+  scheduleEnabled?: boolean;        // false fuer Flaechen, die keine Zeitbloecke speichern koennen
 }
 
 /** `raw` -> bereinigter Titel + neue Feldwerte + neuer Zustand. Mutiert nichts. */
 export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: QuickEntryState,
-                                opts: QuickEntryOptions): { title: string; fields: QuickEntryFields; state: QuickEntryState } {
-  if (!opts.enabled || opts.frozen) return { title: raw, fields, state };
+                                opts: QuickEntryOptions): { title: string; fields: QuickEntryFields; state: QuickEntryState; schedule: ScheduleDraft | null } {
+  if (!opts.enabled || opts.frozen) return { title: raw, fields, state, schedule: opts.schedule ?? null };
   // Ein Bezugspunkt für den ganzen Aufruf: „morgen" im Text und der Uhrzeit-Default unten rechnen
   // gegen dasselbe Datum. Lokale Mitternacht (nicht Date.parse) – wie iso() im Parser.
   const [y, mo, d] = opts.today.split("-").map(Number);
-  const p = parseQuickEntry(raw, opts.projects ?? [], new Date(y, mo - 1, d));
+  const p = parseQuickEntry(raw, opts.projects ?? [], new Date(y, mo - 1, d), chronoFallback(), opts.scheduleEnabled !== false);
   const f: QuickEntryFields = { ...fields };
+  let schedule = opts.schedule ?? null;
 
   // Was der letzte Lauf AUS DEM TITEL gesetzt hat, gehört dem Titel: verschwindet der Auslöser,
   // verschwindet der Wert. Ohne das klebt beim Tippen von „um 2015" der Zwischenstand „um 20"
@@ -434,8 +513,10 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
   }
   if (state.recurSrc) f.recurrence = null;
   if (state.estimateSrc) f.estimate = null;
+  if (!opts.schedulePinned && state.scheduleFromTitle) schedule = null;
 
-  let dueSrc = "", timeSrc = "", recurSrc = "", estimateSrc = "", dueFromTitle = false;
+  let dueSrc = "", timeSrc = "", scheduleDateSrc = "", scheduleTimeSrc = "";
+  let recurSrc = "", estimateSrc = "", dueFromTitle = false, scheduleFromTitle = false;
   if (!opts.duePinned && p.faellig) { f.due = p.faellig; dueSrc = p.faelligSrc; dueFromTitle = true; }
   // Eine Uhrzeit impliziert einen Tag: ohne Datum wäre sie unsichtbar (der Datums-Chip prüft
   // `!!due`) und ginge beim Speichern verloren (nur mit Datum wird kombiniert). Default heute.
@@ -446,6 +527,14 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
   }
   if (p.priority) f.priority = p.priority;
   if (p.estimate) { f.estimate = p.estimate; estimateSrc = p.estimateSrc; }
+  if (!opts.schedulePinned && p.scheduleDate) {
+    if (p.scheduleTime) {
+      const start = new Date(`${p.scheduleDate}T${p.scheduleTime}`);
+      if (!Number.isNaN(start.getTime())) schedule = { start: start.toISOString(), duration: f.estimate && f.estimate > 0 ? f.estimate : 30 };
+    } else schedule = { allDay: true, date: p.scheduleDate };
+    scheduleDateSrc = p.scheduleDateSrc; scheduleTimeSrc = p.scheduleTimeSrc;
+    scheduleFromTitle = !!schedule;
+  }
   // Wiederholung folgt dem Muster der Priorität (kein „pin"): steht sie im Text, gewinnt der Text.
   // Zurückgenommen wird sie über das ✕ am Chip, das den Auslöser escapt.
   // Wie die Uhrzeit braucht sie einen Anker: ohne Datum liefert recurrence.ts keine nächste
@@ -473,5 +562,9 @@ export function applyQuickEntry(raw: string, fields: QuickEntryFields, state: Qu
   const parsed = [...new Set(p.tags)].filter((tag) => !manual.includes(tag));
   f.labels = [...manual, ...parsed];
 
-  return { title: p.title, fields: f, state: { labels: parsed, project, dueSrc, timeSrc, recurSrc, estimateSrc, dueFromTitle } };
+  return {
+    title: p.title, fields: f, schedule,
+    state: { labels: parsed, project, dueSrc, timeSrc, scheduleDateSrc, scheduleTimeSrc,
+      recurSrc, estimateSrc, dueFromTitle, scheduleFromTitle },
+  };
 }

@@ -25,7 +25,8 @@ import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen,
 import { DayEvent, bucketEvents, addDays, addMonths } from "./calendarModel";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath, openBoardMoveMenu } from "./taskMenu";
-import { PRIOS, TaskModal } from "./taskModal";
+import { TaskModal } from "./taskModal";
+import { KANBAN_PRIOS, PRIOS } from "./chips";
 import { isOpen, isDone, isTrashed, boardStatuses, statusLabel, statusTint, firstOpenStatus, StatusKind } from "./statuses";
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { tip, tipWhenClipped } from "./tooltip";
@@ -1491,11 +1492,11 @@ function labelColumns(plugin: OpalTasksPlugin, tasks: Task[], add: BoardAdd): Bo
 }
 
 
-/** Prioritäts-Spalten (Gruppierung = Priorität): eine Spalte je Stufe (P1–P4); Ziehen setzt die
+/** Prioritäts-Spalten (Gruppierung = Priorität): niedrigste links (P4→P1); Ziehen setzt die
  *  Priorität. low/lowest fallen unter „normal" (P4). */
 function priorityColumns(plugin: OpalTasksPlugin, add: BoardAdd): BoardColumn[] {
   const eff = (p: Priority): Priority => (p === "low" || p === "lowest") ? "normal" : p;
-  return PRIOS.map((p) => ({
+  return KANBAN_PRIOS.map((p) => ({
     id: p.value, title: t(p.key), tint: p.color, kind: "open",
     has: (tk: Task) => eff(tk.priority) === p.value,
     onDrop: (tk: Task) => { if (eff(tk.priority) !== p.value) void plugin.setTaskPriority(tk, p.value); },
@@ -1812,7 +1813,7 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
   const groupKey = opts.group === "label" ? "label" : opts.group === "priority" ? "priority" : opts.group === "project" ? "project"
     : opts.group === "date" || opts.group === "deadline" ? opts.group : "status";
   // Only labels and projects have a board-local order. Status is configured centrally; priority
-  // is P1–P4 and dates are chronological.
+  // is fixed lowest-to-highest (P4→P1) and dates are chronological.
   const reorderable = groupKey === "label" || groupKey === "project";
   // Spalten aus den SICHTBAREN Karten ableiten: sonst entstünde eine Label-/Projekt-Spalte für
   // eine Unteraufgabe, die im kompakten Modus gar keine Karte hat – eine leere Spalte ohne Grund.
