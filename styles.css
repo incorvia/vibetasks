@@ -2155,7 +2155,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   gap: 10px;
 }
 .bt-unified-board.is-tablet .bt-kanban-col { min-width: 220px; }
-@media (max-width: 700px) { .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 24px); } }
+@media (max-width: 700px) { .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 12px); } }
 
 /* ── Status-Editor (ListManager-Tab „Status") ── */
 .bt-view .bt-manage-hint { color: var(--text-faint); font-size: var(--font-ui-smaller); margin: 2px 2px 14px; }
@@ -2813,6 +2813,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-board-cell-content > .bt-task, .bt-area-project-card {
   border: 1px solid var(--bt-line-faint); border-radius: 8px; background: var(--bt-board-card-bg); padding: 7px;
 }
+.bt-area-project-card, .bt-area-project-section { container-type: inline-size; }
 .bt-board-cell-content > .bt-task { cursor: grab; }
 .bt-area-project-card.is-dragging { opacity: .45; }
 .bt-area-project-head { display: flex; align-items: center; gap: 7px; min-height: 32px; cursor: pointer; }
@@ -2834,6 +2835,24 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-section {
   margin: var(--bt-content-group-gap) 0 0;
   border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px;
+}
+
+/* A project card can be narrow even in a wide desktop pane (for example inside a Kanban cell),
+   so its header must respond to the card rather than only to the viewport. Keep the identity and
+   add action on the first row and give project metadata its own row before it can crush the title. */
+@container (max-width: 700px) {
+  .bt-area-project-head {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
+    align-items: center; column-gap: 7px; row-gap: 6px;
+  }
+  .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+  .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+  .bt-area-project-title {
+    grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+  .bt-area-project-add { grid-column: 4; grid-row: 1; }
 }
 
 /* Tablet selects one priority but retains every status column. Mobile selects one status and,
@@ -3558,7 +3577,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 @media (max-width: 700px) {
   /* Narrow desktop panes use the same compact header grammar as mobile. */
-  .bt-view .bt-sizer { max-width: calc(100% - 24px); }
+  .bt-view .bt-sizer { max-width: calc(100% - 12px); }
   .bt-view .bt-page-top { padding: 6px 0 4px; }
   .bt-view > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
   .bt-view .bt-page-top .bt-board-head {
@@ -3578,7 +3597,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
   .bt-view .bt-anzeige { width: 40px; min-width: 40px; padding-inline: 0; justify-content: center; }
   .bt-view > .bt-inline-new.bt-task-modal {
-    max-width: calc(100% - 24px);
+    max-width: calc(100% - 12px);
   }
   .bt-area-project-head {
     display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
@@ -3615,8 +3634,18 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-view.bt-mobile {
   --bt-page-content-gap: 1.25em;
   --bt-content-group-gap: 1.6em;
+  /* Declare the view's native scroll axis up front so Obsidian's horizontal sidebar recognizer
+     does not compete with WebKit for the first part of a swipe and leave vertical scrolling
+     latched after a cancelled gesture. */
+  touch-action: pan-y;
+  /* Obsidian temporarily locks the active pane while sliding a mobile sidebar. A cancelled slide
+     can otherwise leave this custom view non-scrollable and route every downward drag into the
+     global pull-down action as though the list were still at its top edge. */
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
-.bt-view.bt-mobile .bt-sizer { width: calc(100% - 24px); max-width: calc(100% - 24px); }
+.bt-view.bt-mobile .bt-sizer { width: calc(100% - 12px); max-width: calc(100% - 12px); }
 .bt-view.bt-mobile .bt-page-top { padding: 6px 0 4px; }
 .bt-view.bt-mobile > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
 .bt-view.bt-mobile .bt-page-top .bt-board-head {

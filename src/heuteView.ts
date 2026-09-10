@@ -632,7 +632,9 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
       menu.showAtPosition({ x: rect.left, y: rect.bottom });
       return;
     }
-    openHeaderNewTask(ctx, root, add, isInbox ? undefined : name, undefined, false, addDue(ctx), meta?.workflowStatus, meta?.priority, meta?.id);
+    // A project's own workflow state describes the project, not the first state of a task created
+    // inside it. In particular, an in-progress project must still create a to-do task here.
+    openHeaderNewTask(ctx, root, add, isInbox ? undefined : name, undefined, false, addDue(ctx), firstOpenStatus(), meta?.priority, meta?.id);
   };
   const heading = ctx.embedded && meta
     ? top.createDiv({ cls: "bt-project-embed-identity" })
@@ -654,7 +656,7 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   pageHeader(top, ctx, heading,
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded && !meta, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
-  if (!ctx.embedded && meta) projectNotePreview(root, plugin, meta.path);
+  if (!ctx.embedded && meta && ctx.opts.layout !== "calendar") projectNotePreview(root, plugin, meta.path);
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
@@ -1175,14 +1177,18 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
     });
 
     const actions = head.createDiv({ cls: "bt-head-actions bt-mobile-head-actions" });
-    const today = actions.createEl("button", { cls: "bt-mobile-head-today", attr: { "aria-label": t("cal_today") } });
-    setIcon(today, "calendar-check");
-    tip(today, t("cal_today"));
-    today.onclick = (event) => {
-      event.stopPropagation();
-      if (ctx.opts.layout === "calendar") resetCalendarToToday(ctx);
-      else ctx.open({ kind: "view", key: "heute" });
-    };
+    // Projects and areas are already selected through the mobile sidebar. Their calendar shortcut
+    // unexpectedly left that context for Today (and duplicated the calendar's own Today control).
+    if (pageInfo(ctx.page).kind !== "project") {
+      const today = actions.createEl("button", { cls: "bt-mobile-head-today", attr: { "aria-label": t("cal_today") } });
+      setIcon(today, "calendar-check");
+      tip(today, t("cal_today"));
+      today.onclick = (event) => {
+        event.stopPropagation();
+        if (ctx.opts.layout === "calendar") resetCalendarToToday(ctx);
+        else ctx.open({ kind: "view", key: "heute" });
+      };
+    }
     if (opts.onAdd) {
       const add = actions.createEl("button", { cls: "bt-page-add" });
       add.setAttr("aria-label", t("btn_add_task"));
