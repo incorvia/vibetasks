@@ -22,8 +22,12 @@ The service validates timestamps and whole-minute durations and prevents allocat
 - `startBlock(blockId, selectedTaskId?)` resolves the block scope and returns `started`, `selection_required`, or `empty`.
 - `completeTask`, `completeActive`, and `skip` contain the shared timer/Blitz transition behavior.
 - `active`, `recover`, and the conflict methods expose the one-timer-per-vault state machine.
+- `recordTime(taskId, { started_at, ended_at })` adds finished work with task/project/area snapshots.
+- `editRecordedTime(sessionId, { started_at, ended_at }, expected?)` corrects a finished session, recalculates elapsed seconds, and moves it to its new local start-date log when needed. Active sessions, invalid or reversed timestamps, future end times, and stale edits are rejected. Identity, task, block, and hierarchy snapshots stay attached to the record.
 
 Timers always resolve to a task. Completing a task delegates the task-status transition to the host, so recurrence, completion timestamps, and future-schedule cleanup remain in the task domain.
+
+The **Open time dashboard** command opens or reveals a persistent workspace tab with a weekly overview, day/month/custom ranges, period navigation, tracked/planned totals, daily activity, and area/project grouping. Its selected range and Overview/Time records tab survive workspace restoration. **Time records** provides search, pagination, and editing. **Start timer** and **Log time** use the same services as other entry points. Dashboard totals include running sessions and attribute each complete entry to its local start date; all-day schedules do not contribute planned minutes. Search filters the record list while summary cards continue to describe the selected period.
 
 ## Storage boundary
 

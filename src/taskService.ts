@@ -10,8 +10,8 @@ import { t } from "./i18n";
 import { newUlid, repositoryFor, rfc3339Now, updateRecord } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { entityIcon } from "./entityPresentation";
-export { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID, OPAL_PROJECT_IDS, OPAL_PROJECT_IDS_NOT } from "./stableRelationships";
-import { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./stableRelationships";
+export { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID, OPAL_PROJECT_IDS, OPAL_PROJECT_IDS_NOT, OPAL_NOTE_ID, OPAL_SOURCE_NOTE_ID } from "./stableRelationships";
+import { OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID, OPAL_SOURCE_NOTE_ID } from "./stableRelationships";
 
 export const slugify = (s: string): string =>
   s.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || "Task";
@@ -122,6 +122,7 @@ export interface TaskFields {
   sortOrder?: number | null; // manuelle Position (sort_order). Normalfall: weglassen -> lazy, kein
                              // Feld. Nur gesetzt, wenn eine Reihenfolge bewusst materialisiert wird
                              // (z. B. beim Duplizieren eines Unterbaums), s. filterEngine.planReorder.
+  sourceNoteId?: string | null; // provenance for a line converted inside an ordinary note
 }
 
 /**
@@ -319,6 +320,7 @@ export async function createTaskNote(app: App, settings: OpalTasksSettings, f: T
     estimate: f.estimate ?? null,
     [OPAL_PROJECT_ID]: projectId,
     [OPAL_PARENT_ID]: parentId,
+    [OPAL_SOURCE_NOTE_ID]: f.sourceNoteId,
     // If an old target has not received an ID yet, retain a resolvable legacy link. The repair
     // migration will replace it after assigning the target an ID.
     project: projectId ? null : legacyRelationshipLink(f.project),

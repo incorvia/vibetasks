@@ -36,6 +36,7 @@ jobs:
             main.js
             manifest.json
             styles.css
+            THIRD_PARTY_NOTICES.md
 
       - name: Create GitHub release
         env:
@@ -45,4 +46,4 @@ jobs:
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            main.js manifest.json styles.css
+            main.js manifest.json styles.css THIRD_PARTY_NOTICES.md

@@ -1,6 +1,6 @@
 import { App, Component, TFile } from "obsidian";
 import { Task, Priority, OpalTasksSettings } from "./types";
-import { archivedProjectNames, isInboxName, isProjectType, resolveProjectPath, baseName, isUnderFolder, folderPrefix, isUnderPrefix, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
+import { archivedProjectNames, isInboxName, isProjectType, resolveProjectPath, baseName, isUnderFolder, folderPrefix, isUnderPrefix, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_SOURCE_NOTE_ID } from "./taskService";
 import { isKnownStatus, isOpen, isDone, isTrashed, firstOpenStatus } from "./statuses";
 import { titleKey, fmTitle, firstH1, resolveTitle } from "./taskTitle";
 import { fieldKey, labelKey } from "./fieldNames";
@@ -40,6 +40,14 @@ export interface IndexScope {
 export const TASK_SCOPE: IndexScope = { typeValue: "task", restrictTo: () => MDBASE_COLLECTION_ROOT };
 export const TEMPLATE_SCOPE: IndexScope = { typeValue: "template", restrictTo: (s) => s.templatesFolder };
 
+/** Cached project completion numbers used by the sidebar progress indicator. */
+export interface ProjectTaskProgress {
+  readonly done: number;
+  readonly total: number;
+}
+
+const EMPTY_PROJECT_PROGRESS: ProjectTaskProgress = { done: 0, total: 0 };
+
 /** Dünne, reaktive Schicht über metadataCache. Liest Aufgaben aus dem geparsten
  *  Frontmatter (kein eigenes Datei-Lesen/Parsen). Inkrementell über Events. */
 export class TaskIndex extends Component {
@@ -76,6 +84,7 @@ export class TaskIndex extends Component {
   // die Aufrufer mutieren die Ergebnisse nicht (sie filtern/sortieren stets in Kopien).
   private openCache: Task[] | null = null;
   private projectCache: Map<string, Task[]> | null = null;   // Projekt-Basename -> offene Aufgaben
+  private projectProgressCache: Map<string, ProjectTaskProgress> | null = null; // Projekt-Basename -> erledigt/gesamt
   private labelCache: Map<string, Task[]> | null = null;     // Label -> offene Aufgaben
   private orderKeyCache: Map<string, number[]> | null = null;   // Pfad -> Positionskette (s. orderKey)
   private childCache: Map<string, Task[]> | null = null;     // Eltern-Pfad -> Unteraufgaben (s. byParentMap)
@@ -84,6 +93,7 @@ export class TaskIndex extends Component {
   private invalidate(): void {
     this.openCache = null;
     this.projectCache = null;
+    this.projectProgressCache = null;
     this.labelCache = null;
     this.orderKeyCache = null;
     this.childCache = null;
@@ -390,6 +400,7 @@ export class TaskIndex extends Component {
       completed: typeof fm.completed === "string" ? fm.completed : null,   // voller Zeitstempel (Uhrzeit für Erledigt-Sortierung)
       cancelled: typeof fm.cancelled === "string" ? fm.cancelled : null,   // voller Zeitstempel (Uhrzeit für Papierkorb-Sortierung)
       externalId: fm.external_id != null ? String(fm.external_id) : null,
+      sourceNoteId: typeof fm[OPAL_SOURCE_NOTE_ID] === "string" ? fm[OPAL_SOURCE_NOTE_ID] : null,
     };
   }
 
@@ -459,6 +470,31 @@ export class TaskIndex extends Component {
   }
   byProject(path: string): Task[] {
     return this.byProjectMap().get(baseName(path)) ?? [];
+  }
+
+  /**
+   * Erledigt/Gesamt je Projekt für die Sidebar. Die Notizen werden dafür NICHT neu gelesen:
+   * Beim ersten Zugriff nach einer Änderung läuft genau ein Durchgang über die bereits geparsten
+   * Aufgaben im Index, danach ist jeder Projektzugriff O(1). Abgebrochene Aufgaben zählen wie in
+   * den übrigen Fortschrittsanzeigen weder zum Nenner noch zum Zähler.
+   */
+  private projectProgressMap(): Map<string, ProjectTaskProgress> {
+    if (this.projectProgressCache) return this.projectProgressCache;
+    const progress = new Map<string, { done: number; total: number }>();
+    for (const task of this.byPath.values()) {
+      if (!task.project || isTrashed(task.status)) continue;
+      const name = baseName(task.project);
+      const current = progress.get(name) ?? { done: 0, total: 0 };
+      current.total++;
+      if (isDone(task.status)) current.done++;
+      progress.set(name, current);
+    }
+    this.projectProgressCache = progress;
+    return progress;
+  }
+
+  projectProgress(path: string): ProjectTaskProgress {
+    return this.projectProgressMap().get(baseName(path)) ?? EMPTY_PROJECT_PROGRESS;
   }
 
   /** ALLE Aufgaben eines Projekts/Bereichs – JEDER Status (auch erledigt/abgebrochen) UND auch aus

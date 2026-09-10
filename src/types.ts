@@ -66,6 +66,8 @@ export interface Task {
   completed: string | null;
   cancelled: string | null;
   externalId: string | null;
+  /** Present only for tasks created by converting a line in an ordinary note. */
+  sourceNoteId?: string | null;
 }
 
 /**
@@ -202,6 +204,8 @@ export interface OpalTasksSettings {
   defaultCalendarView: import("./calendarModel").CalMode; // Kalender-Modus für Seiten ohne eigene Wahl
   calendarTaskColorMode: import("./calendarTaskColor").CalendarTaskColorMode; // Farbe geplanter Aufgaben im Kalender
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
+  showInlineConvertButtons: boolean; // opt-in hover affordance; command remains available
+  enableTaskLinkOverlays: boolean;   // interactive task widgets in Live Preview/Reading mode
   showUnfiledInInbox: boolean;    // projektlose offene Aufgaben (auch handgeschriebene type:task-Notizen) im Eingang zeigen
   excludeFolders: string[];       // Ordner-Präfixe: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen)
   chipsIconsOnly: boolean;         // In der Aufgaben-Maske nur die Chip-Icons zeigen (ohne Text)
@@ -269,6 +273,8 @@ export const DEFAULT_SETTINGS: OpalTasksSettings = {
   defaultCalendarView: "3day",
   calendarTaskColorMode: "priority",
   parseNaturalLanguage: true,
+  showInlineConvertButtons: false,
+  enableTaskLinkOverlays: true,
   showUnfiledInInbox: true,
   excludeFolders: [],
   chipsIconsOnly: false,

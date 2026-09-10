@@ -9,11 +9,16 @@ const LOCALES = ["en", "de", "es", "pt", "fr", "tr", "zh", "ru", "ja", "it"];
 const KEYS = ["menu_open_new_tab", "menu_open_right", "menu_open_window", "plan_open"];
 const PROJECT_NOTE_KEYS = [
   "cmd_project_from_note", "menu_project_from_note", "menu_open_opal_project",
-  "notice_project_from_note", "notice_project_from_note_failed",
+  "notice_project_from_note", "notice_project_from_note_reconciled", "notice_project_from_note_failed",
   "notice_project_note_required", "notice_project_record_already", "project_notes", "project_notes_add",
 ];
 const PROJECT_LIFECYCLE_KEYS = ["nav_recently_completed", "project_completed_notice"];
 const BOARD_DISPLAY_KEYS = ["panel_show_empty_board_axes"];
+const INLINE_TASK_KEYS = [
+  "cmd_convert_inline_task", "set_inline_convert", "set_inline_convert_desc",
+  "set_inline_overlays", "set_inline_overlays_desc", "notice_inline_line_changed",
+  "notice_inline_create_failed", "notice_inline_schedule_failed",
+];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -97,6 +102,21 @@ describe("Board display options: translated in every locale", () => {
     for (const locale of LOCALES.filter((value) => value !== "en")) {
       setLocale(locale);
       for (const [index, key] of BOARD_DISPLAY_KEYS.entries()) {
+        expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
+        expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
+      }
+    }
+    setLocale("en");
+  });
+});
+
+describe("Inline tasks: translated in every locale", () => {
+  it("does not silently fall back to English", () => {
+    setLocale("en");
+    const en = INLINE_TASK_KEYS.map((key) => t(key));
+    for (const locale of LOCALES.filter((value) => value !== "en")) {
+      setLocale(locale);
+      for (const [index, key] of INLINE_TASK_KEYS.entries()) {
         expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
         expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
       }

@@ -1,5 +1,16 @@
 import { isAllDaySchedule, type Task, type TimeBlock, type TimeScope, type WorkSession } from "./types";
 import { ActiveTimer, TimerService, TimeStore } from "./timeService";
+import { newUlid } from "./mdbaseRepository";
+
+export interface RecordedTimeInput { started_at: string; ended_at: string }
+
+function recordedTime(input: RecordedTimeInput): Required<Pick<WorkSession, "started_at" | "ended_at" | "elapsed">> {
+  const start = Date.parse(input.started_at), end = Date.parse(input.ended_at);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error("Choose valid start and end times.");
+  if (end <= start) throw new Error("End time must be after start time.");
+  if (end > Date.now()) throw new Error("Recorded time cannot end in the future.");
+  return { started_at: new Date(start).toISOString(), ended_at: new Date(end).toISOString(), elapsed: Math.round((end - start) / 1000) };
+}
 
 export interface WorkTimerHost {
   taskById(id: string): Task | undefined;
@@ -43,6 +54,26 @@ export class WorkTimerService {
 
   stop(): Promise<WorkSession | null> { return this.sessions.stop(); }
   pause(): Promise<WorkSession | null> { return this.stop(); }
+
+  async recordTime(taskId: string, input: RecordedTimeInput): Promise<void> {
+    const timing = recordedTime(input);
+    const task = this.host.taskById(taskId);
+    if (!task) throw new Error("This task no longer exists.");
+    await this.store.addSession({
+      ...await this.host.snapshotsForTask(task), id: newUlid(), task_id: task.id,
+      task_title_snapshot: task.title, device_id: "manual", ...timing,
+    });
+  }
+
+  async editRecordedTime(id: string, input: RecordedTimeInput, expected?: RecordedTimeInput): Promise<void> {
+    const session = this.store.session(id);
+    if (!session) throw new Error("This time record no longer exists.");
+    if (!session.ended_at || this.active()?.session_id === id) throw new Error("Stop the timer before editing this record.");
+    if (expected && (session.started_at !== expected.started_at || session.ended_at !== expected.ended_at)) {
+      throw new Error("This record changed while you were editing. Reopen it to load the latest version.");
+    }
+    await this.store.updateSession(id, recordedTime(input));
+  }
 
   async resume(taskId: string, blockId?: string): Promise<WorkSession> { return this.startTask(taskId, blockId); }
 

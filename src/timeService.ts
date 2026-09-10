@@ -10,7 +10,7 @@ const localDate = (value: Date | string): string => {
 };
 const asArray = <T>(value: unknown): T[] => Array.isArray(value) ? value as T[] : [];
 export const blockKind = (block: TimeBlock): TimeBlock["kind"] => {
-  const legacy = block as TimeBlock & { kind?: TimeBlock["kind"] };
+  const legacy: { kind?: TimeBlock["kind"] } = block;
   return legacy.kind ?? (block.source === "drag" && block.scope.type === "task" ? "task_schedule" : "allocation");
 };
 type MutableBlockShape = TimeBlock & { allDay?: boolean; date?: string; start?: string; duration?: number };
@@ -18,7 +18,7 @@ const normalizeBlock = (block: TimeBlock): TimeBlock => {
   const value = { ...block, kind: blockKind(block) } as MutableBlockShape;
   if (isAllDaySchedule(value)) { delete value.start; delete value.duration; }
   else { delete value.date; delete value.allDay; }
-  return value as TimeBlock;
+  return value;
 };
 export const timeBlockDate = (block: TimeBlock): string => isAllDaySchedule(block) ? block.date : localDate(block.start);
 export const timeLogPath = (date: string): string => collectionPath(`time/${date.slice(0, 4)}/${date}.md`);
@@ -160,7 +160,7 @@ export class TimeStore extends Component {
   }
 
   async addBlock(input: NewTimeBlock): Promise<TimeBlock> {
-    const block = normalizeBlock({ ...input, id: newUlid(), status: "planned" } as TimeBlock);
+    const block = normalizeBlock({ ...input, id: newUlid(), status: "planned" });
     await this.mutate(timeBlockDate(block), (blocks) => blocks.push(block)); return block;
   }
   async updateBlock(id: string, patch: TimeBlockPatch): Promise<void> {
@@ -184,6 +184,35 @@ export class TimeStore extends Component {
     });
   }
   async addSession(session: WorkSession): Promise<void> { await this.mutate(localDate(session.started_at), (_b, sessions) => sessions.push(session)); }
+  async updateSession(id: string, patch: Pick<WorkSession, "started_at" | "ended_at" | "elapsed">): Promise<void> {
+    const log = this.logs().find((entry) => entry.sessions.some((session) => session.id === id));
+    if (!log) throw new Error("This time record no longer exists.");
+    const original = log.sessions.find((session) => session.id === id)!;
+    const updated = { ...original, ...patch };
+    const destination = localDate(updated.started_at);
+    if (destination === log.date) {
+      await this.mutate(log.date, (_blocks, sessions) => {
+        const index = sessions.findIndex((session) => session.id === id);
+        if (index < 0) throw new Error("This time record no longer exists.");
+        sessions[index] = { ...sessions[index], ...patch };
+      });
+      return;
+    }
+    // Write the destination first so a failed write cannot lose the original record.
+    await this.mutate(destination, (_blocks, sessions) => { sessions.push(updated); });
+    try {
+      await this.mutate(log.date, (_blocks, sessions) => {
+        const index = sessions.findIndex((session) => session.id === id);
+        if (index >= 0) sessions.splice(index, 1);
+      });
+    } catch (error) {
+      await this.mutate(destination, (_blocks, sessions) => {
+        const index = sessions.findIndex((session) => session.id === id);
+        if (index >= 0) sessions.splice(index, 1);
+      });
+      throw error;
+    }
+  }
   async mergeLog(log: Pick<TimeLog, "date" | "blocks" | "sessions">): Promise<void> {
     await this.mutate(log.date, (blocks, sessions) => {
       const blockIds = new Set(blocks.map((b) => b.id)), sessionIds = new Set(sessions.map((s) => s.id));

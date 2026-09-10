@@ -18,6 +18,8 @@ import { combineDT } from "./format";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
 import { TimeBlockModal } from "./timeBlockModal";
+import { DEFAULT_CRITERIA } from "./filterEngine";
+import { pageInfo } from "./pageCtx";
 
 
 /** Icon-Button einer Schnellzeile (Datum/Priorität). Liefert den Button für Sonderfälle. */
@@ -199,6 +201,26 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     holdPath = null;
     doc.querySelectorAll<HTMLElement>(holdSel).forEach((el) => el.removeClass("bt-menu-hold"));
   });
+}
+
+/** The same task menu for widgets embedded in Markdown, which do not own a dashboard PageCtx. */
+export function showInlineTaskMenu(plugin: OpalTasksPlugin, task: Task, x: number, y: number, doc: Document): void {
+  const page = plugin.activePage() ?? { kind: "view" as const, key: "heute" };
+  const info = pageInfo(page);
+  const ctx: PageCtx = {
+    plugin, id: "inline-task", page, pageKey: info.key, embedded: true,
+    opts: plugin.pageOptions(page), crit: { ...DEFAULT_CRITERIA, ...plugin.pageCriteria(page) },
+    filter: (tasks) => tasks, titleComp: null,
+    doneTab: "done", manageTab: "active", doneCollapsed: true,
+    setDoneTab: () => {}, setManageTab: () => {}, setDoneCollapsed: () => {},
+    redraw: () => plugin.renderAll(),
+    open: (target) => { void plugin.openOrActivatePage(target); },
+    setOption: (patch) => { void plugin.setPageOption(page, patch); },
+    setCriteria: (patch) => { void plugin.setPageCriteria(page, patch); },
+    setLayout: () => {}, setCalPanel: () => {},
+    resetOptions: () => { void plugin.resetPageOptions(page); },
+  };
+  showTaskMenu(ctx, task, x, y, doc);
 }
 
 /**

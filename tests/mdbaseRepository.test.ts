@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TFile, parseYaml, stringifyYaml } from "obsidian";
 import { bindRepository, MdbaseRepository, MdbaseRepositoryError, upgradedAllDayScheduleTypeDocument } from "../src/mdbaseRepository";
-import { TimeStore } from "../src/timeService";
+import { TimeStore, timeLogPath } from "../src/timeService";
 import { createTaskNote } from "../src/taskService";
 import type { OpalTasksSettings } from "../src/types";
 
@@ -59,6 +59,39 @@ function fakeApp() {
 }
 
 describe("MdbaseRepository", () => {
+  it("moves edited work to the correct daily log while preserving identity and snapshots", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+    const store = new TimeStore(fake.app);
+    const session = { id: "s1", task_id: "t1", task_title_snapshot: "Original title", device_id: "d1", block_id: "b1",
+      project_id_snapshot: "p1", started_at: "2026-01-06T10:00:00Z", ended_at: "2026-01-06T10:30:00Z", elapsed: 1800 };
+    await store.addSession(session);
+    await store.addSession({ ...session, id: "s2" });
+    await store.updateSession("s1", { started_at: "2026-01-07T11:00:00Z", ended_at: "2026-01-07T12:00:00Z", elapsed: 3600 });
+    expect(store.session("s1")).toMatchObject({ ...session, started_at: "2026-01-07T11:00:00Z", ended_at: "2026-01-07T12:00:00Z", elapsed: 3600 });
+    expect(store.logs().find((log) => log.date === "2026-01-06")?.sessions.map((item) => item.id)).toEqual(["s2"]);
+    expect(store.sessionsFor("project", "p1")).toHaveLength(2);
+    expect((await repository.read(timeLogPath("2026-01-07")))?.frontmatter.sessions).toEqual([store.session("s1")]);
+    await store.updateSession("s1", { started_at: "2026-01-07T11:00:00Z", ended_at: "2026-01-07T11:15:00Z", elapsed: 900 });
+    expect(store.sessions()).toHaveLength(2);
+    expect(store.totals("2026-01-07", "2026-01-07").actual).toBe(15);
+  });
+
+  it("retains the original time record if writing a new date fails", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+    const store = new TimeStore(fake.app);
+    const session = { id: "s1", task_id: "t1", task_title_snapshot: "Draft", device_id: "d1",
+      started_at: "2026-01-06T10:00:00Z", ended_at: "2026-01-06T10:30:00Z", elapsed: 1800 };
+    await store.addSession(session);
+    fake.vault.create = async () => { throw new Error("Disk unavailable"); };
+    await expect(store.updateSession("s1", { started_at: "2026-01-07T11:00:00Z", ended_at: "2026-01-07T12:00:00Z", elapsed: 3600 })).rejects.toThrow("Disk unavailable");
+    expect(store.session("s1")).toEqual(session);
+    expect((await repository.read(timeLogPath("2026-01-06")))?.frontmatter.sessions).toEqual([session]);
+  });
+
   it("keeps a preallocated task identity for create-and-schedule workflows", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);

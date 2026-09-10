@@ -12,15 +12,16 @@ import { t } from "./i18n";
 import { newUlid, repositoryFor, rfc3339Now } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
 import { migratedDeadline } from "./timingMigration";
-import { OPAL_AREA_ID, OPAL_PARENT_ID, OPAL_PROJECT_ID } from "./stableRelationships";
+import { OPAL_AREA_ID, OPAL_PARENT_ID, OPAL_PROJECT_ID, OPAL_SOURCE_NOTE_ID } from "./stableRelationships";
 
 const EXPORT_FORMAT = "opal_tasks";
-const EXPORT_VERSION = 6;
+const EXPORT_VERSION = 7;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
 // v4 = kanonisches Zeitmodell · v5 = Beziehungen per stabiler ID und neue lokale IDs beim Import.
 // v6 = completion timestamp for the three-day completed-project grace period.
+// v7 = inline-task source-note provenance.
 //
 // Die Zahl ist eine ANGABE, keine Schranke: `parseExport` prüft sie bewusst nicht. Ältere Dateien
 // bleiben lesbar (die neuen Felder sind optional und fehlen dann einfach), und eine v3-Datei lässt
@@ -32,6 +33,7 @@ const EXPORT_VERSION = 6;
 export interface ExportTask {
   id: string;
   externalId: string | null;
+  sourceNoteId?: string | null;
   title: string;
   status: TaskStatus;
   priority: Priority;
@@ -174,6 +176,7 @@ export function toExportTask(tk: Task, body = ""): ExportTask {
   return {
     id: tk.id,
     externalId: tk.externalId,
+    sourceNoteId: tk.sourceNoteId ?? null,
     title: tk.title,
     status: tk.status,
     priority: tk.priority,
@@ -249,6 +252,7 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
     estimate: et.estimate ?? et.duration ?? null,
     [OPAL_PROJECT_ID]: Object.prototype.hasOwnProperty.call(ids, "projectId") ? ids.projectId : et.projectId ?? null,
     [OPAL_PARENT_ID]: Object.prototype.hasOwnProperty.call(ids, "parentId") ? ids.parentId : et.parentId ?? null,
+    [OPAL_SOURCE_NOTE_ID]: et.sourceNoteId ?? null,
     labels: et.labels ?? [],
     recurrence: et.recurrence ?? null,
     recur_basis: et.recurrence && et.recurBasis === "done" ? "done" : null,

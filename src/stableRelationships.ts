@@ -7,6 +7,10 @@ import { titleKey } from "./taskTitle";
 export const OPAL_PROJECT_ID = "opal_project_id";
 export const OPAL_PARENT_ID = "opal_parent_id";
 export const OPAL_AREA_ID = "opal_area_id";
+/** Stable identity for an ordinary note that owns inline-created tasks. */
+export const OPAL_NOTE_ID = "opal_note_id";
+/** Stable identity of the ordinary note an inline task originated in. */
+export const OPAL_SOURCE_NOTE_ID = "opal_source_note_id";
 export const OPAL_PROJECT_IDS = "opal_project_ids";
 export const OPAL_PROJECT_IDS_NOT = "opal_project_ids_not";
 export const OPAL_INCLUDE_INBOX = "opal_include_inbox";

@@ -47,13 +47,14 @@ import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
 import { ensureLinkedProjectEmbeds, isLinkedCollectionNote, linkedNoteEntryLine, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
 import { migrateTimingFields } from "./timingMigration";
 import { TimeStore, TimerService } from "./timeService";
-import { TimeDashboardModal } from "./timeDashboard";
+import { TimeDashboardView, VIEW_TIME_DASHBOARD } from "./timeDashboard";
 import { TimerConflictModal } from "./timerConflictModal";
 import { TimeBlockModal } from "./timeBlockModal";
 import { SchedulingService } from "./schedulingService";
 import { WorkTimerService } from "./workTimerService";
 import { migrateStableRelationships } from "./stableRelationships";
 import { AutomationTaskCreate, AutomationTaskPatch, OpalTasksAutomationApi } from "./automationApi";
+import { canConvertEditorLine, convertEditorLine, ensureInlineNoteId, inlineTaskEditorExtensions, processReadingModeTaskLinks, readInlineNoteFrontmatter, reconcileInlineTasks, ReconcileResult } from "./inlineTasks";
 
 /** Eigene Icons. addIcon() erwartet Inhalt für ein viewBox="0 0 100 100"; die Pfade sind auf
  *  einem 24er-Raster gezeichnet und werden deshalb um 100/24 skaliert.
@@ -172,6 +173,8 @@ export default class OpalTasksPlugin extends Plugin {
     this.timeStore = new TimeStore(this.app); this.addChild(this.timeStore);
     this.timerSessions = new TimerService(this.app, this.timeStore); this.addChild(this.timerSessions);
     this.scheduling = new SchedulingService(this.timeStore, (id) => this.index.getById(id));
+    this.registerEditorExtension(inlineTaskEditorExtensions(this));
+    this.registerMarkdownPostProcessor((el, context) => processReadingModeTaskLinks(this, el, context));
     this.workTimer = new WorkTimerService(this.timerSessions, this.timeStore, {
       taskById: (id) => this.index.getById(id),
       tasksForScope: (scope) => this.tasksForTimeScope(scope),
@@ -272,6 +275,7 @@ export default class OpalTasksPlugin extends Plugin {
 
     this.registerView(VIEW_MAIN, (leaf: WorkspaceLeaf) => new MainView(leaf, this));
     this.registerView(VIEW_NAV, (leaf: WorkspaceLeaf) => new NavView(leaf, this));
+    this.registerView(VIEW_TIME_DASHBOARD, (leaf: WorkspaceLeaf) => new TimeDashboardView(leaf, this));
     // Bei „Seitenvorschau" als Quelle anmelden: erscheint dort in den Einstellungen und folgt der
     // Strg-Vorgabe des Nutzers. defaultMod:false, weil das Icon der ausdrückliche Auslöser ist –
     // ein Strg-Zwang wäre hier unnötige Reibung (auf einem Wikilink im Text gilt weiter die Vorgabe).
@@ -331,6 +335,16 @@ export default class OpalTasksPlugin extends Plugin {
     // sie tun dasselbe wie der „+ Aufgabe"-Knopf unter dem Seitentitel. Siehe addContext().
     this.addCommand({ id: "new-task", name: t("cmd_new_task"), callback: () => this.openNewTaskHere() });
     this.addCommand({ id: "quick-add", name: t("cmd_quick_add"), callback: () => this.openQuickAddHere() });
+    this.addCommand({
+      id: "convert-inline-task", name: t("cmd_convert_inline_task"),
+      editorCheckCallback: (checking, editor, context) => {
+        const file = context.file;
+        const line = editor.getCursor().line;
+        const eligible = canConvertEditorLine(this, editor, file, line);
+        if (eligible && !checking && file) void convertEditorLine(this, editor, file, line);
+        return eligible;
+      },
+    });
     // Aktuelle Notiz zur Aufgabe machen: setzt `type: task` (+ id/created) – ohne YAML von Hand.
     // Nur sichtbar, wenn eine Markdown-Notiz offen ist, die noch keine Aufgabe ist.
     this.addCommand({
@@ -374,7 +388,7 @@ export default class OpalTasksPlugin extends Plugin {
     this.addCommand({ id: "search", name: t("cmd_search"), callback: () => this.openSearch() });
     this.addCommand({ id: "whats-new", name: t("cmd_whatsnew"), callback: () => new WhatsNewModal(this).open() });
     this.addCommand({ id: "gcal-sync-now", name: t("cmd_gcal_sync_now"), callback: () => void this.gcalSync.syncNow() });
-    this.addCommand({ id: "time-dashboard", name: "Open time dashboard", callback: () => new TimeDashboardModal(this).open() });
+    this.addCommand({ id: "time-dashboard", name: "Open time dashboard", callback: () => void this.activateTimeDashboard() });
     this.addCommand({ id: "new-time-block", name: "New time block", callback: () => new TimeBlockModal(this, new Date()).open() });
     this.addCommand({ id: "resolve-timer-conflicts", name: "Resolve timer conflicts", checkCallback: (checking) => {
       const conflicted = this.workTimer?.needsResolution(); if (conflicted && !checking) new TimerConflictModal(this).open(); return conflicted;
@@ -555,6 +569,16 @@ export default class OpalTasksPlugin extends Plugin {
     const start: PageRef = this.newTabStartPage();
     for (const v of this.mainViews()) if (samePage(v.page, page)) v.openPage(start);
     this.renderAll();
+  }
+
+  async activateTimeDashboard(): Promise<void> {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(VIEW_TIME_DASHBOARD)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getLeaf("tab");
+      await leaf.setViewState({ type: VIEW_TIME_DASHBOARD, active: true });
+    } else await leaf.loadIfDeferred();
+    await workspace.revealLeaf(leaf);
   }
 
   async activateNav(): Promise<void> {
@@ -1310,9 +1334,10 @@ export default class OpalTasksPlugin extends Plugin {
   /** Shared execution/error path for the command palette and note options menu. */
   private async runNoteProjectAction(note: TFile, action: Exclude<NoteProjectAction, null>): Promise<void> {
     try {
-      const projectPath = await this.createProjectFromNote(note);
-      if (action.kind === "open") await this.openOrActivatePage({ kind: "project", key: projectPath });
-      else new Notice(t("notice_project_from_note"));
+      const created = await this.createProjectFromNote(note);
+      new Notice(t("notice_project_from_note_reconciled", created.reconciliation.moved,
+        created.reconciliation.unchanged, created.reconciliation.trashed, created.reconciliation.failed));
+      if (action.kind === "open") await this.openOrActivatePage({ kind: "project", key: created.path });
     } catch (error) {
       console.error("Opal Tasks: failed to create embedded project", error);
       new Notice(t("notice_project_from_note_failed"));
@@ -1320,15 +1345,17 @@ export default class OpalTasksPlugin extends Plugin {
   }
 
   /** Create or repair a canonical project record while leaving the source note in place. */
-  async createProjectFromNote(note: TFile): Promise<string> {
+  async createProjectFromNote(note: TFile): Promise<{ path: string; reconciliation: ReconcileResult }> {
     const cache = this.app.metadataCache.getFileCache(note);
+    const noteId = await ensureInlineNoteId(this.app, note);
+    const freshFm = await readInlineNoteFrontmatter(this.app, note);
     const title = projectTitleFromNote(
-      fmTitle(cache?.frontmatter?.[titleKey()]),
+      fmTitle(freshFm[titleKey()]),
       firstH1(cache?.headings) ?? null,
       note.basename,
     );
     const [projects, areas] = await Promise.all([this.repository.list("project"), this.repository.list("area")]);
-    const identity = linkedProjectIdentity(cache?.frontmatter?.[OPAL_PROJECT_ID], [...projects, ...areas], newUlid);
+    const identity = linkedProjectIdentity(freshFm[OPAL_PROJECT_ID], [...projects, ...areas], newUlid);
     const id = identity.id;
     let projectPath = identity.path ?? undefined;
     if (!projectPath) {
@@ -1355,7 +1382,8 @@ export default class OpalTasksPlugin extends Plugin {
     }
     await this.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => { fm[OPAL_PROJECT_ID] = id; });
     await this.app.vault.process(note, (content) => ensureLinkedProjectEmbeds(content, id));
-    return projectPath;
+    const reconciliation = await reconcileInlineTasks(this, note, noteId, id);
+    return { path: projectPath, reconciliation };
   }
 
   /** Resolve the user-facing note attached to a canonical project or area record. */

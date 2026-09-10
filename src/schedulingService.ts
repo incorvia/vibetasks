@@ -67,7 +67,7 @@ export class SchedulingService {
     if (existing) {
       const updated = { ...values, status: "planned" as const };
       await this.store.updateBlock(existing.id, updated);
-      return { ...updated, id: existing.id, source: existing.source } as TimeBlock;
+      return { ...updated, id: existing.id, source: existing.source };
     }
     return this.store.addBlock({ ...values, source: input.source ?? "manual" });
   }

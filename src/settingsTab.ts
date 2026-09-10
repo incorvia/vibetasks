@@ -219,6 +219,16 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
       tg.setValue(p.settings.parseNaturalLanguage).onChange(async (v) => { p.settings.parseNaturalLanguage = v; await p.saveSettings(); }));
 
+    new Setting(containerEl).setName(t("set_inline_convert")).setDesc(t("set_inline_convert_desc")).addToggle((tg) =>
+      tg.setValue(p.settings.showInlineConvertButtons).onChange(async (v) => {
+        p.settings.showInlineConvertButtons = v; await p.saveSettings(); p.app.workspace.updateOptions();
+      }));
+
+    new Setting(containerEl).setName(t("set_inline_overlays")).setDesc(t("set_inline_overlays_desc")).addToggle((tg) =>
+      tg.setValue(p.settings.enableTaskLinkOverlays).onChange(async (v) => {
+        p.settings.enableTaskLinkOverlays = v; await p.saveSettings(); p.app.workspace.updateOptions();
+      }));
+
     new Setting(containerEl).setName(t("set_show_unfiled")).setDesc(t("set_show_unfiled_desc")).addToggle((tg) =>
       tg.setValue(p.settings.showUnfiledInInbox).onChange(async (v) => {
         p.settings.showUnfiledInInbox = v;

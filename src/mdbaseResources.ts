@@ -60,6 +60,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     estimate: { type: "integer", minimum: 1 },
     opal_project_id: { type: "string", minLength: 1 },
     opal_parent_id: { type: "string", minLength: 1 },
+    opal_source_note_id: { type: "string", minLength: 1 },
     labels: { type: "array", uniqueItems: true, items: { type: "string", minLength: 1 } },
     recurrence: { type: "string", minLength: 1 },
     recur_basis: { enum: ["due", "done"] },

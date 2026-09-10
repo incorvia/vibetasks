@@ -19,6 +19,7 @@ const AUFGABE: Task = {
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
   created: "2026-07-01T08:00:00", completed: null, cancelled: null, externalId: "ext-1",
+  sourceNoteId: "note-source-1",
 };
 
 const LISTE: ProjItem = {
@@ -44,6 +45,7 @@ describe("Aufgabe → Export → Frontmatter", () => {
     expect(fm.start).toBeUndefined();
     expect(fm.opal_project_id).toBe("project-1");
     expect(fm.opal_parent_id).toBe("task-parent-1");
+    expect(fm.opal_source_note_id).toBe("note-source-1");
     expect(fm.project).toBeUndefined();
     expect(fm.parent).toBeUndefined();
     expect(fm.labels).toEqual(["ui", "bug"]);
@@ -148,11 +150,11 @@ describe("Alte Exporte bleiben lesbar", () => {
   });
 });
 
-describe("Exportformat v6", () => {
-  it("uses stable IDs and advertises version 6", () => {
+describe("Exportformat v7", () => {
+  it("uses stable IDs, preserves inline provenance, and advertises version 7", () => {
     const task = toExportTask(AUFGABE);
-    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(6);
-    expect(task).toMatchObject({ id: "t-abc", projectId: "project-1", parentId: "task-parent-1" });
+    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(7);
+    expect(task).toMatchObject({ id: "t-abc", projectId: "project-1", parentId: "task-parent-1", sourceNoteId: "note-source-1" });
     expect(task).not.toHaveProperty("project");
     expect(task).not.toHaveProperty("parent");
   });

@@ -98,7 +98,7 @@ export function installCheckDelegation(root: HTMLElement, plugin: OpalTasksPlugi
 
 /** Status-Kontextmenü der Checkbox: To-Do · In Arbeit · Erledigt · (Abbrechen → Papierkorb).
  *  Setzt den Status live (setTaskStatus kümmert sich um Zeitstempel/Wiederholung). */
-export function showStatusMenu(plugin: OpalTasksPlugin, task: Task, x: number, y: number): void {
+export function showStatusMenu(plugin: OpalTasksPlugin, task: Task, x: number, y: number, doc?: Document): void {
   const menu = new Menu();
   for (const s of allStatuses()) {
     if (s.kind === "cancelled") menu.addSeparator();   // Abbrechen von den Arbeits-Status trennen
@@ -112,5 +112,5 @@ export function showStatusMenu(plugin: OpalTasksPlugin, task: Task, x: number, y
       });
     });
   }
-  menu.showAtPosition({ x, y });
+  menu.showAtPosition({ x, y }, doc);
 }

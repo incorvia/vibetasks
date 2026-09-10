@@ -154,6 +154,23 @@ The ✕ simply writes that backslash for you: `Dentist tomorrow` → ✕ → `De
 
 Prefer full control? Open the Todoist-style task editor with its chip row for due date, estimate, priority, labels, recurrence, reminder and parent — and **show, hide or reorder those chips** to taste (separately for quick add and the full editor).
 
+### Inline tasks in ordinary notes
+
+Put the cursor on a checkbox, list item, blockquote, heading, or non-empty prose line and run
+**Convert current line to Opal task**. Opal creates the canonical task note first, parses the same
+dates, schedule, priority, estimate, labels, recurrence, and project syntax as quick capture, then
+replaces the source text with an Obsidian-native link. Completed checkboxes create completed tasks.
+
+Links to Opal task notes become interactive controls in Live Preview and Reading mode: complete or
+reopen from the status circle, open the task editor from the title, modifier-click through to the
+task note, or right-click/long-press for the normal Opal task menu. Put the cursor in a Live Preview
+widget to reveal and edit its original Markdown link. Conversion buttons can be enabled separately
+in settings; the command is always available.
+
+When an ordinary note becomes an Opal project companion, inline tasks that originated in that note
+and are still linked there are assigned to the project. Manually inserted links, removed links, and
+links copied into another note do not transfer ownership.
+
 ### Reminders
 Attach one or more reminders to a task — either **relative** (“at time of task”, 10 min / 30 min / 1 h / 1 day before) or an **absolute** date & time. When a reminder is due, Opal Tasks shows a **system notification** on desktop (even when Obsidian is in the background) and an in-app notice; clicking it opens the task.
 
@@ -391,8 +408,9 @@ operations, validation behavior and change subscriptions.
 | Open Today / Upcoming / Recurring / Done | Jump straight to a view |
 | New task | Open the full task editor |
 | Quick add task | Fast natural-language capture |
+| Convert current line to Opal task | Create a task record and replace the current note line with its link |
 | New time block | Reserve calendar time for a task, project, or area |
-| Open time dashboard | Compare planned, estimated, and actual time |
+| Open time dashboard | Review tracked vs. planned time, start timers, log past work, and edit time records |
 | Resolve timer conflicts | Resolve concurrent sessions found after vault sync |
 | Turn current note into a task | Make the open note a task — adds frontmatter only, never touches your text |
 | Search tasks | Fuzzy search |
@@ -480,4 +498,5 @@ Found a bug or want a feature? Please [open an issue](https://github.com/incorvi
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). Adapted third-party code and pinned upstream revisions
+are listed in [Third-party notices](THIRD_PARTY_NOTICES.md).

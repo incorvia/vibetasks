@@ -59,6 +59,13 @@ describe("applyQuickEntry – Determinismus", () => {
 });
 
 describe("applyQuickEntry – Marvin-kompatible Modifier", () => {
+  it("keeps @project text literal when project parsing is disabled by a companion note", () => {
+    const r = run("Report @OtherProject tomorrow", { o: { projects: [] } });
+    expect(r.title).toBe("Report @OtherProject");
+    expect(r.fields.project).toBeNull();
+    expect(r.fields.due).toBe(MORGEN);
+  });
+
   it("erstellt aus +datum eine ganztägige Planung ohne Deadline", () => {
     const r = run("Bericht +tomorrow");
     expect(r.title).toBe("Bericht");

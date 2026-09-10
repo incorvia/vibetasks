@@ -35,6 +35,7 @@ import { boardProjection, BoardProjection, isCompactPane } from "./responsive";
 import { boardStatusAxes, visibleBoardAxes } from "./boardAxes";
 import { linkedNoteExcerpt } from "./linkedProjectNote";
 import { blockKind } from "./timeService";
+import type { ProjectTaskProgress } from "./taskIndex";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -2745,6 +2746,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
 // ── Linke Navigation ─────────────────────────────────────────────
 interface NavItemOpts {
   cls?: string; icon: string; iconColor?: string | null; label: string; count?: number; countKey?: string;
+  progress?: ProjectTaskProgress; progressKey?: string;
   suffix?: string;
   active?: boolean; onClick: () => void; onContext?: (e: MouseEvent) => void; onDropTask?: (task: Task) => void;
   /** Wohin der Eintrag führt. Nur dafür da, Strg-/Mittelklick zu bedienen – der normale Klick
@@ -2752,6 +2754,15 @@ interface NavItemOpts {
   page?: PageRef;
   depth?: number;
   toggle?: { collapsed: boolean; onToggle: () => void };
+}
+
+/** Paint/update a project completion pie without replacing sidebar DOM. */
+function paintProjectProgress(el: HTMLElement, progress: ProjectTaskProgress): void {
+  const percentage = progress.total ? (progress.done / progress.total) * 100 : 0;
+  el.style.setProperty("--bt-nav-progress", `${percentage}%`);
+  el.classList.toggle("is-empty", progress.total === 0);
+  el.classList.toggle("is-complete", progress.total > 0 && progress.done === progress.total);
+  tip(el, t("subtasks_progress", progress.done, progress.total));
 }
 
 /** Div klick- UND tastaturbedienbar machen (role=button/tabindex kommen vom Aufrufer):
@@ -2765,17 +2776,24 @@ function activate(el: HTMLElement, handler: () => void): void {
 function navItem(c: HTMLElement, plugin: OpalTasksPlugin, o: NavItemOpts): void {
   const item = c.createDiv({ cls: "bt-nav-item" + (o.active ? " is-active" : "") + (o.cls ? " " + o.cls : ""), attr: { role: "button", tabindex: "0" } });
   if (o.depth) item.style.setProperty("--bt-nav-depth", String(o.depth));
-  const ic = item.createSpan({
-    cls: "bt-nav-ic" + (o.toggle ? " bt-nav-tree-toggle" : ""),
-    ...(o.toggle ? { attr: { role: "button", tabindex: "0", "aria-expanded": String(!o.toggle.collapsed) } } : {}),
-  });
-  setIcon(ic, o.icon);
-  if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
-  if (o.toggle) {
-    tip(ic, t("nav_toggle_section"));
-    const run = (e: Event): void => { e.preventDefault(); e.stopPropagation(); o.toggle?.onToggle(); };
-    ic.onclick = run;
-    ic.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") run(e); };
+  if (o.progress) {
+    const progress = item.createSpan({ cls: "bt-nav-progress" });
+    if (o.iconColor) progress.style.setProperty("--bt-nav-progress-color", o.iconColor);
+    paintProjectProgress(progress, o.progress);
+    if (o.progressKey) navProgresses?.set(o.progressKey, progress);
+  } else {
+    const ic = item.createSpan({
+      cls: "bt-nav-ic" + (o.toggle ? " bt-nav-tree-toggle" : ""),
+      ...(o.toggle ? { attr: { role: "button", tabindex: "0", "aria-expanded": String(!o.toggle.collapsed) } } : {}),
+    });
+    setIcon(ic, o.icon);
+    if (o.iconColor) ic.setCssStyles({ color: o.iconColor });
+    if (o.toggle) {
+      tip(ic, t("nav_toggle_section"));
+      const run = (e: Event): void => { e.preventDefault(); e.stopPropagation(); o.toggle?.onToggle(); };
+      ic.onclick = run;
+      ic.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") run(e); };
+    }
   }
   const lbl = item.createSpan({ cls: "bt-nav-lbl", text: o.label });
   // Langer Name in schmaler Leiste: Tooltip zeigt ihn ganz, statt den Nutzer die Leiste
@@ -2927,7 +2945,10 @@ function navGroupHead(c: HTMLElement, plugin: OpalTasksPlugin, id: string, title
   return collapsed;
 }
 
-interface ReorderEntry { key: string; name: string; icon: string; color: string | null; }
+interface ReorderEntry {
+  key: string; name: string; icon: string; color: string | null;
+  progress?: ProjectTaskProgress; progressKey?: string;
+}
 
 /** Sidebar-Sortiermodus für EINE Sektion: „Fertig"-Leiste + per Griff ziehbare Zeilen.
  *  Bewegt NUR die sichtbaren Einträge; persistiert am Drop über plugin.reorderVisible –
@@ -2944,8 +2965,15 @@ function renderReorderList(c: HTMLElement, plugin: OpalTasksPlugin, sec: NavSect
     const grip = row.createSpan({ cls: "bt-nav-grip", attr: { role: "button", tabindex: "0" } });
     tip(grip, t("menu_reorder"));
     setIcon(grip, "grip-vertical");
-    const ic = row.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, e.icon);
-    if (e.color) ic.setCssStyles({ color: e.color });
+    if (e.progress) {
+      const progress = row.createSpan({ cls: "bt-nav-progress" });
+      if (e.color) progress.style.setProperty("--bt-nav-progress-color", e.color);
+      paintProjectProgress(progress, e.progress);
+      if (e.progressKey) navProgresses?.set(e.progressKey, progress);
+    } else {
+      const ic = row.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, e.icon);
+      if (e.color) ic.setCssStyles({ color: e.color });
+    }
     const lbl = row.createSpan({ cls: "bt-nav-lbl", text: e.name });
     tipWhenClipped(lbl, lbl, e.name);   // im Sortiermodus genauso lang wie sonst
     grip.onkeydown = (ev) => {
@@ -2967,9 +2995,10 @@ function renderReorderList(c: HTMLElement, plugin: OpalTasksPlugin, sec: NavSect
  *  • Die STRUKTUR (welche Einträge, Namen, Farben, aktiver Eintrag, eingeklappte Abschnitte) wird
  *    per Signatur geprüft. Ändert sie sich, läuft der vollständige Neuaufbau wie bisher.
  */
-interface NavMount { sig: string; badges: Map<string, HTMLElement> }
+interface NavMount { sig: string; badges: Map<string, HTMLElement>; progresses: Map<string, HTMLElement> }
 const navMounts = new WeakMap<HTMLElement, NavMount>();
 let navBadges: Map<string, HTMLElement> | null = null;   // aktive Sammlung während renderNavInto
+let navProgresses: Map<string, HTMLElement> | null = null; // aktive Projekt-Fortschrittskreise
 
 /** Alle Zähler der Seitenleiste – dieselben Werte, die renderNavInto einsetzt. */
 /** Sidebar-Badge eines Filters: nur OFFENE Treffer – wie Eingang/Projekte/Labels, die alle offene
@@ -3060,6 +3089,7 @@ export function tryPatchNav(c: HTMLElement, plugin: OpalTasksPlugin): boolean {
     const n = counts.get(key) ?? 0;
     el.setText(n ? String(n) : "");
   }
+  for (const [path, el] of m.progresses) paintProjectProgress(el, plugin.index.projectProgress(path));
   return true;
 }
 
@@ -3083,7 +3113,9 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   const act = plugin.activePage();
   const isActive = (kind: PageRef["kind"], key: string): boolean => !!act && act.kind === kind && act.key === key;
   const badges = new Map<string, HTMLElement>();
+  const progresses = new Map<string, HTMLElement>();
   navBadges = badges;   // navItem trägt seine Zähler-Spans hier ein
+  navProgresses = progresses;
   // EINMAL je Zeichnung berechnet: unten für die Zeilen der jeweiligen Sektion, ganz zum Schluss
   // für die Signatur. `listTemplates` kostet je Wurzel einen Cache-Zugriff, einen Baum-Durchlauf
   // und am Ende ein `localeCompare`-Sortieren, `listProjectsAndAreas`/`listFilters` je einen
@@ -3160,12 +3192,16 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     const sec: NavSection = kind === "area" ? "areas" : "projects";
     const visible = items.filter((x) => !x.hidden);   // in der Verwaltung ausgeblendete weglassen
     if (plugin.reorderSec === sec) {
-      renderReorderList(c, plugin, sec, visible.map((p) => ({ key: p.path, name: p.name, icon: p.icon, color: p.color })));
+      renderReorderList(c, plugin, sec, visible.map((p) => ({
+        key: p.path, name: p.name, icon: p.icon, color: p.color,
+        ...(kind === "project" ? { progress: plugin.index.projectProgress(p.path), progressKey: p.path } : {}),
+      })));
       return;
     }
     for (const p of visible) {
       navItem(c, plugin, {
         cls, depth, toggle: toggleFor?.(p), icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
+        ...(kind === "project" ? { progress: plugin.index.projectProgress(p.path), progressKey: p.path } : {}),
         count: kind === "area" ? tasksInArea(plugin.index.open(), p, projekte).length : plugin.index.byProject(p.path).length, countKey: "p:" + p.path,
         active: isActive("project", p.path), page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
         onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec, key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: kind }); m.showAtMouseEvent(e); },
@@ -3257,6 +3293,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
       for (const p of visibleRecentlyCompleted) {
         navItem(c, plugin, {
           cls: "bt-nav-project bt-nav-project-completed", icon: "check-circle", iconColor: navColor(p.path, p.color),
+          progress: plugin.index.projectProgress(p.path), progressKey: p.path,
           label: p.name, suffix: t("status_done"), active: isActive("project", p.path),
           page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
           onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: "projects", key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: "project" }); m.showAtMouseEvent(e); },
@@ -3331,7 +3368,8 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   }
 
   navBadges = null;
-  navMounts.set(c, { sig: navSignature(plugin, tpls, pa, flts, archivedProjects), badges });
+  navProgresses = null;
+  navMounts.set(c, { sig: navSignature(plugin, tpls, pa, flts, archivedProjects), badges, progresses });
 }
 
 function navCount(plugin: OpalTasksPlugin, id: ViewId): number {

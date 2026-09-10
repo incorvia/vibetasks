@@ -65,6 +65,14 @@ const neuerIndex = (dateien: Datei[]) => {
 };
 
 describe("TaskIndex.ready – leer vs. noch nicht nachgesehen", () => {
+  it("preserves inline source-note provenance from task frontmatter", () => {
+    const { index } = neuerIndex([datei("_opal_tasks/tasks/a.md", {
+      ...aufgabe([]), id: "task-1", opal_source_note_id: "note-1",
+    })]);
+    index.build();
+    expect(index.all()[0].sourceNoteId).toBe("note-1");
+  });
+
   it("ist vor dem ersten Aufbau false, danach true", () => {
     const { index } = neuerIndex([datei("_opal_tasks/tasks/a.md", aufgabe(["health"]))]);
     expect(index.ready).toBe(false);   // NICHT „dieser Vault hat keine Labels"
@@ -142,5 +150,35 @@ describe("Stabile Projektbeziehungen im laufenden Index", () => {
 
     expect(index.get(task.path)?.project).toBe("_opal_tasks/projects/Garden.md");
     expect(index.inbox().map((item) => item.path)).not.toContain(task.path);
+  });
+});
+
+describe("TaskIndex.projectProgress", () => {
+  const project = datei("_opal_tasks/projects/Garden.md", { type: "project", id: "project-garden", title: "Garden" });
+  const task = (name: string, status: string) => datei(`_opal_tasks/tasks/${name}.md`, {
+    type: "task", id: name, title: name, status, labels: [], opal_project_id: "project-garden",
+  });
+
+  it("counts done tasks out of all non-cancelled project tasks", () => {
+    const { index } = neuerIndex([project, task("open", "todo"), task("done", "done"), task("gone", "cancelled")]);
+    index.build();
+    expect(index.projectProgress(project.path)).toEqual({ done: 1, total: 2 });
+  });
+
+  it("invalidates the cached progress when a task changes", () => {
+    const files = [project, task("one", "todo")];
+    const { index, feuern } = neuerIndex(files);
+    index.build();
+    expect(index.projectProgress(project.path)).toEqual({ done: 0, total: 1 });
+
+    files[1].fm = { ...files[1].fm, status: "done" };
+    feuern("mc:changed", files[1]);
+    expect(index.projectProgress(project.path)).toEqual({ done: 1, total: 1 });
+  });
+
+  it("returns an empty progress value for a project without tasks", () => {
+    const { index } = neuerIndex([project]);
+    index.build();
+    expect(index.projectProgress(project.path)).toEqual({ done: 0, total: 0 });
   });
 });
