@@ -98,7 +98,9 @@ interface TimeBlockBase {
   id: string; scope: TimeScope; kind: TimeBlockKind;
   mode: TimeBlockMode; selector: TimeBlockSelector;
   status: "planned" | "completed" | "cancelled";
-  source: "manual" | "drag" | "ai" | "import";
+  source: "manual" | "drag" | "ai" | "auto" | "import";
+  /** User lock against automatic replanning. Missing on older records means false. */
+  pinned?: boolean;
   gcal_event_id?: string; gcal_calendar_id?: string;
 }
 export interface TimedTimeBlock extends TimeBlockBase {
@@ -203,6 +205,8 @@ export interface OpalTasksSettings {
                            // (DeviceState.lastView).
   defaultCalendarView: import("./calendarModel").CalMode; // Kalender-Modus für Seiten ohne eigene Wahl
   calendarTaskColorMode: import("./calendarTaskColor").CalendarTaskColorMode; // Farbe geplanter Aufgaben im Kalender
+  timeMaps?: import("./autoPlanner").TimeMap[]; // reusable weekly availability; missing = built-in weekday default
+  defaultTimeMapId?: string;                    // missing/stale IDs fall back to the built-in default
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
   showInlineConvertButtons: boolean; // opt-in hover affordance; command remains available
   enableTaskLinkOverlays: boolean;   // interactive task widgets in Live Preview/Reading mode

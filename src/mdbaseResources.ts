@@ -86,6 +86,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     status: { enum: ["active", "archived"] },
     priority_swimlanes: { type: "boolean" },
     gcal_sync: { type: "boolean" },
+    time_map: { type: "string", minLength: 1 },
   }, ["status"]),
   filter: extend(common("filter"), {
     layout: { enum: ["list", "board", "calendar"] },
@@ -150,7 +151,8 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
             type: { enum: ["task", "project", "area"] }, id: { type: "string", minLength: 1 }, title_snapshot: { type: "string" },
           } },
           mode: { enum: ["focus", "blitz"] }, selector: { enum: ["manual", "next", "ai"] },
-          status: { enum: ["planned", "completed", "cancelled"] }, source: { enum: ["manual", "drag", "ai", "import"] },
+          status: { enum: ["planned", "completed", "cancelled"] }, source: { enum: ["manual", "drag", "ai", "auto", "import"] },
+          pinned: { type: "boolean" },
           gcal_event_id: { type: "string" }, gcal_calendar_id: { type: "string" },
         } },
     },
@@ -221,7 +223,7 @@ export function typeDocument(type: RecordType): string {
   const frontmatter = {
     kind: "mdbase.type",
     name: type,
-    version: type === "time_log" ? 3 : 2,
+    version: type === "time_log" ? 4 : type === "area" ? 3 : 2,
     description: `Opal Tasks ${type} record`,
     match: { where: { type } },
     schema: { dialect: "json-schema-2020-12", value: DEFAULT_SCHEMAS[type] },

@@ -135,6 +135,35 @@ export function upgradedAllDayScheduleTypeDocument(original: string): string {
   return serializeDocument(parsed.frontmatter, parsed.body);
 }
 
+/** Add auto-plan fields to existing user-owned type documents without replacing custom fields. */
+export function upgradedAutoPlanTypeDocument(original: string, type: "time_log" | "area"): string {
+  const base = type === "time_log" ? upgradedAllDayScheduleTypeDocument(original) : original;
+  let changed = base !== original;
+  const parsed = parseDocument(base);
+  if (parsed.frontmatter.kind !== "mdbase.type" || parsed.frontmatter.name !== type) return original;
+  const schema = parsed.frontmatter.schema as Record<string, unknown> | undefined;
+  const value = schema?.value as Record<string, unknown> | undefined;
+  const properties = value?.properties as Record<string, unknown> | undefined;
+  if (!properties) return original;
+  if (type === "area") {
+    if (!("time_map" in properties)) { properties.time_map = { type: "string", minLength: 1 }; changed = true; }
+    const version = Math.max(Number(parsed.frontmatter.version) || 0, 3);
+    if (parsed.frontmatter.version !== version) { parsed.frontmatter.version = version; changed = true; }
+  } else {
+    const blocks = properties.blocks as Record<string, unknown> | undefined;
+    const items = blocks?.items as Record<string, unknown> | undefined;
+    const itemProperties = items?.properties as Record<string, unknown> | undefined;
+    if (!itemProperties) return original;
+    const source = itemProperties.source as Record<string, unknown> | undefined;
+    if (Array.isArray(source?.enum) && !source.enum.includes("auto")) { source.enum.push("auto"); changed = true; }
+    else if (!source) { itemProperties.source = { enum: ["manual", "drag", "ai", "auto", "import"] }; changed = true; }
+    if (!("pinned" in itemProperties)) { itemProperties.pinned = { type: "boolean" }; changed = true; }
+    const version = Math.max(Number(parsed.frontmatter.version) || 0, 4);
+    if (parsed.frontmatter.version !== version) { parsed.frontmatter.version = version; changed = true; }
+  }
+  return changed ? serializeDocument(parsed.frontmatter, parsed.body) : original;
+}
+
 function revisionOf(file: TFile): string {
   return `${file.stat.mtime}:${file.stat.size}`;
 }
@@ -302,7 +331,10 @@ export class MdbaseRepository extends Component {
 
   async initialize(): Promise<CollectionInitResult> {
     try {
-      return await this.initializeCollection();
+      const initial = await this.initializeCollection();
+      if (!initial.ready) return initial;
+      const changed = await this.upgradeAutoPlanTypeDocuments();
+      return changed ? await this.initializeCollection() : initial;
     } catch (error) {
       // Collection setup must never take the whole Obsidian plugin down. In
       // particular, keep the command palette (including diagnostics) available
@@ -321,6 +353,24 @@ export class MdbaseRepository extends Component {
       console.error("Opal Tasks: mdbase initialization failed", error);
       return this.status();
     }
+  }
+
+  private async upgradeAutoPlanTypeDocuments(): Promise<boolean> {
+    let changed = false;
+    for (const type of ["time_log", "area"] as const) {
+      const path = typeResourcePath(type), file = this.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) continue;
+      const original = await this.app.vault.read(file), next = upgradedAutoPlanTypeDocument(original, type);
+      if (next !== original) { await this.app.vault.modify(file, next); changed = true; }
+    }
+    return changed;
+  }
+
+  /** Recheck the additive auto-plan schema immediately before its first write. */
+  async ensureAutoPlanSchema(): Promise<void> {
+    await this.upgradeAutoPlanTypeDocuments();
+    const result = await this.initializeCollection();
+    if (!result.ready) throw new MdbaseRepositoryError("collection_not_ready", "The Opal Tasks mdbase collection is not ready", result.issues);
   }
 
   private async initializeCollection(): Promise<CollectionInitResult> {

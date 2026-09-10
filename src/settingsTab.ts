@@ -10,6 +10,8 @@ import { t } from "./i18n";
 import { tip } from "./tooltip";
 import { CAL_MODES, CalMode } from "./calendarModel";
 import { CalendarTaskColorMode } from "./calendarTaskColor";
+import { DEFAULT_TIME_MAP, type TimeMap, type TimeMapRange } from "./autoPlanner";
+import { listProjectsAndAreas } from "./taskService";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
@@ -215,6 +217,8 @@ export class OpalTasksSettingTab extends PluginSettingTab {
         p.renderAll();
       });
     });
+
+    this.renderTimeMaps(containerEl);
 
     new Setting(containerEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
       tg.setValue(p.settings.parseNaturalLanguage).onChange(async (v) => { p.settings.parseNaturalLanguage = v; await p.saveSettings(); }));
@@ -453,6 +457,78 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     const gcalHost = containerEl.createDiv();
     const drawGCal = (): void => { gcalHost.empty(); this.renderGCal(gcalHost, drawGCal); };
     drawGCal();
+  }
+
+  private renderTimeMaps(containerEl: HTMLElement): void {
+    const p = this.plugin;
+    new Setting(containerEl).setName(t("auto_time_maps")).setDesc(t("auto_time_maps_desc")).setHeading();
+    const host = containerEl.createDiv({ cls: "bt-time-maps" });
+    const cloneDefault = (): TimeMap => ({ ...DEFAULT_TIME_MAP, days: Object.fromEntries(
+      Object.entries(DEFAULT_TIME_MAP.days).map(([day, ranges]) => [day, ranges?.map((r) => ({ ...r })) ?? []])) });
+    const current = (): TimeMap[] => p.settings.timeMaps?.length ? p.settings.timeMaps : [cloneDefault()];
+    const save = async (maps: TimeMap[]): Promise<void> => {
+      p.settings.timeMaps = maps;
+      if (!maps.some((m) => m.id === p.settings.defaultTimeMapId)) p.settings.defaultTimeMapId = maps[0]?.id ?? "default";
+      await p.saveSettings(); p.renderAll(); draw();
+    };
+    const valid = (r: TimeMapRange): boolean => r.start < r.end;
+    const dayNames = Array.from({ length: 7 }, (_, day) => new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(new Date(2024, 0, 7 + day)));
+    const draw = (): void => {
+      host.empty();
+      const maps = current();
+      for (const [mapIndex, map] of maps.entries()) {
+        const card = host.createDiv({ cls: "bt-time-map" });
+        const head = card.createDiv({ cls: "bt-time-map-head" });
+        const name = head.createEl("input", { cls: "bt-time-map-name", attr: { type: "text", "aria-label": t("auto_time_map_name") } });
+        name.value = map.name;
+        name.onchange = () => { map.name = name.value.trim() || t("auto_time_map_unnamed"); void save(maps); };
+        const def = head.createEl("button", { cls: "bt-time-map-default" + ((p.settings.defaultTimeMapId ?? "default") === map.id ? " is-active" : ""), text: t("auto_default") });
+        def.onclick = async () => { p.settings.defaultTimeMapId = map.id; await p.saveSettings(); draw(); };
+        if (maps.length > 1) {
+          const remove = head.createEl("button", { cls: "clickable-icon", attr: { "aria-label": t("btn_delete") } });
+          setIcon(remove, "trash-2");
+          remove.onclick = () => void save(maps.filter((_, i) => i !== mapIndex));
+        }
+        const days = card.createDiv({ cls: "bt-time-map-days" });
+        for (let day = 0; day < 7; day++) {
+          const col = days.createDiv({ cls: "bt-time-map-day" });
+          col.createDiv({ cls: "bt-time-map-day-name", text: dayNames[day] });
+          const ranges = map.days[day] ?? [];
+          for (const [rangeIndex, range] of ranges.entries()) {
+            const row = col.createDiv({ cls: "bt-time-map-range" });
+            const start = row.createEl("input", { attr: { type: "time", "aria-label": `${dayNames[day]} ${t("auto_start")}` } });
+            start.value = range.start;
+            const end = row.createEl("input", { attr: { type: "time", "aria-label": `${dayNames[day]} ${t("auto_end")}` } });
+            end.value = range.end;
+            const commit = (): void => {
+              const next = { start: start.value, end: end.value };
+              row.toggleClass("is-invalid", !valid(next));
+              if (valid(next)) { ranges[rangeIndex] = next; map.days[day] = ranges; void save(maps); }
+            };
+            start.onchange = commit; end.onchange = commit;
+            const remove = row.createEl("button", { cls: "clickable-icon", attr: { "aria-label": t("btn_delete") } });
+            setIcon(remove, "x");
+            remove.onclick = () => { map.days[day] = ranges.filter((_, i) => i !== rangeIndex); void save(maps); };
+          }
+          const add = col.createEl("button", { cls: "bt-time-map-add", text: t("auto_add_hours") });
+          add.onclick = () => { map.days[day] = [...ranges, { start: "09:00", end: "17:00" }]; void save(maps); };
+        }
+      }
+      const addMap = host.createEl("button", { text: t("auto_add_map") });
+      addMap.onclick = () => void save([...maps, { id: `map-${Date.now().toString(36)}`, name: t("auto_time_map_unnamed"), days: {} }]);
+
+      const areas = listProjectsAndAreas(p.app).bereiche;
+      if (areas.length) {
+        new Setting(host).setName(t("auto_area_maps")).setHeading();
+        for (const area of areas) new Setting(host).setName(area.name).addDropdown((dd) => {
+          dd.addOption("", t("auto_use_default"));
+          for (const map of maps) dd.addOption(map.id, map.name);
+          dd.setValue(area.timeMapId && maps.some((m) => m.id === area.timeMapId) ? area.timeMapId : "");
+          dd.onChange((value) => void p.assignAreaTimeMap(area.path, value || null));
+        });
+      }
+    };
+    draw();
   }
 
   /** Google-Kalender-Sektion: vor dem Verbinden ein schlanker Setup-Assistent, danach der

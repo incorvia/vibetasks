@@ -2968,6 +2968,9 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* .bt-view .bt-tabs setzt margin: 10px 0 14px (höhere Spezifität) -> hier zurücknehmen,
    sonst kann sich das Segment nicht nach rechts schieben. */
 .bt-view .bt-calview-head .bt-calview-seg { flex: 1 1 0; justify-content: flex-end; margin: 0; }
+.bt-view .bt-calview-auto { display: inline-flex; align-items: center; gap: 6px; padding-inline: 10px; }
+.bt-calview-auto-ic { display: inline-flex; }
+.bt-calview-auto-ic svg { width: 15px; height: 15px; }
 /* Unter .bt-view gescopet (0,2,0): Obsidians button:not(.clickable-icon) { box-shadow: var(--input-shadow) }
    hat (0,1,1) und würde eine einfache Klassenregel schlagen – die Knöpfe bekämen einen Schatten,
    den die .bt-tab-Knöpfe (ebenfalls .bt-view-gescopet) nicht haben. */
@@ -3143,6 +3146,9 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-calview-block.is-done .bt-calview-block-title { text-decoration: line-through; }
 .bt-calview-block.is-dragging { opacity: 0.4; }
 .bt-calview-block-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); font-weight: 500; }
+.bt-calview-pin { display: inline-flex; flex: 0 0 auto; color: var(--text-muted); }
+.bt-calview-pin svg { width: 12px; height: 12px; }
+.bt-calview-block.is-pinned { border-left-style: double; }
 .bt-calview-block-time {
   flex-shrink: 0; font-size: 0.88em; color: var(--text-muted);
   font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -3307,6 +3313,60 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 .bt-calview-mini-day.is-today.has-tasks::after { background: var(--text-on-accent); }
 .bt-calview-mini-day.is-other.has-tasks::after { background: var(--text-faint); }
+
+/* ── Auto-plan preview ─────────────────────────────────────────────── */
+.bt-auto-plan-modal { width: min(680px, calc(100vw - 24px)); }
+.bt-auto-title { display: flex; align-items: center; gap: 9px; }
+.bt-auto-title h3 { margin: 0; }
+.bt-auto-title svg { width: 20px; height: 20px; color: var(--text-accent); }
+.bt-auto-desc { margin: 5px 0 14px; color: var(--text-muted); }
+.bt-auto-horizon { margin-bottom: 14px; }
+.bt-auto-preview { max-height: min(58vh, 580px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 3px; }
+.bt-auto-day, .bt-auto-list { border: 1px solid var(--background-modifier-border); border-radius: 8px; overflow: hidden; }
+.bt-auto-day h4, .bt-auto-list h4 { margin: 0; padding: 8px 11px; font-size: .88em; background: var(--background-secondary); }
+.bt-auto-row, .bt-auto-list-row { display: flex; align-items: flex-start; gap: 9px; padding: 8px 11px; border-top: 1px solid var(--background-modifier-border); }
+.bt-auto-row-main { min-width: 0; flex: 1; }
+.bt-auto-task { font-weight: 550; overflow-wrap: anywhere; }
+.bt-auto-time, .bt-auto-reason, .bt-auto-empty { font-size: .8em; color: var(--text-muted); }
+.bt-auto-late { margin-top: 2px; font-size: .78em; color: var(--text-error); }
+.bt-auto-kind { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; font-size: .7em; font-weight: 650; background: var(--background-modifier-hover); }
+.bt-auto-kind.is-new { color: var(--text-success); }
+.bt-auto-kind.is-moved { color: var(--text-accent); }
+.bt-auto-list-row { justify-content: space-between; }
+.bt-auto-reason { text-align: right; }
+.bt-auto-empty, .bt-auto-loading { padding: 12px; }
+.bt-auto-warning { padding: 10px; margin-bottom: 12px; border: 1px solid var(--text-error); border-radius: 8px; color: var(--text-error); }
+.bt-auto-warning button { margin-top: 8px; }
+.bt-auto-foot { margin-top: 14px; }
+.bt-mobile-menu-primary { width: 100%; display: flex; align-items: center; gap: 9px; padding: 10px 12px; margin-top: 10px; color: var(--text-on-accent); background: var(--interactive-accent); border: 0; }
+
+/* ── Weekly availability maps ────────────────────────────────────── */
+.bt-time-maps { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
+.bt-time-map { border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 10px; }
+.bt-time-map-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.bt-time-map-name { flex: 1 1 auto; min-width: 100px; font-weight: 600; }
+.bt-time-map-default.is-active { color: var(--text-on-accent); background: var(--interactive-accent); }
+.bt-time-map-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; }
+.bt-time-map-day { min-width: 0; padding: 7px; border-radius: 7px; background: var(--background-secondary); }
+.bt-time-map-day-name { margin-bottom: 6px; font-size: .78em; font-weight: 650; text-align: center; }
+.bt-time-map-range { display: grid; grid-template-columns: 1fr; gap: 3px; padding-bottom: 6px; }
+.bt-time-map-range input { width: 100%; min-width: 0; font-size: .76em; }
+.bt-time-map-range button { justify-self: end; }
+.bt-time-map-range.is-invalid input { border-color: var(--text-error); }
+.bt-time-map-add { width: 100%; padding: 3px; font-size: .75em; }
+
+@media (max-width: 700px) {
+  .bt-auto-plan-modal { width: calc(100vw - 12px); }
+  .bt-auto-preview { max-height: 55vh; }
+  .bt-auto-foot { align-items: stretch; gap: 8px; }
+  .bt-auto-foot, .bt-auto-foot .bt-actions { flex-wrap: wrap; }
+  .bt-auto-foot .bt-actions:last-child { margin-left: auto; }
+  .bt-time-map-days { display: flex; flex-direction: column; }
+  .bt-time-map-day { display: grid; grid-template-columns: 52px 1fr; align-items: start; gap: 7px; }
+  .bt-time-map-day-name { text-align: left; padding-top: 7px; }
+  .bt-time-map-range { grid-column: 2; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px; align-items: center; }
+  .bt-time-map-add { grid-column: 2; }
+}
 
 /* ── Seitenleiste „Undatiert" (Quelle zum Einplanen per Drag) ── */
 .bt-calview-body { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }

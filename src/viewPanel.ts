@@ -17,6 +17,7 @@ export interface MobilePageMenuOptions {
   title: string;
   description: () => string;
   onMore?: (anchor: HTMLElement) => void;
+  onAutoPlan?: () => void;
 }
 
 /** Kontextabhängige Gruppierungs-Optionen: die auf dieser Seite redundante ausblenden
@@ -83,6 +84,12 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: Mobi
         identity.createDiv({ cls: "bt-mobile-menu-title", text: pageMenu.title });
         const description = pageMenu.description().trim();
         if (description) identity.createDiv({ cls: "bt-mobile-menu-desc", text: description });
+        if (pageMenu.onAutoPlan) {
+          const auto = pop.createEl("button", { cls: "bt-mobile-menu-primary" });
+          setIcon(auto.createSpan({ cls: "bt-mobile-menu-row-ic" }), "wand-sparkles");
+          auto.createSpan({ text: t("auto_plan") });
+          auto.onclick = () => { close(); pageMenu.onAutoPlan?.(); };
+        }
       }
 
       /** Abschnitts-Überschrift, klappbar, mit Zähler rechts. Liefert, ob der Rumpf zu zeichnen ist. */

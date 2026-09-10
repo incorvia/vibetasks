@@ -22,6 +22,7 @@ import { ConfirmModal } from "./confirmModal";
 import { parseRecurrence } from "./recurrence";
 import { describeRecurrence } from "./recurrenceText";
 import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen, dropCalendarAnchors, resetCalendarToToday } from "./calendarView";
+import { AutoPlanModal } from "./autoPlanModal";
 import { DayEvent, bucketEvents, addDays, addMonths } from "./calendarModel";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath, openBoardMoveMenu } from "./taskMenu";
@@ -1201,6 +1202,7 @@ function pageHeader(root: HTMLElement, ctx: PageCtx, titleEl: HTMLElement, opts:
       openViewPanel(menuBtn, ctx, {
         title: fullTitle,
         description: () => root.querySelector<HTMLElement>(".bt-page-desc:not(.is-empty)")?.textContent ?? "",
+        ...(ctx.pageKey === "heute" && ctx.opts.layout === "calendar" ? { onAutoPlan: () => new AutoPlanModal(plugin).open() } : {}),
         ...(opts.menu ? { onMore: (anchor: HTMLElement) => {
           const menu = new Menu();
           buildItemMenu(menu, plugin, opts.menu!, "board");

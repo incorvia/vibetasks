@@ -411,6 +411,8 @@ export interface ProjItem {
   priority: Priority;
   area?: string | null;
   areaId?: string | null;
+  /** Areas may select a reusable weekly availability map. */
+  timeMapId?: string | null;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
 }
 
@@ -476,6 +478,7 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       description: typeof fm?.description === "string" ? fm.description : "",
       area: typeof fm?.area === "string" ? fm.area : null,
       areaId: typeof fm?.[OPAL_AREA_ID] === "string" ? fm[OPAL_AREA_ID] : null,
+      timeMapId: typeof fm?.time_map === "string" ? fm.time_map : null,
       workflowStatus: typeof fm?.workflow_status === "string" && isKnownStatus(fm.workflow_status) ? fm.workflow_status : firstOpenStatus(),
       completed: typeof fm?.completed === "string" ? fm.completed : null,
       priority: (["highest", "high", "medium", "normal", "low", "lowest"] as string[]).includes(String(fm?.priority)) ? fm!.priority as Priority : "normal",
@@ -615,6 +618,14 @@ export async function setProjectArea(app: App, path: string, area: string | null
       const legacy = legacyRelationshipLink(area);
       if (legacy) fm.area = legacy; else delete fm.area;
     }
+  });
+}
+
+export async function setAreaTimeMap(app: App, path: string, timeMapId: string | null): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  await updateRecord(app, file, (fm) => {
+    if (timeMapId) fm.time_map = timeMapId; else delete fm.time_map;
   });
 }
 

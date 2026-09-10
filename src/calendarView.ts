@@ -16,6 +16,7 @@ import { TimeBlockModal } from "./timeBlockModal";
 import { blockKind } from "./timeService";
 import { calendarTaskColor } from "./calendarTaskColor";
 import { isCompactPane } from "./responsive";
+import { AutoPlanModal } from "./autoPlanModal";
 import {
   CalMode, CAL_MODES, monthGrid, timeGridDays, timeGridStep, yearMonths, bucketByDate,
   addDays, addMonths, addYears, sameMonth, parseISO, DEFAULT_BLOCK_MIN, layoutSlots,
@@ -222,6 +223,11 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
   head.createSpan({ cls: "bt-calview-title", text: rangeTitle(mode, anchor) });
 
   const seg = head.createDiv({ cls: "bt-tabs bt-calview-seg" });
+  if (!mobile && ctx.pageKey === "heute") {
+    const auto = seg.createEl("button", { cls: "bt-tab bt-calview-auto", text: t("auto_plan") });
+    setIcon(auto.createSpan({ cls: "bt-calview-auto-ic" }), "wand-sparkles");
+    auto.onclick = () => new AutoPlanModal(plugin).open();
+  }
   const modes = mobile ? CAL_MODES.filter((m) => m !== "week") : CAL_MODES;
   // One compact view picker is predictable at every pane width and avoids a breakpoint where the
   // five calendar scales only just fail to fit. It also exposes List and Board without requiring
@@ -657,6 +663,10 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
           el.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, scheduledTask));
           renderCheck(el, plugin, scheduledTask, { compact: true });
         }
+        if (b.block.pinned) {
+          el.addClass("is-pinned");
+          setIcon(el.createSpan({ cls: "bt-calview-pin", attr: { "aria-label": t("auto_pinned") } }), "pin");
+        }
         el.draggable = true;
         el.ondragstart = (event) => { movingBlockId = b.block.id; event.dataTransfer?.setData("application/x-opal_tasks-time-block", b.block.id); };
         el.ondragend = () => { movingBlockId = null; };
@@ -673,11 +683,14 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
         el.onclick = (event) => {
           if ((event.target as HTMLElement).closest(".bt-calview-resize")) return;
           event.stopPropagation();
-          if (blockKind(b.block) === "task_schedule") {
-            const task = plugin.index.getById(b.block.scope.id); if (task) plugin.openEditTask(task);
-            return;
-          }
           openPopover(el, (pop, close) => {
+            if (blockKind(b.block) === "task_schedule") {
+              const task = plugin.index.getById(b.block.scope.id);
+              if (task) popRow(pop, "pencil", task.title, () => { plugin.openEditTask(task); close(); });
+              popRow(pop, b.block.pinned ? "pin-off" : "pin", t(b.block.pinned ? "auto_unpin" : "auto_pin"), () => { void plugin.scheduling.setPinned(b.block.id, !b.block.pinned); close(); });
+              popRow(pop, "x", t("cal_unscheduled"), () => { void plugin.scheduling.cancelBlock(b.block.id); close(); });
+              return;
+            }
             popRow(pop, "play", b.block.mode === "blitz" ? "Start Blitz" : "Start timer", () => { void plugin.startTimeBlock(b.block); close(); });
             popRow(pop, "pencil", "Edit time block", () => { new TimeBlockModal(plugin, new Date(b.block.start), b.block.scope, b.block).open(); close(); });
             popRow(pop, "x", "Cancel time block", () => { void plugin.scheduling.cancelBlock(b.block.id); close(); });
@@ -864,6 +877,10 @@ function renderBlockChip(parent: HTMLElement, plugin: OpalTasksPlugin, block: Ti
     chip.style.setProperty("--bt-cal-tint", calendarTaskColor(plugin.settings.calendarTaskColorMode, scheduledTask));
     renderCheck(chip, plugin, scheduledTask, { compact: true });
   }
+  if (block.pinned) {
+    chip.addClass("is-pinned");
+    setIcon(chip.createSpan({ cls: "bt-calview-pin", attr: { "aria-label": t("auto_pinned") } }), "pin");
+  }
   if (!isAllDaySchedule(block)) {
     const start = new Date(block.start);
     chip.createSpan({ cls: "bt-calview-chip-time", text: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` });
@@ -871,11 +888,14 @@ function renderBlockChip(parent: HTMLElement, plugin: OpalTasksPlugin, block: Ti
   chip.createSpan({ cls: "bt-calview-chip-title", text: block.scope.title_snapshot });
   chip.onclick = (e) => {
     e.stopPropagation();
-    if (blockKind(block) === "task_schedule") {
-      const task = plugin.index.getById(block.scope.id); if (task) plugin.openEditTask(task);
-      return;
-    }
     openPopover(chip, (pop, close) => {
+      if (blockKind(block) === "task_schedule") {
+        const task = plugin.index.getById(block.scope.id);
+        if (task) popRow(pop, "pencil", task.title, () => { plugin.openEditTask(task); close(); });
+        popRow(pop, block.pinned ? "pin-off" : "pin", t(block.pinned ? "auto_unpin" : "auto_pin"), () => { void plugin.scheduling.setPinned(block.id, !block.pinned); close(); });
+        popRow(pop, "x", t("cal_unscheduled"), () => { void plugin.scheduling.cancelBlock(block.id); close(); });
+        return;
+      }
       popRow(pop, "play", block.mode === "blitz" ? "Start Blitz" : "Start timer", () => { void plugin.startTimeBlock(block); close(); });
       popRow(pop, "x", "Cancel time block", () => { void plugin.scheduling.cancelBlock(block.id); close(); });
     });

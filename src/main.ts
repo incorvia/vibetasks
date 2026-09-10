@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setProjectWorkflow, setProjectArchived, setProjectCompleted, projectCompletedAt, shouldAutoArchiveProject, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setAreaTimeMap, setProjectWorkflow, setProjectArchived, setProjectCompleted, projectCompletedAt, shouldAutoArchiveProject, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -77,6 +77,7 @@ const GCAL_RECONNECT_KEY = "opal_tasks-gcal-reconnect-notified";
 const GCAL_CACHE_KEY = "opal_tasks-gcal-cache";        // Abgleich-Stand (war gcal.lastSynced/syncTokens)
 const GCAL_SNAPSHOT_KEY = "opal_tasks-gcal-snapshot";  // Kaltstart-Termine (war gcalFeed.snapshot)
 const DEVICE_STATE_KEY = "opal_tasks-device";          // Geräte-Zustand (s. DeviceState in types.ts)
+const AUTO_PLAN_JOURNAL_KEY = "opal_tasks-auto-plan-journal";
 export default class OpalTasksPlugin extends Plugin {
   settings!: OpalTasksSettings;
   index!: TaskIndex;
@@ -172,7 +173,14 @@ export default class OpalTasksPlugin extends Plugin {
     this.addChild(this.templates);
     this.timeStore = new TimeStore(this.app); this.addChild(this.timeStore);
     this.timerSessions = new TimerService(this.app, this.timeStore); this.addChild(this.timerSessions);
-    this.scheduling = new SchedulingService(this.timeStore, (id) => this.index.getById(id));
+    this.scheduling = new SchedulingService(this.timeStore, (id) => this.index.getById(id), {
+      load: () => (this.app.loadLocalStorage(AUTO_PLAN_JOURNAL_KEY) as import("./schedulingService").AutoPlanJournal | null) ?? null,
+      save: (value) => this.app.saveLocalStorage(AUTO_PLAN_JOURNAL_KEY, value),
+    });
+    // Child components may not have received their lifecycle callback yet while the parent is
+    // still loading. Recovery must see the canonical logs before deciding a pending write is gone.
+    this.timeStore.rebuild();
+    await this.scheduling.recoverInterruptedAutoPlan();
     this.registerEditorExtension(inlineTaskEditorExtensions(this));
     this.registerMarkdownPostProcessor((el, context) => processReadingModeTaskLinks(this, el, context));
     this.workTimer = new WorkTimerService(this.timerSessions, this.timeStore, {
@@ -1477,6 +1485,11 @@ export default class OpalTasksPlugin extends Plugin {
   async assignProjectArea(path: string, area: string | null): Promise<void> {
     this.refreshOnChange(path);
     await setProjectParentArea(this.app, path, area);
+  }
+  async assignAreaTimeMap(path: string, timeMapId: string | null): Promise<void> {
+    this.refreshOnChange(path);
+    await setAreaTimeMap(this.app, path, timeMapId);
+    this.renderAll();
   }
   async updateProjectWorkflow(path: string, workflowStatus: TaskStatus, priority: Priority): Promise<void> {
     const before = [...listManaged(this.app).active, ...listManaged(this.app).archived]

@@ -158,6 +158,44 @@ describe("MdbaseRepository", () => {
     expect(upgradedAllDayScheduleTypeDocument(upgraded)).toBe(upgraded);
   });
 
+  it("automatically upgrades an installed time-log schema for the first auto-plan write", async () => {
+    const fake = fakeApp();
+    const first = new MdbaseRepository(fake.app);
+    await first.initialize();
+    const path = "_opal_tasks/_types/time_log.md";
+    const original = fake.contents.get(path)!;
+    const match = original.match(/^---\n([\s\S]*?)\n---\n?/)!;
+    const frontmatter = parseYaml(match[1]) as Record<string, unknown>;
+    const schema = frontmatter.schema as { value: { properties: { blocks: { items: { properties: Record<string, unknown> } } } } };
+    const itemProperties = schema.value.properties.blocks.items.properties;
+    const source = itemProperties.source as { enum: string[] };
+    source.enum = source.enum.filter((value) => value !== "auto");
+    delete itemProperties.pinned;
+    itemProperties.custom_user_field = { type: "string" };
+    frontmatter.version = 3;
+    fake.put(path, `---\n${stringifyYaml(frontmatter)}---\n${original.slice(match[0].length)}`);
+
+    const reopened = new MdbaseRepository(fake.app);
+    expect((await reopened.initialize()).ready).toBe(true);
+    const upgradedText = fake.contents.get(path)!;
+    const upgradedFm = parseYaml(upgradedText.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    const upgradedSchema = upgradedFm.schema as { value: { properties: { blocks: { items: { properties: Record<string, unknown> } } } } };
+    const upgradedProps = upgradedSchema.value.properties.blocks.items.properties;
+    expect(upgradedFm.version).toBe(4);
+    expect((upgradedProps.source as { enum: string[] }).enum).toContain("auto");
+    expect(upgradedProps).toHaveProperty("pinned");
+    expect(upgradedProps).toHaveProperty("custom_user_field");
+    await reopened.initialize();
+    expect(fake.contents.get(path)).toBe(upgradedText);
+    bindRepository(fake.app, reopened);
+    const store = new TimeStore(fake.app);
+    await expect(store.addBlock({
+      kind: "task_schedule", scope: { type: "task", id: "t1", title_snapshot: "First plan" },
+      start: "2026-09-10T14:00:00.000Z", duration: 30, mode: "focus", selector: "manual",
+      source: "auto", pinned: false,
+    })).resolves.toMatchObject({ source: "auto" });
+  });
+
   it("initializes idempotently and performs lossless, revision-checked CRUD", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);

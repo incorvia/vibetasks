@@ -1,7 +1,14 @@
 import { isAllDaySchedule, type ScheduleDraft, type Task, type TimeBlock, type TimeBlockMode, type TimeBlockPatch, type TimeBlockSelector, type TimeScope } from "./types";
 import { blockKind, TimeStore } from "./timeService";
+import { buildAutoPlan, scheduleFingerprint, type AutoPlanInput, type AutoPlanPreview } from "./autoPlanner";
 
 export type ScheduleSource = TimeBlock["source"];
+interface AutoPlanChange { taskId: string; before: TimeBlock | null; afterId: string; after: string | null }
+export interface AutoPlanJournal { state: "pending" | "ready"; changes: AutoPlanChange[] }
+export interface AutoPlanJournalStore {
+  load(): AutoPlanJournal | null;
+  save(value: AutoPlanJournal | null): void;
+}
 export type SchedulableTask = Pick<Task, "id" | "title" | "estimate">;
 export interface AllocationInput {
   scope: TimeScope; start: string | Date; duration: number;
@@ -16,7 +23,7 @@ export type ScheduleTaskInput =
   | { allDay?: false; start: string | Date; duration?: number; source?: ScheduleSource };
 
 export class SchedulingError extends Error {
-  constructor(public readonly code: "task_not_found" | "block_not_found" | "wrong_block_kind" | "invalid_start" | "invalid_duration", message: string) {
+  constructor(public readonly code: "task_not_found" | "block_not_found" | "wrong_block_kind" | "invalid_start" | "invalid_duration" | "stale_plan" | "undo_conflict" | "nothing_to_undo", message: string) {
     super(message); this.name = "SchedulingError";
   }
 }
@@ -43,7 +50,100 @@ const dateValue = (value: string): string => {
 
 /** The sole mutation API for task schedules and explicit time allocations. */
 export class SchedulingService {
-  constructor(private store: TimeStore, private taskById: (id: string) => Task | undefined) {}
+  private autoPlanJournal: AutoPlanJournal | null;
+  constructor(private store: TimeStore, private taskById: (id: string) => Task | undefined,
+    private journalStore?: AutoPlanJournalStore) {
+    this.autoPlanJournal = journalStore?.load() ?? null;
+  }
+
+  /** Complete rollback of an apply interrupted by an app/device restart. */
+  async recoverInterruptedAutoPlan(): Promise<void> {
+    if (this.autoPlanJournal?.state !== "pending") return;
+    await this.restoreChanges(this.autoPlanJournal.changes);
+    this.setJournal(null);
+  }
+
+  previewAutoPlan(input: AutoPlanInput): AutoPlanPreview { return buildAutoPlan(input); }
+
+  async setPinned(id: string, pinned: boolean): Promise<void> {
+    this.requireBlock(id);
+    await this.store.updateBlock(id, { pinned: pinned || undefined });
+  }
+
+  /** Applies a fully computed preview. Every current schedule is checked before the first write. */
+  async applyAutoPlan(preview: AutoPlanPreview): Promise<void> {
+    for (const taskId of preview.candidateTaskIds) {
+      if (scheduleFingerprint(this.getTaskSchedule(taskId)) !== preview.expectedSchedules[taskId]) {
+        throw new SchedulingError("stale_plan", "Tasks or calendar blocks changed after this preview was created.");
+      }
+    }
+    const first = preview.placements.slice().sort((a, b) => a.start.localeCompare(b.start))[0];
+    if (first && Date.now() >= Date.parse(first.start)) throw new SchedulingError("stale_plan", "The available part of the day changed. Preview the plan again.");
+
+    const byTask = new Map(preview.placements.map((x) => [x.taskId, x]));
+    const previousJournal = this.autoPlanJournal?.state === "ready" ? this.autoPlanJournal : null;
+    const journal: AutoPlanJournal = { state: "pending", changes: [] };
+    this.setJournal(journal);
+    try {
+      for (const taskId of preview.candidateTaskIds) {
+        const before = this.getTaskSchedule(taskId), placement = byTask.get(taskId);
+        const change: AutoPlanChange = { taskId, before: before ? { ...before } : null, afterId: before?.id ?? "", after: null };
+        journal.changes.push(change);
+        this.setJournal(journal); // before-state reaches durable storage before its corresponding write
+        if (placement) {
+          const afterBlock = await this.scheduleTask(taskId, { start: placement.start, duration: placement.duration, source: "auto" });
+          change.afterId = afterBlock.id; change.after = scheduleFingerprint(this.getTaskSchedule(taskId));
+        } else if (before) {
+          await this.unscheduleTask(taskId);
+          change.after = scheduleFingerprint(this.getTaskSchedule(taskId));
+        }
+        this.setJournal(journal);
+      }
+    } catch (error) {
+      try { await this.restoreChanges(journal.changes); this.setJournal(previousJournal); }
+      catch (recovery) {
+        throw new Error(`Auto-plan failed and recovery was incomplete: ${recovery instanceof Error ? recovery.message : String(recovery)}`);
+      }
+      throw error;
+    }
+    journal.state = "ready";
+    this.setJournal(journal);
+  }
+
+  canUndoAutoPlan(): boolean { return this.autoPlanJournal?.state === "ready"; }
+
+  async undoAutoPlan(): Promise<void> {
+    const journal = this.autoPlanJournal;
+    if (!journal || journal.state !== "ready") throw new SchedulingError("nothing_to_undo", "There is no auto-plan to undo.");
+    for (const change of journal.changes) {
+      if (scheduleFingerprint(this.getTaskSchedule(change.taskId)) !== change.after) {
+        throw new SchedulingError("undo_conflict", "A task changed after auto-plan was applied, so undo was not performed.");
+      }
+    }
+    await this.restoreChanges(journal.changes);
+    this.setJournal(null);
+  }
+
+  private setJournal(value: AutoPlanJournal | null): void {
+    this.autoPlanJournal = value;
+    this.journalStore?.save(value);
+  }
+
+  private async restoreChanges(changes: AutoPlanChange[]): Promise<void> {
+    const failures: string[] = [];
+    for (const change of changes.slice().reverse()) {
+      try {
+        if (change.before) await this.store.updateBlock(change.before.id, change.before);
+        else {
+          const created = (change.afterId ? this.store.block(change.afterId) : null) ?? this.getTaskSchedule(change.taskId);
+          // A missing afterId means the app stopped between creating a new auto block and updating
+          // the journal. Never cancel a manual placement that may have arrived from another device.
+          if (created?.source === "auto") await this.store.updateBlock(created.id, { status: "cancelled" });
+        }
+      } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
+    }
+    if (failures.length) throw new Error(failures.join("; "));
+  }
 
   getTaskSchedule(taskOrId: Pick<Task, "id"> | string): TimeBlock | null {
     const id = typeof taskOrId === "string" ? taskOrId : taskOrId.id;
@@ -65,9 +165,9 @@ export class SchedulingService {
       ? { ...common, allDay: true as const, date: dateValue(input.date) }
       : { ...common, allDay: false as const, start: startValue(input.start), duration: durationValue(input.duration ?? task.estimate ?? 60) };
     if (existing) {
-      const updated = { ...values, status: "planned" as const };
+      const updated = { ...values, status: "planned" as const, ...(input.source ? { source: input.source } : {}) };
       await this.store.updateBlock(existing.id, updated);
-      return { ...updated, id: existing.id, source: existing.source };
+      return { ...updated, id: existing.id, source: input.source ?? existing.source };
     }
     return this.store.addBlock({ ...values, source: input.source ?? "manual" });
   }
