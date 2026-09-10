@@ -108,7 +108,7 @@ describe("Hin und zurück – die Eigenschaft, auf die es ankommt", () => {
     "alles auf Standard": {},
     "gemischt, wie eine echte Datei": {
       fontTaskPct: 130, chipsIconsOnly: true, itemsFolder: "Aufgaben",
-      knownLabels: ["bug", "ui"], labelColors: { bug: "#f00" },
+      knownLabels: ["bug", "ui"], labelColors: { bug: "#f00" }, autoPlanExcludedLabels: ["waiting"],
       schemaVersion: 3, didInitialSetup: true, lastSeenVersion: "1.37.2",
       pageViewOptions: { heute: { sort: "smart" } },
       boardColumnOrder: { label: ["bug", "ui"] },

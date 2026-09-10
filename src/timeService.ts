@@ -1,7 +1,7 @@
 import { App, Component, TFile, normalizePath } from "obsidian";
 import { MdbaseRepository, repositoryFor, rfc3339Now, newUlid, updateRecord } from "./mdbaseRepository";
 import { collectionPath } from "./mdbaseResources";
-import { isAllDaySchedule, type NewTimeBlock, type Task, type TimeBlock, type TimeBlockPatch, type TimeLog, type TimeScope, type WorkSession } from "./types";
+import { isAllDaySchedule, type MeetingCompletion, type NewTimeBlock, type Task, type TimeBlock, type TimeBlockPatch, type TimeLog, type TimeScope, type WorkSession } from "./types";
 import { isDone, isTrashed } from "./statuses";
 
 const localDate = (value: Date | string): string => {
@@ -70,7 +70,7 @@ export class TimeStore extends Component {
     for (const file of this.app.vault.getMarkdownFiles()) {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (fm?.type !== "time_log" || typeof fm.date !== "string") continue;
-      this.logsByDate.set(fm.date, { path: file.path, id: String(fm.id ?? ""), date: fm.date, blocks: asArray<TimeBlock>(fm.blocks).map(normalizeBlock), sessions: asArray<WorkSession>(fm.sessions) });
+      this.logsByDate.set(fm.date, { path: file.path, id: String(fm.id ?? ""), date: fm.date, blocks: asArray<TimeBlock>(fm.blocks).map(normalizeBlock), sessions: asArray<WorkSession>(fm.sessions), meeting_completions: asArray<MeetingCompletion>(fm.meeting_completions) });
     }
     this.rebuildIndexes();
   }
@@ -142,12 +142,14 @@ export class TimeStore extends Component {
     }, body: "" });
   }
 
-  private async mutate(date: string, change: (blocks: TimeBlock[], sessions: WorkSession[]) => void): Promise<void> {
+  private async mutate(date: string, change: (blocks: TimeBlock[], sessions: WorkSession[], meetings: MeetingCompletion[]) => void): Promise<void> {
     const file = await this.ensureLog(date);
     const record = await updateRecord(this.app, file, (fm) => {
       const blocks = asArray<TimeBlock>(fm.blocks).map((x) => ({ ...x }));
       const sessions = asArray<WorkSession>(fm.sessions).map((x) => ({ ...x }));
-      change(blocks, sessions); fm.blocks = blocks; fm.sessions = sessions;
+      const meetings = asArray<MeetingCompletion>(fm.meeting_completions).map((x) => ({ ...x }));
+      change(blocks, sessions, meetings); fm.blocks = blocks; fm.sessions = sessions;
+      if (meetings.length) fm.meeting_completions = meetings; else delete fm.meeting_completions;
     });
     // Do not immediately reread metadataCache here: Obsidian updates it asynchronously after
     // processFrontMatter. The repository result is the just-written canonical record.
@@ -155,6 +157,7 @@ export class TimeStore extends Component {
     this.logsByDate.set(date, {
       path: record.path, id: typeof fm.id === "string" ? fm.id : "", date,
       blocks: asArray<TimeBlock>(fm.blocks).map(normalizeBlock), sessions: asArray<WorkSession>(fm.sessions),
+      meeting_completions: asArray<MeetingCompletion>(fm.meeting_completions),
     });
     this.rebuildIndexes(); this.emit();
   }
@@ -174,6 +177,42 @@ export class TimeStore extends Component {
       return;
     }
     await this.mutate(log.date, (blocks) => { const i = blocks.findIndex((b) => b.id === id); if (i >= 0) blocks[i] = updated; });
+  }
+  /** Applies same-day block changes in one canonical write and emits once. */
+  async updateBlocks(date: string, changes: { id: string; expectedStart?: string; patch: TimeBlockPatch }[]): Promise<void> {
+    if (!changes.length) return;
+    await this.mutate(date, (blocks) => {
+      for (const change of changes) {
+        const index = blocks.findIndex((block) => block.id === change.id);
+        if (index < 0) throw new Error(`Time block ${change.id} no longer exists.`);
+        const current = blocks[index];
+        if (change.expectedStart !== undefined && (isAllDaySchedule(current) || current.start !== change.expectedStart)) {
+          throw new Error("The schedule changed while it was being updated.");
+        }
+        const updated = normalizeBlock({ ...current, ...change.patch } as TimeBlock);
+        if (timeBlockDate(updated) !== date) throw new Error("Bulk schedule updates must remain in the same day.");
+        blocks[index] = updated;
+      }
+    });
+  }
+  async completeBlock(id: string, completedAt = rfc3339Now()): Promise<void> {
+    const block = this.block(id); if (!block) return;
+    await this.updateBlock(id, { status: "completed", completed_at: completedAt });
+  }
+  meetingCompletions(date?: string): MeetingCompletion[] {
+    return this.logs().filter((log) => !date || log.date === date).flatMap((log) => log.meeting_completions ?? []);
+  }
+  isMeetingComplete(event: { calendarId: string; id: string; start: string }): boolean {
+    return this.meetingCompletions(localDate(event.start)).some((item) => item.calendar_id === event.calendarId
+      && item.event_id === event.id && item.occurrence_start === event.start);
+  }
+  async completeMeeting(event: { calendarId: string; id: string; start: string }, completedAt = rfc3339Now()): Promise<void> {
+    const date = localDate(event.start);
+    await this.mutate(date, (_blocks, _sessions, meetings) => {
+      const existing = meetings.find((item) => item.calendar_id === event.calendarId && item.event_id === event.id && item.occurrence_start === event.start);
+      if (existing) existing.completed_at = completedAt;
+      else meetings.push({ calendar_id: event.calendarId, event_id: event.id, occurrence_start: event.start, completed_at: completedAt });
+    });
   }
   async cancelFutureBlocks(scopeId: string, now = Date.now()): Promise<void> {
     const today = localDate(new Date(now));
@@ -213,11 +252,13 @@ export class TimeStore extends Component {
       throw error;
     }
   }
-  async mergeLog(log: Pick<TimeLog, "date" | "blocks" | "sessions">): Promise<void> {
-    await this.mutate(log.date, (blocks, sessions) => {
+  async mergeLog(log: Pick<TimeLog, "date" | "blocks" | "sessions" | "meeting_completions">): Promise<void> {
+    await this.mutate(log.date, (blocks, sessions, meetings) => {
       const blockIds = new Set(blocks.map((b) => b.id)), sessionIds = new Set(sessions.map((s) => s.id));
       blocks.push(...log.blocks.filter((b) => !blockIds.has(b.id)));
       sessions.push(...log.sessions.filter((s) => !sessionIds.has(s.id)));
+      const meetingKeys = new Set(meetings.map((item) => `${item.calendar_id}\u0000${item.event_id}\u0000${item.occurrence_start}`));
+      meetings.push(...(log.meeting_completions ?? []).filter((item) => !meetingKeys.has(`${item.calendar_id}\u0000${item.event_id}\u0000${item.occurrence_start}`)));
     });
   }
   async closeSession(id: string, endedAt = rfc3339Now()): Promise<WorkSession | null> {

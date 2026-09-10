@@ -52,6 +52,8 @@ import { TimerConflictModal } from "./timerConflictModal";
 import { TimeBlockModal } from "./timeBlockModal";
 import { SchedulingService } from "./schedulingService";
 import { WorkTimerService } from "./workTimerService";
+import { NowController } from "./nowController";
+import { NowView, VIEW_NOW } from "./nowView";
 import { migrateStableRelationships } from "./stableRelationships";
 import { AutomationTaskCreate, AutomationTaskPatch, OpalTasksAutomationApi } from "./automationApi";
 import { canConvertEditorLine, convertEditorLine, ensureInlineNoteId, inlineTaskEditorExtensions, processReadingModeTaskLinks, readInlineNoteFrontmatter, reconcileInlineTasks, ReconcileResult } from "./inlineTasks";
@@ -91,6 +93,7 @@ export default class OpalTasksPlugin extends Plugin {
   /** Stable, JSON-friendly integration surface for Obsidian CLI/eval and other local clients. */
   api!: OpalTasksAutomationApi;
   workTimer!: WorkTimerService;
+  nowController!: NowController;
   repository!: MdbaseRepository;
   gcalAuth!: GCalAuth;
   gcalSync!: GCalSync;
@@ -199,6 +202,7 @@ export default class OpalTasksPlugin extends Plugin {
     // Änderung BEIDE Views doppelt zeichnet – im Profil ~110 ms je Zeichnung, also glatt
     // verdoppelte Freezes. renderAll() bleibt für explizite Anlässe (Layout-Wechsel, Settings).
     this.setupGCal();
+    this.nowController = new NowController(this); this.addChild(this.nowController);
     this.api = new OpalTasksAutomationApi({
       tasks: () => this.index.all(),
       blocksIn: (from, to) => this.timeStore.blocksIn(from, to),
@@ -284,12 +288,14 @@ export default class OpalTasksPlugin extends Plugin {
     this.registerView(VIEW_MAIN, (leaf: WorkspaceLeaf) => new MainView(leaf, this));
     this.registerView(VIEW_NAV, (leaf: WorkspaceLeaf) => new NavView(leaf, this));
     this.registerView(VIEW_TIME_DASHBOARD, (leaf: WorkspaceLeaf) => new TimeDashboardView(leaf, this));
+    this.registerView(VIEW_NOW, (leaf: WorkspaceLeaf) => new NowView(leaf, this));
     // Bei „Seitenvorschau" als Quelle anmelden: erscheint dort in den Einstellungen und folgt der
     // Strg-Vorgabe des Nutzers. defaultMod:false, weil das Icon der ausdrückliche Auslöser ist –
     // ein Strg-Zwang wäre hier unnötige Reibung (auf einem Wikilink im Text gilt weiter die Vorgabe).
     this.registerHoverLinkSource("opal_tasks", { display: "Opal Tasks", defaultMod: false });
 
     this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openOpalTasks());
+    this.addRibbonIcon("timer", t("now_title"), () => void this.activateNow());
     this.addSettingTab(new OpalTasksSettingTab(this.app, this));
 
     // Layout-/Tab-Wechsel: u. a. wenn Obsidian eine aufgeschobene View endlich anhängt.
@@ -397,6 +403,7 @@ export default class OpalTasksPlugin extends Plugin {
     this.addCommand({ id: "whats-new", name: t("cmd_whatsnew"), callback: () => new WhatsNewModal(this).open() });
     this.addCommand({ id: "gcal-sync-now", name: t("cmd_gcal_sync_now"), callback: () => void this.gcalSync.syncNow() });
     this.addCommand({ id: "time-dashboard", name: "Open time dashboard", callback: () => void this.activateTimeDashboard() });
+    this.addCommand({ id: "open-now", name: t("now_title"), callback: () => void this.activateNow() });
     this.addCommand({ id: "new-time-block", name: "New time block", callback: () => new TimeBlockModal(this, new Date()).open() });
     this.addCommand({ id: "resolve-timer-conflicts", name: "Resolve timer conflicts", checkCallback: (checking) => {
       const conflicted = this.workTimer?.needsResolution(); if (conflicted && !checking) new TimerConflictModal(this).open(); return conflicted;
@@ -587,6 +594,27 @@ export default class OpalTasksPlugin extends Plugin {
       await leaf.setViewState({ type: VIEW_TIME_DASHBOARD, active: true });
     } else await leaf.loadIfDeferred();
     await workspace.revealLeaf(leaf);
+  }
+
+  async activateNow(): Promise<void> {
+    const { workspace } = this.app;
+    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_NOW)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      if (leaf) await leaf.setViewState({ type: VIEW_NOW, active: true });
+    } else await leaf.loadIfDeferred();
+    if (leaf) await workspace.revealLeaf(leaf);
+  }
+
+  /** Open from a sidebar without replacing that sidebar leaf. */
+  async openTaskInEditor(task: Task): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.path); if (!(file instanceof TFile)) return;
+    let leaf = this.lastLeaf;
+    if (!leaf || leaf.getRoot() === this.app.workspace.leftSplit || leaf.getRoot() === this.app.workspace.rightSplit) {
+      leaf = this.app.workspace.getLeaf("tab");
+    }
+    await leaf.openFile(file, { active: true });
+    this.lastLeaf = leaf;
   }
 
   async activateNav(): Promise<void> {
@@ -1772,6 +1800,9 @@ export default class OpalTasksPlugin extends Plugin {
     }
     this.settings.knownLabels = [...new Set(this.settings.knownLabels.map((x) => (x === oldName ? nu : x)))];
     this.settings.visibleLabels = [...new Set(this.settings.visibleLabels.map((x) => (x === oldName ? nu : x)))];
+    if (this.settings.autoPlanExcludedLabels) {
+      this.settings.autoPlanExcludedLabels = [...new Set(this.settings.autoPlanExcludedLabels.map((x) => (x === oldName ? nu : x)))];
+    }
     if (this.settings.labelColors[oldName]) {   // Farbe auf den neuen Namen umziehen
       this.settings.labelColors[nu] = this.settings.labelColors[oldName];
       delete this.settings.labelColors[oldName];
@@ -1823,6 +1854,9 @@ export default class OpalTasksPlugin extends Plugin {
     }
     this.settings.knownLabels = this.settings.knownLabels.filter((x) => x !== name);
     this.settings.visibleLabels = this.settings.visibleLabels.filter((x) => x !== name);
+    if (this.settings.autoPlanExcludedLabels) {
+      this.settings.autoPlanExcludedLabels = this.settings.autoPlanExcludedLabels.filter((x) => x !== name);
+    }
     delete this.settings.labelColors[name];
     await this.saveSettings();
     this.leaveDeletedPage({ kind: "label", key: name });   // offene Label-Tabs → Startansicht
@@ -2635,6 +2669,15 @@ export default class OpalTasksPlugin extends Plugin {
     await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); if (minutes) fm.estimate = minutes; else delete fm.estimate; });
   }
 
+  async setTaskDeferUntil(task: Task, date: string | null): Promise<void> {
+    const f = this.app.vault.getAbstractFileByPath(task.path);
+    if (!(f instanceof TFile)) return;
+    await updateRecord(this.app, f, (fm) => {
+      this.ensureCanonical(fm);
+      if (date) fm.defer_until = date; else delete fm.defer_until;
+    });
+  }
+
   /** Narrow task-field mutation boundary used by the versioned automation API. Status and
    *  schedules deliberately do not come through here: both have lifecycle-aware services. */
   private async updateAutomationTask(task: Task, patch: AutomationTaskPatch): Promise<void> {
@@ -2906,7 +2949,10 @@ export default class OpalTasksPlugin extends Plugin {
         });
       }
     }
-    if (nowDone && !wasDone) await this.scheduling.completeTask(task.id);
+    if (nowDone && !wasDone) {
+      await this.scheduling.completeTask(task.id);
+      this.nowController?.taskCompleted(task.id);
+    }
     else if (wasDone && !nowDone) await this.scheduling.reopenTask(task.id);
   }
 
@@ -3323,7 +3369,8 @@ export default class OpalTasksPlugin extends Plugin {
       setSnapshot: (events) => { this.app.saveLocalStorage(GCAL_SNAPSHOT_KEY, events); return Promise.resolve(); },
       syncCalendarId: () => this.settings.gcal!.calendarId,
       persist: () => this.saveSettings(),
-      isVisible: () => this.app.workspace.getLeavesOfType(VIEW_MAIN).some((l) => l.view.containerEl.isShown()),
+      isVisible: () => [...this.app.workspace.getLeavesOfType(VIEW_MAIN), ...this.app.workspace.getLeavesOfType(VIEW_NOW)]
+        .some((l) => l.view.containerEl.isShown()),
     };
     this.gcalFeed = new GCalFeed(feedHost, this.gcalAuth);
     this.register(() => this.gcalFeed.stop());

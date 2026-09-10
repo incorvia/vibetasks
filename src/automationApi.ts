@@ -32,6 +32,7 @@ export interface AutomationTask {
   due: string | null;
   dueTime: string | null;
   estimate: number | null;
+  deferUntil: string | null;
   project: string | null;
   projectId: string | null;
   parent: string | null;
@@ -409,7 +410,7 @@ export class OpalTasksAutomationApi {
       .map((task): AutomationTask => ({
         id: task.id, path: task.path, title: task.title, status: task.status,
         statusKind: statusKinds.get(task.status) ?? "unknown", priority: task.priority,
-        due: task.due, dueTime: task.dueTime, estimate: task.estimate ?? null,
+        due: task.due, dueTime: task.dueTime, estimate: task.estimate ?? null, deferUntil: task.deferUntil ?? null,
         project: task.project, projectId: task.projectId ?? null, parent: task.parent, parentId: task.parentId ?? null,
         labels: [...task.labels], recurrence: task.recurrence, completed: task.completed, cancelled: task.cancelled,
       }));

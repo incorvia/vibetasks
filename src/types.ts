@@ -49,6 +49,8 @@ export interface Task {
   due: string | null;      // YYYY-MM-DD (Datums-Teil; Zeit separat in dueTime)
   dueTime: string | null;  // "HH:mm" oder null (für Kalender/Uhrzeit)
   estimate?: number | null; // erwarteter Gesamtaufwand in Minuten
+  /** Earliest local date on which planners may schedule this task. */
+  deferUntil?: string | null;
   project: string | null;  // aufgelöster Pfad der zugeordneten Liste (Projekt ODER Bereich; Typ lebt an der Liste)
   projectId?: string | null; // stabile Identität der Liste (`opal_project_id`)
   parent: string | null;   // aufgelöster Pfad der Eltern-Aufgabe
@@ -101,6 +103,8 @@ interface TimeBlockBase {
   source: "manual" | "drag" | "ai" | "auto" | "import";
   /** User lock against automatic replanning. Missing on older records means false. */
   pinned?: boolean;
+  /** Actual local finish time. The planned start/duration remain intact as history. */
+  completed_at?: string;
   gcal_event_id?: string; gcal_calendar_id?: string;
 }
 export interface TimedTimeBlock extends TimeBlockBase {
@@ -127,7 +131,13 @@ export interface WorkSession {
   project_id_snapshot?: string; project_title_snapshot?: string;
   area_id_snapshot?: string; area_title_snapshot?: string;
 }
-export interface TimeLog { path: string; id: string; date: string; blocks: TimeBlock[]; sessions: WorkSession[] }
+export interface MeetingCompletion {
+  calendar_id: string; event_id: string; occurrence_start: string; completed_at: string;
+}
+export interface TimeLog {
+  path: string; id: string; date: string; blocks: TimeBlock[]; sessions: WorkSession[];
+  meeting_completions?: MeetingCompletion[];
+}
 
 /**
  * Ein Termin aus einem verbundenen Google-Kalender. **Reine Anzeige-Schicht**: ein CalEvent wird
@@ -207,6 +217,7 @@ export interface OpalTasksSettings {
   calendarTaskColorMode: import("./calendarTaskColor").CalendarTaskColorMode; // Farbe geplanter Aufgaben im Kalender
   timeMaps?: import("./autoPlanner").TimeMap[]; // reusable weekly availability; missing = built-in weekday default
   defaultTimeMapId?: string;                    // missing/stale IDs fall back to the built-in default
+  autoPlanExcludedLabels?: string[];            // tasks with any matching label are never moved or placed
   parseNaturalLanguage: boolean;  // Datum + #Labels automatisch aus dem Aufgabentitel erkennen
   showInlineConvertButtons: boolean; // opt-in hover affordance; command remains available
   enableTaskLinkOverlays: boolean;   // interactive task widgets in Live Preview/Reading mode

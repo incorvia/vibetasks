@@ -12,7 +12,7 @@ import { ProjItem } from "../src/taskService";
 const AUFGABE: Task = {
   id: "t-abc", path: "Opal Tasks/Items/Test.md", title: "Test", titleInFm: true,
   status: "doing", priority: "high",
-  due: "2026-08-20", dueTime: "09:30", estimate: 45, scheduled: null, scheduledTime: null,
+  due: "2026-08-20", dueTime: "09:30", estimate: 45, deferUntil: "2026-08-21", scheduled: null, scheduledTime: null,
   duration: null, start: null, sortOrder: 2110,
   project: "Opal Tasks/Projects/Haus.md", projectId: "project-1",
   parent: "Opal Tasks/Items/Eltern.md", parentId: "task-parent-1",
@@ -40,6 +40,7 @@ describe("Aufgabe → Export → Frontmatter", () => {
     expect(fm.priority).toBe("high");
     expect(fm.due).toBe("2026-08-20T09:30");   // Datum und Uhrzeit als ein Wert (combineDT)
     expect(fm.estimate).toBe(45);
+    expect(fm.defer_until).toBe("2026-08-21");
     expect(fm.scheduled).toBeUndefined();
     expect(fm.duration).toBeUndefined();
     expect(fm.start).toBeUndefined();
@@ -151,9 +152,9 @@ describe("Alte Exporte bleiben lesbar", () => {
 });
 
 describe("Exportformat v7", () => {
-  it("uses stable IDs, preserves inline provenance, and advertises version 7", () => {
+  it("uses stable IDs, preserves inline provenance, and advertises version 8", () => {
     const task = toExportTask(AUFGABE);
-    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(7);
+    expect(makeImportData([toExportList(LISTE)], [], [task]).version).toBe(8);
     expect(task).toMatchObject({ id: "t-abc", projectId: "project-1", parentId: "task-parent-1", sourceNoteId: "note-source-1" });
     expect(task).not.toHaveProperty("project");
     expect(task).not.toHaveProperty("parent");

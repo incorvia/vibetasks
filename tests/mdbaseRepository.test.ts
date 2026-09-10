@@ -118,6 +118,28 @@ describe("MdbaseRepository", () => {
     expect(store.blocksIn("2026-09-06", "2026-09-06")).toHaveLength(1);
   });
 
+  it("moves fifteen blocks atomically and stores local meeting completion", async () => {
+    const fake = fakeApp();
+    const repository = new MdbaseRepository(fake.app);
+    await repository.initialize(); bindRepository(fake.app, repository);
+    const store = new TimeStore(fake.app);
+    const blocks = [];
+    for (let i = 0; i < 15; i++) blocks.push(await store.addBlock({
+      start: `2026-09-10T${String(10 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}:00-05:00`, duration: 30,
+      kind: "task_schedule", scope: { type: "task", id: `t${i}`, title_snapshot: `Task ${i}` },
+      mode: "focus", selector: "manual", source: "auto",
+    }));
+    const manager = (fake.app as unknown as { fileManager: { processFrontMatter: (...args: never[]) => Promise<void> } }).fileManager;
+    const original = manager.processFrontMatter.bind(manager); let writes = 0;
+    manager.processFrontMatter = (async (...args: never[]) => { writes++; await original(...args); }) as typeof manager.processFrontMatter;
+    await store.updateBlocks("2026-09-10", blocks.map((item, i) => ({ id: item.id, expectedStart: (item as { start: string }).start,
+      patch: { start: `2026-09-10T${String(9 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}:00-05:00` } })));
+    expect(writes).toBe(1);
+    await store.completeMeeting({ calendarId: "cal", id: "weekly", start: "2026-09-10T10:00:00-05:00" }, "2026-09-10T10:20:00-05:00");
+    expect(store.isMeetingComplete({ calendarId: "cal", id: "weekly", start: "2026-09-10T10:00:00-05:00" })).toBe(true);
+    expect(store.isMeetingComplete({ calendarId: "cal", id: "weekly", start: "2026-09-17T10:00:00-05:00" })).toBe(false);
+  });
+
   it("persists a date-only task schedule without start or duration", async () => {
     const fake = fakeApp();
     const repository = new MdbaseRepository(fake.app);

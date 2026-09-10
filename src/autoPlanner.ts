@@ -30,6 +30,7 @@ export interface AutoPlanInput {
   events: CalEvent[];
   maps: TimeMap[];
   defaultMapId: string;
+  excludedLabels?: string[];
   activeTaskId?: string | null;
   now: Date;
   days: 1 | 2 | 3;
@@ -41,7 +42,7 @@ export interface AutoPlanPlacement {
   kind: AutoPlanPlacementKind; previousStart?: string; afterDeadline: boolean;
   blockId?: string;
 }
-export interface AutoPlanPreserved { taskId?: string; title: string; reason: "pinned" | "active" | "commitment" | "outside_horizon" }
+export interface AutoPlanPreserved { taskId?: string; title: string; reason: "pinned" | "active" | "commitment" | "outside_horizon" | "excluded_label" | "deferred" }
 export interface AutoPlanUnscheduled { taskId: string; title: string; reason: "no_time" | "invalid_duration" }
 export interface AutoPlanPreview {
   createdAt: string;
@@ -119,22 +120,27 @@ export function buildAutoPlan(input: AutoPlanInput): AutoPlanPreview {
   const rangeStart = dayAt(from, "00:00").getTime(), rangeEnd = dayAt(addLocalDays(to, 1), "00:00").getTime();
   const roundedNow = new Date(Math.ceil(now.getTime() / (5 * MINUTE)) * 5 * MINUTE).getTime();
   const schedules = latestSchedules(input.blocks), taskIds = new Set(input.tasks.map((x) => x.task.id));
+  const excludedLabels = new Set((input.excludedLabels ?? []).map((label) => label.toLocaleLowerCase()));
   const maps = new Map(input.maps.map((x) => [x.id, x]));
   const fallback = maps.get(input.defaultMapId) ?? DEFAULT_TIME_MAP;
   const preserved: AutoPlanPreserved[] = [], candidates: AutoPlanTask[] = [], expectedSchedules: Record<string, string | null> = {};
 
   for (const item of input.tasks) {
     const schedule = schedules.get(item.task.id), timed = schedule && !isAllDaySchedule(schedule) ? schedule : null;
-    expectedSchedules[item.task.id] = scheduleFingerprint(schedule);
     const starts = timed ? Date.parse(timed.start) : null;
     const ends = timed ? starts! + timed.duration * MINUTE : null;
-    if (schedule?.pinned) preserved.push({ taskId: item.task.id, title: item.task.title, reason: "pinned" });
+    if (item.task.deferUntil && item.task.deferUntil > to) {
+      preserved.push({ taskId: item.task.id, title: item.task.title, reason: "deferred" });
+    } else if (item.task.labels.some((label) => excludedLabels.has(label.toLocaleLowerCase()))) {
+      preserved.push({ taskId: item.task.id, title: item.task.title, reason: "excluded_label" });
+    } else if (schedule?.pinned) preserved.push({ taskId: item.task.id, title: item.task.title, reason: "pinned" });
     else if (input.activeTaskId === item.task.id || (starts !== null && starts <= now.getTime() && ends! > now.getTime())) {
       preserved.push({ taskId: item.task.id, title: item.task.title, reason: "active" });
     } else if ((starts !== null && starts >= rangeEnd) || (schedule && isAllDaySchedule(schedule) && schedule.date > to)) {
       preserved.push({ taskId: item.task.id, title: item.task.title, reason: "outside_horizon" });
     } else candidates.push(item);
   }
+  for (const item of candidates) expectedSchedules[item.task.id] = scheduleFingerprint(schedules.get(item.task.id));
 
   // Everything not being replanned is an occupied commitment, including allocations, completed
   // history, pinned work, archived-task blocks, active work, and schedules beyond the horizon.
@@ -146,8 +152,11 @@ export function buildAutoPlan(input: AutoPlanInput): AutoPlanPreview {
     if (isCandidateSchedule) continue;
     const start = Date.parse(block.start);
     if (Number.isFinite(start)) {
-      busy.push({ start, end: start + block.duration * MINUTE });
-      if (start < rangeEnd && start + block.duration * MINUTE > rangeStart
+      const plannedEnd = start + block.duration * MINUTE;
+      const actualEnd = block.status === "completed" && block.completed_at ? Date.parse(block.completed_at) : plannedEnd;
+      const end = Number.isFinite(actualEnd) ? Math.max(start, Math.min(plannedEnd, actualEnd)) : plannedEnd;
+      if (end > start) busy.push({ start, end });
+      if (start < rangeEnd && end > rangeStart
         && (kindOf(block) === "allocation" || !taskIds.has(block.scope.id))) {
         preserved.push({ title: block.scope.title_snapshot, reason: "commitment" });
       }
@@ -180,6 +189,7 @@ export function buildAutoPlan(input: AutoPlanInput): AutoPlanPreview {
     let placed: Interval | null = null;
     for (let offset = 0; offset < input.days && !placed; offset++) {
       const day = addLocalDays(from, offset), date = dayAt(day, "12:00");
+      if (item.task.deferUntil && day < item.task.deferUntil) continue;
       const hours = (map.days[date.getDay()] ?? []).filter(validRange).map((r) => ({ start: dayAt(day, r.start).getTime(), end: dayAt(day, r.end).getTime() }));
       const floor = offset === 0 ? roundedNow : rangeStart;
       const free = subtract(hours.map((x) => ({ start: Math.max(x.start, floor), end: x.end })), busy);

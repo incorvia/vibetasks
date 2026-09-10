@@ -461,6 +461,24 @@ export class OpalTasksSettingTab extends PluginSettingTab {
 
   private renderTimeMaps(containerEl: HTMLElement): void {
     const p = this.plugin;
+    new Setting(containerEl).setName(t("auto_excluded_labels")).setDesc(t("auto_excluded_labels_desc"));
+    const excludedHost = containerEl.createDiv({ cls: "bt-auto-excluded-labels" });
+    const excluded = new Set((p.settings.autoPlanExcludedLabels ?? []).map((name) => name.toLocaleLowerCase()));
+    const labels = p.getLabels();
+    if (!labels.length) excludedHost.createDiv({ cls: "setting-item-description", text: t("auto_no_labels") });
+    for (const label of labels) {
+      new Setting(excludedHost).setName(`#${label.name}`).addToggle((toggle) => toggle
+        .setValue(excluded.has(label.name.toLocaleLowerCase()))
+        .onChange(async (enabled) => {
+          const key = label.name.toLocaleLowerCase();
+          const current = p.settings.autoPlanExcludedLabels ?? [];
+          p.settings.autoPlanExcludedLabels = enabled
+            ? current.some((name) => name.toLocaleLowerCase() === key) ? current : [...current, label.name]
+            : current.filter((name) => name.toLocaleLowerCase() !== key);
+          await p.saveSettings();
+        }));
+    }
+
     new Setting(containerEl).setName(t("auto_time_maps")).setDesc(t("auto_time_maps_desc")).setHeading();
     const host = containerEl.createDiv({ cls: "bt-time-maps" });
     const cloneDefault = (): TimeMap => ({ ...DEFAULT_TIME_MAP, days: Object.fromEntries(

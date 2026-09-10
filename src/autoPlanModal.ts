@@ -1,6 +1,6 @@
 import { Modal, Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { DEFAULT_TIME_MAP, localDay, type AutoPlanInput, type AutoPlanPreview, type TimeMap } from "./autoPlanner";
+import { DEFAULT_TIME_MAP, localDay, type AutoPlanInput, type AutoPlanPreview } from "./autoPlanner";
 import { addDays } from "./calendarModel";
 import { t, getLocale } from "./i18n";
 import { isOpen } from "./statuses";
@@ -18,6 +18,31 @@ const dayLabel = (day: string): string => new Intl.DateTimeFormat(getLocale(), {
   weekday: "long", month: "short", day: "numeric",
 }).format(new Date(`${day}T12:00:00`));
 
+/** Shared source of truth for auto-plan and the running-day sidebar. */
+export function collectAutoPlanInput(plugin: OpalTasksPlugin, now: Date, days: 1 | 2 | 3 = 1): AutoPlanInput {
+  const managed = listManaged(plugin.app), all = [...managed.active, ...managed.archived];
+  const archivedAreas = new Set(managed.archived.filter((x) => x.type === "area").map((x) => x.id));
+  const archivedAreaNames = new Set(managed.archived.filter((x) => x.type === "area").map((x) => x.name.toLowerCase()));
+  const excludedPaths = new Set(managed.archived.map((x) => x.path));
+  for (const project of managed.active.filter((x) => x.type === "project")) {
+    if ((project.areaId && archivedAreas.has(project.areaId)) || (!project.areaId && archivedAreaNames.has(projectAreaName(project.area)?.toLowerCase() ?? ""))) excludedPaths.add(project.path);
+  }
+  const areas = all.filter((x) => x.type === "area");
+  const areaForProject = (path: string | null) => {
+    if (!path) return undefined;
+    const item = all.find((x) => x.path === path); if (!item) return undefined;
+    if (item.type === "area") return item;
+    return areas.find((area) => item.areaId ? area.id === item.areaId : area.name.toLowerCase() === (projectAreaName(item.area)?.toLowerCase() ?? ""));
+  };
+  const tasks = plugin.index.all().filter((task) => isOpen(task.status) && (!task.project || !excludedPaths.has(task.project)))
+    .map((task) => ({ task, timeMapId: areaForProject(task.project)?.timeMapId }));
+  const from = localDay(now), to = addDays(from, days - 1);
+  return { tasks, blocks: plugin.timeStore.blocks(), events: (plugin.gcalFeed?.eventsIn(from, to) ?? []).filter((event) => !plugin.timeStore.isMeetingComplete(event)),
+    maps: plugin.settings.timeMaps?.length ? plugin.settings.timeMaps : [DEFAULT_TIME_MAP],
+    defaultMapId: plugin.settings.defaultTimeMapId ?? "default", excludedLabels: plugin.settings.autoPlanExcludedLabels ?? [],
+    activeTaskId: plugin.workTimer?.active()?.task_id, now, days };
+}
+
 export class AutoPlanModal extends Modal {
   private days: 1 | 2 | 3 = 1;
   private preview: AutoPlanPreview | null = null;
@@ -33,37 +58,8 @@ export class AutoPlanModal extends Modal {
   }
   onClose(): void { this.contentEl.empty(); }
 
-  private maps(): TimeMap[] {
-    return this.plugin.settings.timeMaps?.length ? this.plugin.settings.timeMaps : [DEFAULT_TIME_MAP];
-  }
-
   private input(now = new Date()): AutoPlanInput {
-    const managed = listManaged(this.plugin.app), all = [...managed.active, ...managed.archived];
-    const archivedAreas = new Set(managed.archived.filter((x) => x.type === "area").map((x) => x.id));
-    const archivedAreaNames = new Set(managed.archived.filter((x) => x.type === "area").map((x) => x.name.toLowerCase()));
-    const excludedPaths = new Set(managed.archived.map((x) => x.path));
-    for (const project of managed.active.filter((x) => x.type === "project")) {
-      if ((project.areaId && archivedAreas.has(project.areaId)) || (!project.areaId && archivedAreaNames.has(projectAreaName(project.area)?.toLowerCase() ?? ""))) {
-        excludedPaths.add(project.path);
-      }
-    }
-    const areas = all.filter((x) => x.type === "area");
-    const areaForProject = (path: string | null) => {
-      if (!path) return undefined;
-      const item = all.find((x) => x.path === path);
-      if (!item) return undefined;
-      if (item.type === "area") return item;
-      return areas.find((area) => item.areaId ? area.id === item.areaId : area.name.toLowerCase() === (projectAreaName(item.area)?.toLowerCase() ?? ""));
-    };
-    const tasks = this.plugin.index.all()
-      .filter((task) => isOpen(task.status) && (!task.project || !excludedPaths.has(task.project)))
-      .map((task) => ({ task, timeMapId: areaForProject(task.project)?.timeMapId }));
-    const from = localDay(now), to = addDays(from, this.days - 1);
-    return {
-      tasks, blocks: this.plugin.timeStore.blocks(), events: this.plugin.gcalFeed?.eventsIn(from, to) ?? [],
-      maps: this.maps(), defaultMapId: this.plugin.settings.defaultTimeMapId ?? "default",
-      activeTaskId: this.plugin.workTimer?.active()?.task_id, now, days: this.days,
-    };
+    return collectAutoPlanInput(this.plugin, now, this.days);
   }
 
   private async refresh(): Promise<void> {

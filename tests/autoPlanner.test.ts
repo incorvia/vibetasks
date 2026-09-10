@@ -52,6 +52,15 @@ describe("auto planner", () => {
     expect(result.unscheduled).toEqual([{ taskId: "too-big", title: "too-big", reason: "no_time" }]);
   });
 
+  it("releases the unused tail of an early-completed block", () => {
+    const completed = schedule("history", "finished", new Date(2026, 8, 10, 9).toISOString(), {
+      status: "completed", duration: 60, completed_at: new Date(2026, 8, 10, 9, 15).toISOString(),
+    });
+    const result = plan([task("ready", { estimate: 30 })], [completed]);
+    expect(new Date(result.placements[0].start).getHours()).toBe(9);
+    expect(new Date(result.placements[0].start).getMinutes()).toBe(15);
+  });
+
   it("preserves pinned and active blocks while recovering missed work", () => {
     const pinned = schedule("pin", "pinned", new Date(2026, 8, 10, 9).toISOString(), { pinned: true, duration: 60 });
     const active = schedule("active", "active", new Date(2026, 8, 10, 8).toISOString(), { duration: 90 });
@@ -59,6 +68,24 @@ describe("auto planner", () => {
     const result = plan([task("pinned"), task("active"), task("missed")], [pinned, active, missed]);
     expect(result.preserved.map((x) => [x.taskId, x.reason])).toEqual(expect.arrayContaining([["pinned", "pinned"], ["active", "active"]]));
     expect(result.placements.find((x) => x.taskId === "missed")?.kind).toBe("moved");
+  });
+
+  it("leaves excluded-label tasks untouched and reserves their scheduled time", () => {
+    const waiting = schedule("waiting-block", "waiting", new Date(2026, 8, 10, 9).toISOString(), { duration: 60 });
+    const result = buildAutoPlan({
+      tasks: [
+        { task: task("waiting", { labels: ["Waiting"] }) },
+        { task: task("on-hold", { labels: ["on-hold"] }) },
+        { task: task("ready") },
+      ], blocks: [waiting], events: [], maps: [map], defaultMapId: "default", excludedLabels: ["waiting", "on-hold"],
+      now: new Date(2026, 8, 10, 8, 2), days: 1,
+    });
+    expect(result.preserved).toContainEqual({ taskId: "waiting", title: "waiting", reason: "excluded_label" });
+    expect(result.preserved).toContainEqual({ taskId: "on-hold", title: "on-hold", reason: "excluded_label" });
+    expect(result.placements.map((placement) => placement.taskId)).toEqual(["ready"]);
+    expect(new Date(result.placements[0].start).getHours()).toBe(10);
+    expect(result.expectedSchedules).not.toHaveProperty("waiting");
+    expect(result.expectedSchedules).not.toHaveProperty("on-hold");
   });
 
   it("keeps schedules beyond the selected horizon and uses area-specific maps", () => {
@@ -70,6 +97,17 @@ describe("auto planner", () => {
     });
     expect(result.preserved).toContainEqual({ taskId: "future", title: "future", reason: "outside_horizon" });
     expect(new Date(result.placements[0].start).getHours()).toBe(18);
+  });
+
+  it("preserves deferred tasks for today and makes them eligible on their defer date", () => {
+    const deferred = task("later", { estimate: 30, deferUntil: "2026-09-11" });
+    const today = plan([deferred]);
+    expect(today.placements).toEqual([]);
+    expect(today.preserved).toContainEqual({ taskId: "later", title: "later", reason: "deferred" });
+
+    const multiDay = plan([deferred], [], [], 3);
+    expect(multiDay.placements).toHaveLength(1);
+    expect(new Date(multiDay.placements[0].start).getDate()).toBe(11);
   });
 
   it("merges overlapping availability and keeps local wall-clock hours across days", () => {

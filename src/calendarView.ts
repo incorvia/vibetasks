@@ -461,7 +461,7 @@ function renderMonth(root: HTMLElement, ctx: PageCtx,
   const fillCell = (day: string, body: HTMLElement, events: DayEvent[], tasks: Task[], blocks: BlockSlice[], fit: ChipFit): void => {
     body.empty();
     const draws: ((p: HTMLElement) => void)[] = [
-      ...events.map((de) => (p: HTMLElement) => renderEventChip(p, de)),
+      ...events.map((de) => (p: HTMLElement) => renderEventChip(p, de, plugin)),
       ...blocks.map((b) => (p: HTMLElement) => renderBlockChip(p, plugin, b.block)),
       ...tasks.map((tk) => (p: HTMLElement) => renderChip(p, plugin, tk)),
     ];
@@ -614,7 +614,7 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
 
       const cell = alldayCells.get(day)!;
       cell.empty();
-      for (const de of allDayEventsOf(dayEvents)) renderEventChip(cell, de);
+      for (const de of allDayEventsOf(dayEvents)) renderEventChip(cell, de, plugin);
       const dayBlocks = blocks.get(day) ?? [];
       for (const slice of dayBlocks) if (slice.startMin === null) renderBlockChip(cell, plugin, slice.block);
       const scheduledHere = new Set(dayBlocks
@@ -644,13 +644,14 @@ function renderTimeGrid(root: HTMLElement, plugin: OpalTasksPlugin,
         if (b.kind === "event") {
           // Termin: neutrale Fläche, kräftiger Farbbalken links – kein Kreis, kein Drag, kein Griff.
           const el = col.createDiv({ cls: "bt-calview-ev" + (compact ? " is-compact" : "") });
+          if (plugin.timeStore.isMeetingComplete(b.event)) el.addClass("is-done");
           setBox(el);
           el.style.setProperty("--bt-ev-color", b.event.color);
           const inner = el.createDiv({ cls: "bt-calview-ev-in" });
           inner.createDiv({ cls: "bt-calview-ev-title", text: b.event.title });
           if (!compact) inner.createDiv({ cls: "bt-calview-ev-time", text: span(b.startMin, b.endMin) });
           tip(el, eventTooltip({ event: b.event, startMin: b.startMin, endMin: b.endMin }));
-          activateEventOpen(el, b.event);
+          activateEventOpen(el, b.event, plugin);
           continue;
         }
 
@@ -917,11 +918,17 @@ export function openEventExternal(ev: CalEvent): void {
 
 /** Ein Termin-Element klick- UND tastaturbedienbar machen (Enter/Leertaste), mit Button-Rolle
  *  für Screenreader. Read-only: die einzige Aktion ist „im Google Kalender öffnen". */
-export function activateEventOpen(el: HTMLElement, ev: CalEvent): void {
-  if (!ev.htmlLink) return;
+export function activateEventOpen(el: HTMLElement, ev: CalEvent, plugin?: OpalTasksPlugin): void {
   el.setAttr("role", "button");
   el.setAttr("tabindex", "0");
-  const open = (e: Event): void => { e.preventDefault(); e.stopPropagation(); openEventExternal(ev); };
+  const open = (e: Event): void => {
+    e.preventDefault(); e.stopPropagation();
+    if (!plugin) { if (ev.htmlLink) openEventExternal(ev); return; }
+    openPopover(el, (pop, close) => {
+      if (ev.htmlLink) popRow(pop, "external-link", "Open in Google Calendar", () => { openEventExternal(ev); close(); });
+      if (!ev.allDay && !plugin.timeStore.isMeetingComplete(ev)) popRow(pop, "check", t(Date.now() < Date.parse(ev.end) ? "now_end_early" : "now_finished"), () => { void plugin.nowController.completeMeeting(ev); close(); });
+    });
+  };
   el.addEventListener("click", open);
   el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(e); });
 }
@@ -933,9 +940,10 @@ function eventTooltip(de: DayEvent): string {
 }
 /** Termin-Chip (Monatszelle / Ganztägig-Zeile / Popover): Farbpunkt + optional Uhrzeit + Titel.
  *  Bewusst OHNE Abhak-Kreis und ohne Drag – ein Termin ist nichts, was man erledigt oder verschiebt. */
-function renderEventChip(parent: HTMLElement, de: DayEvent): void {
+function renderEventChip(parent: HTMLElement, de: DayEvent, plugin: OpalTasksPlugin): void {
   const ev = de.event;
   const chip = parent.createDiv({ cls: "bt-calview-chip bt-calview-evchip" });
+  if (plugin.timeStore.isMeetingComplete(ev)) chip.addClass("is-done");
   chip.style.setProperty("--bt-ev-color", ev.color);
   chip.createSpan({ cls: "bt-calview-evbar", attr: { "aria-hidden": "true" } });
   if (de.startMin !== null) chip.createSpan({ cls: "bt-calview-chip-time", text: hhmm(de.startMin) });
@@ -943,7 +951,7 @@ function renderEventChip(parent: HTMLElement, de: DayEvent): void {
   // Termine behalten ihren dauerhaften Tooltip: er trägt zusätzlich den ORT, der nirgends
   // auf dem Bildschirm steht – anders als bei Aufgaben fügt er also immer etwas hinzu.
   tip(chip, eventTooltip(de));
-  activateEventOpen(chip, ev);
+  activateEventOpen(chip, ev, plugin);
 }
 
 /** Gemeinsames Verhalten von Chip und Zeitblock: Farbe, Erledigt-Zustand, Klick. */

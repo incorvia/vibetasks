@@ -15,13 +15,14 @@ import { migratedDeadline } from "./timingMigration";
 import { OPAL_AREA_ID, OPAL_PARENT_ID, OPAL_PROJECT_ID, OPAL_SOURCE_NOTE_ID } from "./stableRelationships";
 
 const EXPORT_FORMAT = "opal_tasks";
-const EXPORT_VERSION = 7;
+const EXPORT_VERSION = 8;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
 // v4 = kanonisches Zeitmodell · v5 = Beziehungen per stabiler ID und neue lokale IDs beim Import.
 // v6 = completion timestamp for the three-day completed-project grace period.
 // v7 = inline-task source-note provenance.
+// v8 = earliest planner date (`deferUntil`) for tasks parked beyond the current day.
 //
 // Die Zahl ist eine ANGABE, keine Schranke: `parseExport` prüft sie bewusst nicht. Ältere Dateien
 // bleiben lesbar (die neuen Felder sind optional und fehlen dann einfach), und eine v3-Datei lässt
@@ -44,6 +45,8 @@ export interface ExportTask {
   scheduledTime?: string | null;
   /** v4 canonical effort estimate; duration is accepted from v1-v3 exports. */
   estimate?: number | null;
+  /** v8 earliest local date on which planners may schedule the task. */
+  deferUntil?: string | null;
   duration?: number | null;
   start?: string | null;
   projectId?: string | null;
@@ -183,6 +186,7 @@ export function toExportTask(tk: Task, body = ""): ExportTask {
     due: tk.due,
     dueTime: tk.dueTime,
     estimate: tk.estimate ?? null,
+    deferUntil: tk.deferUntil ?? null,
     projectId: tk.projectId ?? null,
     parentId: tk.parentId ?? null,
     labels: tk.labels,
@@ -250,6 +254,7 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
     priority: et.priority && et.priority !== "normal" ? et.priority : undefined,
     due: migratedDeadline(et.due ? combineDT(et.due, et.dueTime) : null, et.scheduled ? combineDT(et.scheduled, et.scheduledTime) : null),
     estimate: et.estimate ?? et.duration ?? null,
+    defer_until: et.deferUntil ?? null,
     [OPAL_PROJECT_ID]: Object.prototype.hasOwnProperty.call(ids, "projectId") ? ids.projectId : et.projectId ?? null,
     [OPAL_PARENT_ID]: Object.prototype.hasOwnProperty.call(ids, "parentId") ? ids.parentId : et.parentId ?? null,
     [OPAL_SOURCE_NOTE_ID]: et.sourceNoteId ?? null,

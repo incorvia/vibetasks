@@ -220,12 +220,12 @@ export class SchedulingService {
   /** Preserve the primary placement as calendar history; only other future allocations disappear. */
   async completeTask(taskId: string): Promise<void> {
     const schedule = this.getTaskSchedule(taskId);
-    if (schedule?.status === "planned") await this.store.updateBlock(schedule.id, { status: "completed" });
+    if (schedule?.status === "planned") await this.store.updateBlock(schedule.id, { status: "completed", completed_at: new Date().toISOString() });
     await this.store.cancelFutureBlocks(taskId);
   }
   async reopenTask(taskId: string): Promise<void> {
     const schedule = this.getTaskSchedule(taskId);
-    if (schedule?.status === "completed") await this.store.updateBlock(schedule.id, { status: "planned" });
+    if (schedule?.status === "completed") await this.store.updateBlock(schedule.id, { status: "planned", completed_at: undefined });
   }
 
   private requireBlock(id: string): TimeBlock {

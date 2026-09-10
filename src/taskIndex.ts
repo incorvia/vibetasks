@@ -383,6 +383,7 @@ export class TaskIndex extends Component {
       due: asDate(fm.due),
       dueTime: asTime(fm.due),
       estimate: asNum(fm.estimate),
+      deferUntil: asDate(fm.defer_until),
       sortOrder: asNum(fm.sort_order),
       // Projekt über den Basenamen gegen echte Projekt-/Bereichs-Notizen (immun gegen gleichnamige
       // Fremd-Notizen, s. resolveProjectPath). `parent` bleibt beim generischen Link-Resolver.
