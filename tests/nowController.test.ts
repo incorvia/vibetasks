@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { NowController } from "../src/nowController";
+import { NOW_RUN_KEY, NowController } from "../src/nowController";
 import { addDays } from "../src/calendarModel";
 import { localDay } from "../src/autoPlanner";
 import type { CalEvent, Task, TimeBlock } from "../src/types";
@@ -9,6 +9,46 @@ const event = (id: string, start: string, end: string): CalEvent => ({
 });
 
 describe("Opal Now queue", () => {
+  it("treats a restored active timer as running and resumes the same focus after a real pause", async () => {
+    const now = new Date(), day = localDay(now);
+    const task: Task = {
+      id: "active", path: "active.md", title: "Active", titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 120, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "block", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(now.getTime() - 60 * 60_000).toISOString(), duration: 120,
+      mode: "focus", selector: "manual", status: "planned", source: "auto",
+    };
+    let active: { session_id: string; task_id: string; started_at: string; block_id: string } | null = {
+      session_id: "session", task_id: task.id, started_at: block.start, block_id: block.id,
+    };
+    const stop = vi.fn(async () => { active = null; });
+    const startTask = vi.fn(async (taskId: string, blockId?: string) => {
+      active = { session_id: "resumed", task_id: taskId, started_at: new Date().toISOString(), block_id: blockId ?? "" };
+    });
+    const plugin = {
+      app: {
+        loadLocalStorage: (key: string) => key === NOW_RUN_KEY ? { date: day, status: "running", skipped: [] } : null,
+        saveLocalStorage: () => undefined,
+      },
+      timeStore: { blocksIn: () => [block], block: () => block, isMeetingComplete: () => false },
+      index: { getById: () => task }, workTimer: { active: () => active, stop, startTask },
+      gcalFeed: { eventsIn: () => [] },
+    };
+    const controller = new NowController(plugin as never);
+
+    expect(controller.snapshot(now).status).toBe("running");
+    await controller.pause();
+    expect(controller.snapshot(now).status).toBe("paused");
+    expect(controller.snapshot(now).current?.title).toBe("Active");
+
+    await controller.resume();
+    expect(startTask).toHaveBeenCalledWith(task.id, block.id);
+    expect(controller.snapshot(now).status).toBe("running");
+  });
+
   it("keeps elapsed calendar events out of Up next", () => {
     const day = localDay(new Date());
     const events = [

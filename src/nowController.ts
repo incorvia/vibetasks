@@ -11,7 +11,7 @@ import { bucketEvents } from "./calendarModel";
 export const NOW_RUN_KEY = "opal_tasks-now-run";
 export const NOW_UNDO_KEY = "opal_tasks-now-undo";
 export type NowRunStatus = "stopped" | "running" | "paused" | "waiting" | "recovery";
-type StoredRun = { date: string; status: NowRunStatus; skipped: string[]; fixedKey?: string; error?: string };
+type StoredRun = { date: string; status: NowRunStatus; skipped: string[]; fixedKey?: string; pausedTaskId?: string; pausedBlockId?: string; error?: string };
 type UndoMove = { id: string; before: string; after: string };
 type StoredUndo = { date: string; moves: UndoMove[] };
 export type NowItem =
@@ -25,7 +25,7 @@ export interface NowSnapshot {
 
 const timedEnd = (start: string, minutes: number): string => new Date(Date.parse(start) + minutes * 60_000).toISOString();
 const PRIORITIES: Priority[] = ["highest", "high", "medium", "normal", "low", "lowest"];
-const tomorrow = (): string => { const date = new Date(); date.setDate(date.getDate() + 1); return localDay(date); };
+const futureDay = (days: number): string => { const date = new Date(); date.setDate(date.getDate() + Math.max(1, Math.round(days))); return localDay(date); };
 
 /** Plugin-level state machine. It keeps running even when no sidebar leaf is open. */
 export class NowController extends Component {
@@ -58,8 +58,13 @@ export class NowController extends Component {
     return this.transition;
   }
 
-  status(): NowRunStatus { return this.run.status; }
-  isRunning(): boolean { return this.run.status === "running" || this.run.status === "waiting"; }
+  private effectiveStatus(): NowRunStatus {
+    // The work timer is authoritative. After an Obsidian restart the guide deliberately enters
+    // recovery, but TimerService may successfully restore a still-running session afterward.
+    return this.plugin.workTimer.active() ? "running" : this.run.status;
+  }
+  status(): NowRunStatus { return this.effectiveStatus(); }
+  isRunning(): boolean { const status = this.effectiveStatus(); return status === "running" || status === "waiting"; }
 
   private items(): { timed: NowItem[]; allDay: (Task | CalEvent)[] } {
     const day = this.run.date, tasks: NowItem[] = [], allDay: (Task | CalEvent)[] = [];
@@ -110,7 +115,7 @@ export class NowController extends Component {
     const pastEvents = open.filter((item) => item !== current && item.kind === "meeting" && Date.parse(item.end) <= time);
     // Missed work remains visible for review; elapsed calendar events move out of the action queue.
     const upcoming = open.filter((item) => item !== current && !pastEvents.includes(item));
-    return { status: this.run.status, current, upcoming, completed, allDay, skipped, pastEvents, error: this.run.error,
+    return { status: this.effectiveStatus(), current, upcoming, completed, allDay, skipped, pastEvents, error: this.run.error,
       canUndo: !!this.undo(), conflicts: overlapping.length > 1 && !this.run.fixedKey ? overlapping : [] };
   }
 
@@ -119,14 +124,28 @@ export class NowController extends Component {
     this.run = { date: localDay(new Date()), status: "running", skipped: this.run.date === localDay(new Date()) ? this.run.skipped : [] };
     this.persist(); await this.advance();
   }); }
-  pause(): Promise<void> { return this.serial(async () => { await this.plugin.workTimer.stop(); this.run.status = "paused"; this.persist(); }); }
-  resume(): Promise<void> { return this.serial(async () => { this.run.status = "running"; delete this.run.error; this.persist(); await this.advance(); }); }
+  pause(): Promise<void> { return this.serial(async () => {
+    const current = this.snapshot().current, active = this.plugin.workTimer.active();
+    if (current) this.run.fixedKey = current.key;
+    if (active) { this.run.pausedTaskId = active.task_id; this.run.pausedBlockId = active.block_id; }
+    await this.plugin.workTimer.stop(); this.run.status = "paused"; this.persist();
+  }); }
+  resume(): Promise<void> { return this.serial(async () => {
+    const taskId = this.run.pausedTaskId, blockId = this.run.pausedBlockId;
+    this.run.status = "running"; delete this.run.error; delete this.run.pausedTaskId; delete this.run.pausedBlockId; this.persist();
+    if (taskId) { await this.plugin.workTimer.startTask(taskId, blockId); this.persist(); return; }
+    await this.advance();
+  }); }
   stop(): Promise<void> { return this.serial(async () => { await this.plugin.workTimer.stop(); this.run = { date: localDay(new Date()), status: "stopped", skipped: [] }; this.persist(); }); }
-  parkCurrent(): Promise<void> { return this.serial(async () => {
+  parkCurrent(): Promise<void> { return this.deferCurrent(1); }
+  deferCurrent(days: number): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
+    const automate = this.isRunning();
     await this.plugin.workTimer.stop();
-    await this.plugin.setTaskDeferUntil(current.task, tomorrow());
+    await this.plugin.setTaskDeferUntil(current.task, futureDay(days));
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
+    delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
+    if (automate) this.run.status = "running";
     this.persist(); await this.advance();
   }); }
   returnTo(taskId: string): Promise<void> { return this.serial(async () => {
@@ -135,16 +154,42 @@ export class NowController extends Component {
   }); }
   demoteAndSkipCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
+    const automate = this.isRunning();
     const index = PRIORITIES.indexOf(current.task.priority), next = PRIORITIES[Math.min(PRIORITIES.length - 1, index + 1)];
     await this.plugin.workTimer.stop();
-    await this.plugin.setTaskDeferUntil(current.task, tomorrow());
+    await this.plugin.setTaskDeferUntil(current.task, futureDay(1));
     if (next !== current.task.priority) await this.plugin.setTaskPriority(current.task, next);
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
+    delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
+    if (automate) this.run.status = "running";
     this.persist(); await this.advance();
   }); }
   chooseCommitment(key: string): Promise<void> { return this.serial(async () => {
     const choice = this.snapshot().conflicts.find((item) => item.key === key); if (!choice) return;
     await this.plugin.workTimer.stop(); this.run.fixedKey = choice.key; this.run.status = "running"; delete this.run.error; this.persist();
+  }); }
+  extendCurrent(minutes = 5): Promise<void> { return this.serial(async () => {
+    const current = this.snapshot().current;
+    if (!current || current.kind === "meeting") return;
+    const previousDuration = Math.max(1, Math.round((Date.parse(current.end) - Date.parse(current.start)) / 60_000));
+    await this.plugin.repository.ensureAutoPlanSchema();
+    await this.plugin.scheduling.resizeBlock(current.block.id, previousDuration + minutes);
+    try {
+      // Replan only work that already has a remaining placement today. Extending the current
+      // item must not quietly pull unrelated backlog tasks into the day.
+      const now = new Date(), input = collectAutoPlanInput(this.plugin, now, 1);
+      const scheduled = new Set(input.blocks.filter((block) => !isAllDaySchedule(block)
+        && blockKind(block) === "task_schedule" && block.scope.type === "task" && block.status === "planned"
+        && block.id !== current.block.id && localDay(new Date(block.start)) === this.run.date
+        && Date.parse(block.start) + block.duration * 60_000 > now.getTime()).map((block) => block.scope.id));
+      const scoped = { ...input, tasks: input.tasks.filter((item) => scheduled.has(item.task.id)) };
+      const preview = this.plugin.scheduling.previewAutoPlan(scoped);
+      if (preview.candidateTaskIds.length) await this.plugin.scheduling.applyAutoPlan(preview);
+    } catch (error) {
+      await this.plugin.scheduling.resizeBlock(current.block.id, previousDuration);
+      throw error;
+    }
+    delete this.run.error; this.persist();
   }); }
   completeCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current) return;

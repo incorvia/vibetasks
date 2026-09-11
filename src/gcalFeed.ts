@@ -50,6 +50,9 @@ export interface GCalFeedSettings {
   enabled: boolean;                      // Termine anzeigen
   calendars: Record<string, boolean>;    // calendarId -> sichtbar
   hideDeclined: boolean;                 // abgelehnte Einladungen ausblenden
+  /** Vom Nutzer in Opal ausgeblendete Einzeltermine/Serien. Der Wert ist der Zeitpunkt, damit
+   *  das Format später begrenzt werden kann, ohne die Identität oder den Titel zu speichern. */
+  hiddenEvents: Record<string, number>;   // `${calendarId}|${recurringEventId ?? eventId}` -> hiddenAt
   upcomingMonths: number;                // Vorschau in „Demnächst": 1–12 Monate (siehe MAX_MONTHS/MAX_STORE)
   // `snapshot` liegt NICHT mehr hier: Der Kaltstart-Cache wird bei jedem Refresh neu geschrieben
   // und umfasst bis zu 500 Termine – er gehört geräte-lokal, nicht in die Einstellungen.
@@ -60,6 +63,7 @@ export const DEFAULT_GCAL_FEED_SETTINGS: GCalFeedSettings = {
   enabled: false,
   calendars: {},
   hideDeclined: true,
+  hiddenEvents: {},
   upcomingMonths: 1,
 };
 
@@ -119,6 +123,9 @@ export interface GCalFeedStatus {
 }
 
 const evKey = (ev: CalEvent): string => ev.calendarId + "|" + ev.id;
+/** Stabile Ausblend-Identität. Bei einer Google-Serie gilt die Aktion für alle Vorkommen. */
+export const eventHideKey = (ev: Pick<CalEvent, "calendarId" | "id" | "recurringEventId">): string =>
+  ev.calendarId + "|" + (ev.recurringEventId ?? ev.id);
 const enc = (s: string): string => encodeURIComponent(s);
 const monthOf = (day: string): string => day.slice(0, 7);
 
@@ -178,7 +185,7 @@ export class GCalFeed {
 
   constructor(private host: GCalFeedHost, private auth: GCalAuth) {
     // Kaltstart: der Snapshot füllt die Ansicht SOFORT (kein leeres Blitzen, offline sichtbar).
-    for (const ev of host.snapshot()) this.store.set(evKey(ev), ev);
+    for (const ev of host.snapshot()) if (!this.isHidden(ev)) this.store.set(evKey(ev), ev);
   }
 
   // ── Öffentliche API ──
@@ -187,6 +194,7 @@ export class GCalFeed {
     return () => this.cbs.delete(cb);
   }
   getStatus(): GCalFeedStatus { return this.status; }
+  hiddenEventCount(): number { return Object.keys(this.host.settings.hiddenEvents).length; }
 
   /** Zeigt der Feed überhaupt etwas? (an UND verbunden UND mindestens ein Kalender gewählt) */
   isActive(): boolean {
@@ -224,9 +232,29 @@ export class GCalFeed {
     const fromDay = from.slice(0, 10), toDay = to.slice(0, 10);
     const out: CalEvent[] = [];
     for (const ev of this.store.values()) {
-      if (ev.start.slice(0, 10) <= toDay && ev.end.slice(0, 10) >= fromDay) out.push(ev);
+      if (!this.isHidden(ev) && ev.start.slice(0, 10) <= toDay && ev.end.slice(0, 10) >= fromDay) out.push(ev);
     }
     return out;
+  }
+
+  /** Nur in Opal ausblenden. Google wird bewusst nicht verändert: keine Absage, kein Löschen,
+   *  keine Nachricht an Organisator oder Teilnehmer. Bei Serien gilt die Wahl für alle Vorkommen. */
+  async hideEvent(event: CalEvent): Promise<void> {
+    this.host.settings.hiddenEvents[eventHideKey(event)] = Date.now();
+    for (const [key, candidate] of this.store) {
+      if (eventHideKey(candidate) === eventHideKey(event)) this.store.delete(key);
+    }
+    await this.host.persist();
+    await this.saveSnapshot();
+    this.emit();
+  }
+
+  /** Einstellungen-Fluchtweg: alle lokal gefilterten Termine wieder zulassen und neu laden. */
+  async restoreHiddenEvents(): Promise<void> {
+    this.host.settings.hiddenEvents = {};
+    await this.host.persist();
+    await this.refresh();
+    this.emit();
   }
 
   /** Manuell/nach Fokuswechsel: alles Bekannte gegen Google prüfen (meist lauter 304er). */
@@ -440,9 +468,10 @@ export class GCalFeed {
       ? (end?.date ?? addDays(s, 1))
       : (end?.dateTime ? localStamp(end.dateTime) ?? s : s);
 
-    return {
+    const event: CalEvent = {
       id: raw.id as string,
       calendarId: calId,
+      recurringEventId: typeof raw.recurringEventId === "string" ? raw.recurringEventId : undefined,
       title: (raw.summary as string) || t("gcalfeed_untitled"),
       start: s,
       end: e,
@@ -451,6 +480,15 @@ export class GCalFeed {
       htmlLink: (raw.htmlLink as string) ?? "",
       location: (raw.location as string) || undefined,
     };
+    return this.isHidden(event) ? null : event;
+  }
+
+  private isHidden(event: Pick<CalEvent, "calendarId" | "id" | "recurringEventId">): boolean {
+    const hidden = this.host.settings.hiddenEvents;
+    // Den konkreten Event-Key zusätzlich prüfen: Snapshots aus Versionen vor recurringEventId
+    // konnten beim Ausblenden nur das einzelne Vorkommen kennen.
+    return Object.prototype.hasOwnProperty.call(hidden, eventHideKey(event))
+      || Object.prototype.hasOwnProperty.call(hidden, event.calendarId + "|" + event.id);
   }
 
   /** Den Ausschnitt eines Kalenders ersetzen: erst alles im Fenster weg, dann das Geholte rein.

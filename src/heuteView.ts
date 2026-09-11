@@ -1982,7 +1982,8 @@ const gcalExpanded = new Set<string>();
 
 /**
  * Ein Termin als schmales Band – bewusst KEINE Aufgabenzeile (kein Abhak-Kreis, keine Meta-Zeile):
- * ein Farbbalken links, Uhrzeit vor dem Titel, Klick öffnet den Termin im Google Kalender. Die
+ * ein Farbbalken links, Uhrzeit vor dem Titel, Klick öffnet die Aktionen (Google öffnen / in Opal
+ * ausblenden). Die
  * Bänder stehen oben in der Tagesgruppe (Ganztägig zuerst, dann nach Uhrzeit): eine Zeitmarke,
  * kein Listeneintrag, der um die Sortierung konkurriert. Ab `GCAL_BAND_LIMIT` klappt der Rest ein.
  */
@@ -2003,9 +2004,9 @@ function renderEventBands(list: HTMLElement, ctx: PageCtx, events: DayEvent[], d
       row.createSpan({ cls: "bt-gcal-band-time", text: time });
     }
     row.createSpan({ cls: "bt-gcal-band-title", text: ev.title });
-    setIcon(row.createSpan({ cls: "bt-gcal-band-open", attr: { "aria-hidden": "true" } }), "external-link");
-    tip(row, t("gcalfeed_open_in_google"));
-    activateEventOpen(row, ev);
+    setIcon(row.createSpan({ cls: "bt-gcal-band-open", attr: { "aria-hidden": "true" } }), "ellipsis");
+    tip(row, t("more_actions"));
+    activateEventOpen(row, ev, ctx.plugin);
   }
   if (sorted.length > GCAL_BAND_LIMIT) {
     const hidden = sorted.length - GCAL_BAND_LIMIT;

@@ -148,6 +148,9 @@ export interface TimeLog {
 export interface CalEvent {
   id: string;
   calendarId: string;
+  /** Google-ID der Serie. Fehlt bei Einzelterminen; dient dazu, eine ausgeblendete Serie auch
+   *  nach dem nächsten Monatsabruf mit ihren neu aufgelösten Vorkommen verborgen zu halten. */
+  recurringEventId?: string;
   title: string;
   start: string;        // "YYYY-MM-DD" (ganztägig) oder "YYYY-MM-DDTHH:mm" (lokale Zeit)
   end: string;          // exklusiv (Google-Semantik: Ganztags-Ende = Folgetag)

@@ -369,7 +369,7 @@ The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.
 
 ### Show your Google events
 
-Separate from the sync, and read-only: switch on **Show events in Opal Tasks** and your Google appointments appear in **Today** and **Upcoming**, next to the tasks due that day. Pick which calendars to show, hide events you declined, and set the text size. Nothing is written back and no note is created — an event never becomes a task.
+Separate from the sync, and read-only: switch on **Show events in Opal Tasks** and your Google appointments appear in **Today** and **Upcoming**, next to the tasks due that day. Pick which calendars to show and hide events you declined. Open an event's actions to **Hide from Opal**; recurring events are hidden as a series, and Settings can show all hidden events again. This only changes Opal's filter—nothing is written back, no attendee is notified, and no note is created.
 
 Project, label and filter pages deliberately stay free of them: those are about your own work, not your day's appointments.
 

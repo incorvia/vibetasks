@@ -3183,6 +3183,8 @@ export default class OpalTasksPlugin extends Plugin {
     // gespeicherte Werte behalten). Lebendes Objekt – die Engine mutiert lastSynced/syncTokens darin.
     this.settings.gcal = Object.assign({}, DEFAULT_GCAL_SETTINGS, this.settings.gcal);
     this.settings.gcalFeed = Object.assign({}, DEFAULT_GCAL_FEED_SETTINGS, this.settings.gcalFeed);
+    if (!this.settings.gcalFeed.hiddenEvents || typeof this.settings.gcalFeed.hiddenEvents !== "object"
+      || Array.isArray(this.settings.gcalFeed.hiddenEvents)) this.settings.gcalFeed.hiddenEvents = {};
     this.device = Object.assign({}, DEFAULT_DEVICE_STATE,
       this.app.loadLocalStorage(DEVICE_STATE_KEY) as Partial<DeviceState> | null);
     let dirty = this.migrateGCalTokens();

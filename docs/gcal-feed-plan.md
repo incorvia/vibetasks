@@ -46,6 +46,7 @@ gewünschte) Zustand. Der Feed braucht nur `gcalAuth.isConnected()`, nicht `canS
 export interface CalEvent {
   id: string;            // Google-Event-Id (nur für Cache/Keys, nie im Vault)
   calendarId: string;
+  recurringEventId?: string; // Serien-ID, damit Ausblenden alle Vorkommen trifft
   title: string;
   start: string;         // "YYYY-MM-DD" (ganztägig) oder "YYYY-MM-DDTHH:mm" (lokal)
   end: string;
@@ -64,7 +65,7 @@ oder lang wieder bei „Termin abhaken".
 | `enabled` | Termine anzeigen an/aus (Default **aus**) |
 | `calendars: Record<calId, boolean>` | welche Kalender sichtbar sind |
 | `hideDeclined` | abgelehnte Einladungen ausblenden (Default an) |
-| `snapshot` | letzter Fensterstand für den Kaltstart (siehe unten), gedeckelt |
+| `hiddenEvents` | in Opal ausgeblendete Einzeltermine/Serien (nur IDs, keine Titel) |
 
 Beim ersten Aktivieren: **primärer Kalender an**, alle anderen aus — und der eigene
 `Opal Tasks`-Kalender (`gcal.calendarId`) **hart ausgeschlossen**, nicht nur ungehakt. Sonst steht
@@ -153,8 +154,8 @@ Blick als „gehört nicht mir, ist nur belegt".
 - **Monat**: Termine als Chips mit Farbpunkt, **mitgezählt** in `chipsThatFit`/`shownChips` — sonst
   rechnet die Zelle mit der falschen Zahl und das „+N weitere" schneidet ab.
 - **Jahr**: v1 unberührt.
-- Klick → Termin in Google öffnen (`htmlLink`). Hover → bestehendes `popover.ts` mit Zeit, Kalender,
-  Ort. Kein Kontextmenü in v1.
+- Klick → Aktions-Popover: Termin in Google öffnen (`htmlLink`) oder nur in Opal ausblenden. Das
+  Ausblenden ruft keine Google-Schreib-API auf und informiert weder Organisator noch Teilnehmer.
 - Das inkrementelle Nachzeichnen (`tryPatchCalendar`) muss die Termin-Menge in seinen Kontext-Vergleich
   aufnehmen, sonst zeigt es nach einem Feed-Refresh veraltete Termine. Sicherheitsnetz-Prinzip der
   Datei: im Zweifel voll neu bauen.
@@ -239,7 +240,8 @@ Meldung wert wäre.
 2. **Kein Doppel**: eigener Opal Tasks-Kalender taucht nirgends als Termin auf.
 3. **Mehrtägig**: Ganztags-Termin Mi–Fr steht auf allen drei Tagen; Termin 23:00–01:00 auf beiden.
 4. **Überlappung**: Meeting 10–11 + Aufgabenblock 10:30 → teilen sich die Breite, nichts liegt übereinander.
-5. **Read-only**: Termin lässt sich nicht abhaken, nicht ziehen, nicht in der Größe ändern; Klick öffnet Google.
+5. **Read-only**: Termin lässt sich nicht abhaken, nicht ziehen, nicht in der Größe ändern; das
+   Aktions-Popover kann Google öffnen oder den Termin nur in Opal ausblenden.
    Optisch auf einen Blick von einer Aufgabe unterscheidbar (leere Fläche + Farbbalken vs. gefüllter Block).
 6. **Sortierung**: Liste auf „nach Priorität" umstellen → Bänder rutschen an den Kopf der Tagesgruppe,
    stehen dort chronologisch.

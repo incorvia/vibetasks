@@ -917,7 +917,7 @@ export function openEventExternal(ev: CalEvent): void {
 }
 
 /** Ein Termin-Element klick- UND tastaturbedienbar machen (Enter/Leertaste), mit Button-Rolle
- *  für Screenreader. Read-only: die einzige Aktion ist „im Google Kalender öffnen". */
+ *  für Screenreader. Google bleibt read-only; Ausblenden schreibt nur in Opals Filterliste. */
 export function activateEventOpen(el: HTMLElement, ev: CalEvent, plugin?: OpalTasksPlugin): void {
   el.setAttr("role", "button");
   el.setAttr("tabindex", "0");
@@ -925,8 +925,9 @@ export function activateEventOpen(el: HTMLElement, ev: CalEvent, plugin?: OpalTa
     e.preventDefault(); e.stopPropagation();
     if (!plugin) { if (ev.htmlLink) openEventExternal(ev); return; }
     openPopover(el, (pop, close) => {
-      if (ev.htmlLink) popRow(pop, "external-link", "Open in Google Calendar", () => { openEventExternal(ev); close(); });
+      if (ev.htmlLink) popRow(pop, "external-link", t("gcalfeed_open_in_google"), () => { openEventExternal(ev); close(); });
       if (!ev.allDay && !plugin.timeStore.isMeetingComplete(ev)) popRow(pop, "check", t(Date.now() < Date.parse(ev.end) ? "now_end_early" : "now_finished"), () => { void plugin.nowController.completeMeeting(ev); close(); });
+      popRow(pop, "eye-off", t("gcalfeed_hide_event"), () => { void plugin.gcalFeed.hideEvent(ev); close(); });
     });
   };
   el.addEventListener("click", open);

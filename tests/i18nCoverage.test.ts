@@ -20,6 +20,9 @@ const INLINE_TASK_KEYS = [
   "notice_inline_create_failed", "notice_inline_schedule_failed",
 ];
 const SETTINGS_TAB_KEYS = ["set_tab_tasks_planning", "set_tab_data_sync"];
+const GCAL_HIDE_KEYS = [
+  "gcalfeed_hide_event", "gcalfeed_hidden_events", "gcalfeed_hidden_events_desc", "gcalfeed_restore_hidden",
+];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -135,6 +138,21 @@ describe("Settings tabs: translated in every locale", () => {
       for (const [index, key] of SETTINGS_TAB_KEYS.entries()) {
         expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
         expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
+      }
+    }
+    setLocale("en");
+  });
+});
+
+describe("Hidden calendar events: translated in every locale", () => {
+  it("does not silently fall back to English", () => {
+    setLocale("en");
+    const en = GCAL_HIDE_KEYS.map((key) => t(key, 2));
+    for (const locale of LOCALES.filter((value) => value !== "en")) {
+      setLocale(locale);
+      for (const [index, key] of GCAL_HIDE_KEYS.entries()) {
+        expect(t(key, 2), `${locale}/${key} fehlt`).not.toBe(key);
+        expect(t(key, 2), `${locale}/${key} ist englisch`).not.toBe(en[index]);
       }
     }
     setLocale("en");

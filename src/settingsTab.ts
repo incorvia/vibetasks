@@ -786,6 +786,14 @@ export class OpalTasksSettingTab extends PluginSettingTab {
         gf.hideDeclined = v; await p.saveSettings(); await feed.refresh(); p.renderMain();
       }));
 
+    const hidden = feed.hiddenEventCount();
+    if (hidden) new Setting(containerEl)
+      .setName(t("gcalfeed_hidden_events", hidden))
+      .setDesc(t("gcalfeed_hidden_events_desc"))
+      .addButton((button) => button.setButtonText(t("gcalfeed_restore_hidden")).onClick(async () => {
+        await feed.restoreHiddenEvents(); p.renderMain(); redraw();
+      }));
+
     // Vorschau-Horizont für „Demnächst". Kein feed.refresh() nötig: „Demnächst" meldet dem Feed
     // beim Zeichnen selbst den neuen Zeitraum (setRange) und lädt fehlende Monate nach.
     // Den Zahlenwert zeigt Obsidian von sich aus neben dem Regler (setDynamicTooltip ist veraltet).
