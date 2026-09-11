@@ -19,6 +19,7 @@ const INLINE_TASK_KEYS = [
   "set_inline_overlays", "set_inline_overlays_desc", "notice_inline_line_changed",
   "notice_inline_create_failed", "notice_inline_schedule_failed",
 ];
+const SETTINGS_TAB_KEYS = ["set_tab_tasks_planning", "set_tab_data_sync"];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -117,6 +118,21 @@ describe("Inline tasks: translated in every locale", () => {
     for (const locale of LOCALES.filter((value) => value !== "en")) {
       setLocale(locale);
       for (const [index, key] of INLINE_TASK_KEYS.entries()) {
+        expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
+        expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
+      }
+    }
+    setLocale("en");
+  });
+});
+
+describe("Settings tabs: translated in every locale", () => {
+  it("does not silently fall back to English", () => {
+    setLocale("en");
+    const en = SETTINGS_TAB_KEYS.map((key) => t(key));
+    for (const locale of LOCALES.filter((value) => value !== "en")) {
+      setLocale(locale);
+      for (const [index, key] of SETTINGS_TAB_KEYS.entries()) {
         expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
         expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
       }

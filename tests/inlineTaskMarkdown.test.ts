@@ -69,10 +69,17 @@ describe("inlineLinkRanges", () => {
 });
 
 describe("selectionTouchesInlineRange", () => {
-  it("reveals a link for cursors inside or on either boundary", () => {
+  it("reveals a link only while the cursor is inside its half-open range", () => {
     expect(selectionTouchesInlineRange([{ from: 12, to: 12 }], 10, 20)).toBe(true);
     expect(selectionTouchesInlineRange([{ from: 10, to: 10 }], 10, 20)).toBe(true);
-    expect(selectionTouchesInlineRange([{ from: 20, to: 20 }], 10, 20)).toBe(true);
+    expect(selectionTouchesInlineRange([{ from: 20, to: 20 }], 10, 20)).toBe(false);
     expect(selectionTouchesInlineRange([{ from: 9, to: 9 }], 10, 20)).toBe(false);
+  });
+
+  it("uses half-open overlap semantics for non-empty selections", () => {
+    expect(selectionTouchesInlineRange([{ from: 5, to: 10 }], 10, 20)).toBe(false);
+    expect(selectionTouchesInlineRange([{ from: 5, to: 11 }], 10, 20)).toBe(true);
+    expect(selectionTouchesInlineRange([{ from: 19, to: 25 }], 10, 20)).toBe(true);
+    expect(selectionTouchesInlineRange([{ from: 20, to: 25 }], 10, 20)).toBe(false);
   });
 });

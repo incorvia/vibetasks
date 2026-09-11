@@ -15,6 +15,8 @@ import { listProjectsAndAreas } from "./taskService";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
+type SettingsPage = "general" | "planning" | "appearance" | "data";
+
 /** README-Abschnitt mit der Google-Kalender-Einrichtung (statt nur zur Console zu verlinken). */
 const GCAL_GUIDE_URL = "https://github.com/incorvia/opal_tasks#google-calendar-sync";
 
@@ -75,6 +77,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
   }
 
   private gcalStatusUnsub: (() => void) | null = null;
+  private activePage: SettingsPage = "general";
 
   hide(): void { this.gcalStatusUnsub?.(); this.gcalStatusUnsub = null; }
 
@@ -156,13 +159,56 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     containerEl.empty();
     const p = this.plugin;
 
-    // Struktur (Obsidian-Konvention, kurze Überschriften in logischer Reihenfolge):
-    // Allgemein · Darstellung · Textgröße · Aufgabenaktionen · Status · Ordner · Import & Export · Google Kalender.
+    // Keep the page short enough to scan: the controls are still built together so their existing
+    // local redraw callbacks keep working, but only one semantic group is visible at a time.
+    const pages: { id: SettingsPage; label: string; icon: string }[] = [
+      { id: "general", label: t("set_general_heading"), icon: "settings-2" },
+      { id: "planning", label: t("set_tab_tasks_planning"), icon: "calendar-check" },
+      { id: "appearance", label: t("set_appearance_heading"), icon: "palette" },
+      { id: "data", label: t("set_tab_data_sync"), icon: "database" },
+    ];
+    const tabBar = containerEl.createDiv({ cls: "bt-settings-tabs", attr: { role: "tablist", "aria-label": "Opal Tasks settings" } });
+    const panelByPage = new Map<SettingsPage, HTMLElement>();
+    const buttonByPage = new Map<SettingsPage, HTMLButtonElement>();
+    for (const [index, page] of pages.entries()) {
+      const button = tabBar.createEl("button", {
+        cls: "bt-settings-tab",
+        attr: { type: "button", role: "tab", "aria-selected": "false" },
+      });
+      setIcon(button.createSpan({ cls: "bt-settings-tab-icon" }), page.icon);
+      button.createSpan({ text: page.label });
+      buttonByPage.set(page.id, button);
+      const panel = containerEl.createDiv({ cls: "bt-settings-page", attr: { role: "tabpanel" } });
+      panel.setAttribute("aria-label", page.label);
+      panelByPage.set(page.id, panel);
+      button.onclick = () => {
+        this.selectPage(page.id, panelByPage, buttonByPage);
+        tabBar.scrollIntoView({ block: "start" });
+      };
+      button.onkeydown = (event) => {
+        let next = index;
+        if (event.key === "ArrowLeft") next = (index + pages.length - 1) % pages.length;
+        else if (event.key === "ArrowRight") next = (index + 1) % pages.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = pages.length - 1;
+        else return;
+        event.preventDefault();
+        buttonByPage.get(pages[next].id)?.click();
+        buttonByPage.get(pages[next].id)?.focus();
+      };
+    }
+    const generalEl = panelByPage.get("general")!;
+    const planningEl = panelByPage.get("planning")!;
+    const appearanceEl = panelByPage.get("appearance")!;
+    const dataEl = panelByPage.get("data")!;
+    this.selectPage(this.activePage, panelByPage, buttonByPage);
+
+    // Innerhalb der Seiten bleiben die bestehenden Obsidian-Überschriften als Wegweiser erhalten.
 
     // ── Allgemein ──
-    new Setting(containerEl).setName(t("set_general_heading")).setHeading();
+    new Setting(generalEl).setName(t("set_general_heading")).setHeading();
 
-    new Setting(containerEl).setName(t("set_language")).setDesc(t("set_language_desc")).addDropdown((dd) => {
+    new Setting(generalEl).setName(t("set_language")).setDesc(t("set_language_desc")).addDropdown((dd) => {
       dd.addOption("auto", t("set_language_auto"));
       dd.addOption("en", "English");
       dd.addOption("de", "Deutsch");
@@ -182,7 +228,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     // Startseite: JEDE Seite ist wählbar (Eingang, Ansichten, Bereiche, Projekte, Filter, Labels).
     // Ein <select> scheidet dafür aus – bei 40 Projekten unbrauchbar und ohne Suche. Stattdessen
     // ein Knopf mit der aktuellen Wahl, der Obsidians Suchliste öffnet (Tastatur wie Strg+P).
-    const startRow = new Setting(containerEl).setName(t("set_start_page")).setDesc(t("set_start_page_desc"));
+    const startRow = new Setting(generalEl).setName(t("set_start_page")).setDesc(t("set_start_page_desc"));
     const zeichneStart = (): void => {
       const cur = startPageLabel(p, p.settings.startPage);
       startRow.setDesc(cur.missing ? t("set_start_page_missing") : t("set_start_page_desc"));
@@ -196,7 +242,9 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     };
     zeichneStart();
 
-    new Setting(containerEl).setName(t("set_default_calendar_view")).setDesc(t("set_default_calendar_view_desc")).addDropdown((dd) => {
+    new Setting(appearanceEl).setName(t("set_appearance_heading")).setHeading();
+
+    new Setting(appearanceEl).setName(t("set_default_calendar_view")).setDesc(t("set_default_calendar_view_desc")).addDropdown((dd) => {
       for (const mode of CAL_MODES) dd.addOption(mode, t("cal_mode_" + mode));
       dd.setValue(p.settings.defaultCalendarView);
       dd.onChange(async (v) => {
@@ -206,7 +254,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       });
     });
 
-    new Setting(containerEl).setName(t("set_calendar_task_colors")).setDesc(t("set_calendar_task_colors_desc")).addDropdown((dd) => {
+    new Setting(appearanceEl).setName(t("set_calendar_task_colors")).setDesc(t("set_calendar_task_colors_desc")).addDropdown((dd) => {
       dd.addOption("priority", t("set_calendar_task_colors_priority"));
       dd.addOption("calendar", t("set_calendar_task_colors_calendar"));
       dd.addOption("task", t("set_calendar_task_colors_task"));
@@ -218,22 +266,22 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       });
     });
 
-    this.renderTimeMaps(containerEl);
+    new Setting(planningEl).setName(t("set_tab_tasks_planning")).setHeading();
 
-    new Setting(containerEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
+    new Setting(planningEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
       tg.setValue(p.settings.parseNaturalLanguage).onChange(async (v) => { p.settings.parseNaturalLanguage = v; await p.saveSettings(); }));
 
-    new Setting(containerEl).setName(t("set_inline_convert")).setDesc(t("set_inline_convert_desc")).addToggle((tg) =>
+    new Setting(planningEl).setName(t("set_inline_convert")).setDesc(t("set_inline_convert_desc")).addToggle((tg) =>
       tg.setValue(p.settings.showInlineConvertButtons).onChange(async (v) => {
         p.settings.showInlineConvertButtons = v; await p.saveSettings(); p.app.workspace.updateOptions();
       }));
 
-    new Setting(containerEl).setName(t("set_inline_overlays")).setDesc(t("set_inline_overlays_desc")).addToggle((tg) =>
+    new Setting(planningEl).setName(t("set_inline_overlays")).setDesc(t("set_inline_overlays_desc")).addToggle((tg) =>
       tg.setValue(p.settings.enableTaskLinkOverlays).onChange(async (v) => {
         p.settings.enableTaskLinkOverlays = v; await p.saveSettings(); p.app.workspace.updateOptions();
       }));
 
-    new Setting(containerEl).setName(t("set_show_unfiled")).setDesc(t("set_show_unfiled_desc")).addToggle((tg) =>
+    new Setting(planningEl).setName(t("set_show_unfiled")).setDesc(t("set_show_unfiled_desc")).addToggle((tg) =>
       tg.setValue(p.settings.showUnfiledInInbox).onChange(async (v) => {
         p.settings.showUnfiledInInbox = v;
         await p.saveSettings();
@@ -241,19 +289,18 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       }));
 
     // ── Planungsansicht ──
-    this.renderPlanTabs(containerEl);
+    this.renderPlanTabs(planningEl);
+    this.renderTimeMaps(planningEl);
 
     // ── Darstellung ──
-    new Setting(containerEl).setName(t("set_appearance_heading")).setHeading();
-
-    new Setting(containerEl).setName(t("set_show_desc")).setDesc(t("set_show_desc_desc")).addToggle((tg) =>
+    new Setting(appearanceEl).setName(t("set_show_desc")).setDesc(t("set_show_desc_desc")).addToggle((tg) =>
       tg.setValue(p.settings.showDescriptionInList).onChange(async (v) => {
         p.settings.showDescriptionInList = v;
         await p.saveSettings();
         p.renderAll();
       }));
 
-    new Setting(containerEl).setName(t("set_show_proj_desc")).setDesc(t("set_show_proj_desc_desc")).addToggle((tg) =>
+    new Setting(appearanceEl).setName(t("set_show_proj_desc")).setDesc(t("set_show_proj_desc_desc")).addToggle((tg) =>
       tg.setValue(p.settings.showProjectDescription).onChange(async (v) => {
         p.settings.showProjectDescription = v;
         await p.saveSettings();
@@ -286,7 +333,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     // die Obsidian-Akzentfarbe NUR innerhalb von Opal Tasks; Default/Reset = Obsidian-Akzent. Immer editierbar.
     {
       let accentPicker!: ColorComponent;
-      const s = new Setting(containerEl).setName(t("set_color_accent")).setDesc(t("set_color_accent_desc"))
+      const s = new Setting(appearanceEl).setName(t("set_color_accent")).setDesc(t("set_color_accent_desc"))
         .addColorPicker((cp) => { accentPicker = cp; cp.setValue(resolveColor("accent")).onChange(async (v) => {
           p.settings.metaColors = { ...p.settings.metaColors, accent: v };
           await p.saveSettings(); p.applyColors(); p.renderAll();
@@ -303,7 +350,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       s.nameEl.prepend(ic);
     }
 
-    new Setting(containerEl).setName(t("set_meta_theme")).setDesc(t("set_meta_theme_desc")).addDropdown((dd) => {
+    new Setting(appearanceEl).setName(t("set_meta_theme")).setDesc(t("set_meta_theme_desc")).addDropdown((dd) => {
       dd.addOption("minimalisdo", "Minimalisdo");   // Eigennamen -> nicht übersetzt
       dd.addOption("colorado", "Colorado");
       dd.addOption("user", "User");   // eigene Farben (metaColors) – nur hier sind die Picker aktiv
@@ -323,7 +370,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
 
     // Farben je Meta-Element EINZELN: Color-Picker + Reset (leert -> Theme-Default). Der Swatch zeigt die
     // aktuelle EFFEKTIVE Farbe (resolveColor, s. o.). Nur im „User"-Theme editierbar (sonst gedimmt).
-    new Setting(containerEl).setName(t("set_colors_heading")).setDesc(t("set_colors_desc")).setHeading();
+    new Setting(appearanceEl).setName(t("set_colors_heading")).setDesc(t("set_colors_desc")).setHeading();
     const isUser = p.settings.metaTheme === "user";   // Farben nur im „User"-Theme änderbar
     // Icon vor jedem Farbnamen = GENAU das Symbol der Meta-Zeile (calendar/alarm-clock/… – s. heuteView),
     // damit die Zuordnung eindeutig ist (Verwechslung Haupt-/Unteraufgabe o. Ä. ausgeschlossen). Das Icon
@@ -347,7 +394,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       s.nameEl.prepend(ic);
       colorControls.push({ key, picker, reset });   // fürs Aktivieren/Deaktivieren beim Theme-Wechsel
     };
-    colorBox = containerEl.createDiv({ cls: "bt-color-settings" });   // themengebundene Farbzeilen (dimmbar)
+    colorBox = appearanceEl.createDiv({ cls: "bt-color-settings" });   // themengebundene Farbzeilen (dimmbar)
     colorRow("overdue", t("sec_overdue"), "calendar");
     colorRow("today", t("date_today"), "calendar");
     colorRow("d1", t("date_tomorrow"), "calendar");
@@ -367,14 +414,14 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     // Auf Mobilgeraeten ist der Kompakt-Modus fest an (44px-Chips mit Text saehen dort den
     // halben Bildschirm) – der Schalter zeigt das an und ist deaktiviert, statt wirkungslos
     // umschaltbar zu sein. Der gespeicherte Wert bleibt unangetastet und gilt am Desktop weiter.
-    new Setting(containerEl).setName(t("set_chips_iconsonly")).setDesc(t("set_chips_iconsonly_desc")).addToggle((tg) =>
+    new Setting(appearanceEl).setName(t("set_chips_iconsonly")).setDesc(t("set_chips_iconsonly_desc")).addToggle((tg) =>
       tg.setValue(chipsCompact(p.settings)).setDisabled(Platform.isMobile).onChange(async (v) => {
         p.settings.chipsIconsOnly = v;
         await p.saveSettings();
       }));
 
     // Textgröße: eigener Host, damit das Reset-Icon die Slider mit den neuen Werten neu zeichnen kann.
-    const fontHost = containerEl.createDiv();
+    const fontHost = appearanceEl.createDiv();
     const drawFonts = (): void => {
       fontHost.empty();
       new Setting(fontHost).setName(t("set_fontsizes_heading")).setHeading()
@@ -402,18 +449,18 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     drawFonts();
 
     // ── Aufgabenaktionen (Chips je Fläche ein-/ausblenden + sortieren) ──
-    new Setting(containerEl).setName(t("set_chip_actions")).setHeading();
-    containerEl.createDiv({ cls: "setting-item-description bt-chip-actions-desc", text: t("set_chip_actions_desc") });
-    this.renderChipActions(containerEl);
+    new Setting(planningEl).setName(t("set_chip_actions")).setHeading();
+    planningEl.createDiv({ cls: "setting-item-description bt-chip-actions-desc", text: t("set_chip_actions_desc") });
+    this.renderChipActions(planningEl);
 
     // ── Status (früher im ListManager; Custom-Status ist Konfiguration → gehört hierher) ──
-    new Setting(containerEl).setName(t("tab_statuses")).setHeading();
-    renderStatusEditor(containerEl.createDiv({ cls: "bt-settings-status" }), p);
+    new Setting(planningEl).setName(t("tab_statuses")).setHeading();
+    renderStatusEditor(planningEl.createDiv({ cls: "bt-settings-status" }), p);
 
     // ── Ordner ──
-    new Setting(containerEl).setName(t("set_folders_heading")).setHeading();
+    new Setting(generalEl).setName(t("set_folders_heading")).setHeading();
     const folderRow = (name: string, desc: string, get: () => string, set: (v: string) => void | Promise<void>) => {
-      new Setting(containerEl).setName(name).setDesc(desc).addText((text) => {
+      new Setting(generalEl).setName(name).setDesc(desc).addText((text) => {
         text.setValue(get());
         const save = (raw: string) => { const v = normalizePath(raw.trim()); if (v && v !== ".") void set(v); };
         text.onChange(save);
@@ -427,7 +474,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
 
     // Ausschluss-Ordner: Notizen darin gelten NIE als Aufgabe (Schutz vor fremden type:task-Notizen).
     // Ein Ordner pro Zeile. Änderung erfordert einen Index-Neuaufbau (parse-Ergebnis ändert sich).
-    new Setting(containerEl).setName(t("set_exclude_folders")).setDesc(t("set_exclude_folders_desc"))
+    new Setting(generalEl).setName(t("set_exclude_folders")).setDesc(t("set_exclude_folders_desc"))
       .addTextArea((ta) => {
         ta.setValue(p.settings.excludeFolders.join("\n"));
         ta.inputEl.rows = 3;
@@ -441,22 +488,39 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       });
 
     // ── Import & Export ──
-    new Setting(containerEl).setName(t("set_data_heading")).setHeading();
+    new Setting(dataEl).setName(t("set_data_heading")).setHeading();
 
-    new Setting(containerEl).setName(t("set_export")).setDesc(t("set_export_desc"))
+    new Setting(dataEl).setName(t("set_export")).setDesc(t("set_export_desc"))
       .addButton((b) => b.setButtonText(t("set_export_btn")).setCta().onClick(() => void p.exportTasksJson()));
 
-    new Setting(containerEl).setName(t("set_import")).setDesc(t("set_import_desc"))
+    new Setting(dataEl).setName(t("set_import")).setDesc(t("set_import_desc"))
       .addButton((b) => b.setButtonText(t("set_import_vault_btn")).onClick(() => p.importTasksFromVault()))
       .addButton((b) => b.setButtonText(t("set_import_os_btn")).onClick(() => p.importTasksFromOs()));
 
-    new Setting(containerEl).setName(t("set_import_tn")).setDesc(t("set_import_tn_desc"))
+    new Setting(dataEl).setName(t("set_import_tn")).setDesc(t("set_import_tn_desc"))
       .addButton((b) => b.setButtonText(t("set_import_tn_btn")).onClick(() => p.importFromTaskNotes()));
 
     // ── Google Kalender ── (eigener Container → Neuzeichnen ohne this.display()-Selbstaufruf)
-    const gcalHost = containerEl.createDiv();
+    const gcalHost = dataEl.createDiv();
     const drawGCal = (): void => { gcalHost.empty(); this.renderGCal(gcalHost, drawGCal); };
     drawGCal();
+  }
+
+  private selectPage(
+    page: SettingsPage,
+    panels: Map<SettingsPage, HTMLElement>,
+    buttons: Map<SettingsPage, HTMLButtonElement>,
+  ): void {
+    this.activePage = page;
+    for (const [id, panel] of panels) {
+      const active = id === page;
+      panel.toggleClass("is-active", active);
+      panel.hidden = !active;
+      const button = buttons.get(id);
+      button?.toggleClass("is-active", active);
+      button?.setAttr("aria-selected", String(active));
+      if (button) button.tabIndex = active ? 0 : -1;
+    }
   }
 
   private renderTimeMaps(containerEl: HTMLElement): void {

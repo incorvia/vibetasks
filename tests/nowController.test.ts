@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { NowController } from "../src/nowController";
+import { addDays } from "../src/calendarModel";
+import { localDay } from "../src/autoPlanner";
 import type { CalEvent, Task, TimeBlock } from "../src/types";
 
 const event = (id: string, start: string, end: string): CalEvent => ({
@@ -8,10 +10,11 @@ const event = (id: string, start: string, end: string): CalEvent => ({
 
 describe("Opal Now queue", () => {
   it("keeps elapsed calendar events out of Up next", () => {
+    const day = localDay(new Date());
     const events = [
-      event("past", "2026-09-10T08:00:00", "2026-09-10T09:00:00"),
-      event("current", "2026-09-10T09:30:00", "2026-09-10T10:30:00"),
-      event("future", "2026-09-10T11:00:00", "2026-09-10T11:30:00"),
+      event("past", `${day}T08:00:00`, `${day}T09:00:00`),
+      event("current", `${day}T09:30:00`, `${day}T10:30:00`),
+      event("future", `${day}T11:00:00`, `${day}T11:30:00`),
     ];
     const plugin = {
       app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
@@ -20,10 +23,30 @@ describe("Opal Now queue", () => {
       gcalFeed: { eventsIn: () => events },
     };
     const controller = new NowController(plugin as never);
-    const snapshot = controller.snapshot(new Date("2026-09-10T10:00:00"));
+    const snapshot = controller.snapshot(new Date(`${day}T10:00:00`));
     expect(snapshot.current?.title).toBe("current");
     expect(snapshot.upcoming.map((item) => item.title)).toEqual(["future"]);
     expect(snapshot.pastEvents.map((item) => item.title)).toEqual(["past"]);
+  });
+
+  it("omits an all-day event on its exclusive end date", () => {
+    const day = localDay(new Date());
+    const ended: CalEvent = {
+      ...event("ended", addDays(day, -2), day), allDay: true,
+    };
+    const active: CalEvent = {
+      ...event("active", addDays(day, -1), addDays(day, 1)), allDay: true,
+    };
+    const plugin = {
+      app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
+      timeStore: { blocksIn: () => [], isMeetingComplete: () => false },
+      index: { getById: () => undefined }, workTimer: { active: () => null },
+      gcalFeed: { eventsIn: () => [ended, active] },
+    };
+
+    const snapshot = new NowController(plugin as never).snapshot();
+
+    expect(snapshot.allDay).toEqual([active]);
   });
 
   it("keeps a task deferred beyond today in Parked today even without local run state", () => {

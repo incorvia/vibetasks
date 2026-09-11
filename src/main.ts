@@ -38,6 +38,7 @@ import { writeExportFile, parseExport, importData, JsonFilePickerModal, pickOsJs
 import { ImportTaskNotesModal } from "./importTaskNotes";
 import { WhatsNewModal } from "./whatsNew";
 import { calendarDayAnchor } from "./calendarView";
+import { bucketEvents } from "./calendarModel";
 import { GCalAuth, TokenStore, DevicePrompt, GCalTokens, planTokenMigration } from "./gcalAuth";
 import { GCalSync, GCalSyncHost, GCalCache, LegacyGCalLink, emptyGCalCache, calIndex, seedGCalCache, resignLegacySignature, DEFAULT_GCAL_SETTINGS, listCalendars, ensureDefaultCalendar, fetchAccountEmail, CalendarInfo, GCalStatusInfo } from "./gcalSync";
 import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
@@ -50,6 +51,7 @@ import { TimeStore, TimerService } from "./timeService";
 import { TimeDashboardView, VIEW_TIME_DASHBOARD } from "./timeDashboard";
 import { TimerConflictModal } from "./timerConflictModal";
 import { TimeBlockModal } from "./timeBlockModal";
+import { AutoPlanModal } from "./autoPlanModal";
 import { SchedulingService } from "./schedulingService";
 import { WorkTimerService } from "./workTimerService";
 import { NowController } from "./nowController";
@@ -212,7 +214,7 @@ export default class OpalTasksPlugin extends Plugin {
       calendarEvents: async (date, refresh) => {
         this.gcalFeed.setRange(date, date);
         if (refresh) await this.gcalFeed.refresh();
-        return this.gcalFeed.eventsIn(date, date);
+        return (bucketEvents(this.gcalFeed.eventsIn(date, date), [date]).get(date) ?? []).map(({ event }) => event);
       },
       scheduleTask: (task, schedule) => this.scheduling.scheduleTask(task, { ...schedule, source: "ai" }),
       unscheduleTask: (taskId) => this.scheduling.unscheduleTask(taskId),
@@ -405,6 +407,7 @@ export default class OpalTasksPlugin extends Plugin {
     this.addCommand({ id: "time-dashboard", name: "Open time dashboard", callback: () => void this.activateTimeDashboard() });
     this.addCommand({ id: "open-now", name: t("now_title"), callback: () => void this.activateNow() });
     this.addCommand({ id: "new-time-block", name: "New time block", callback: () => new TimeBlockModal(this, new Date()).open() });
+    this.addCommand({ id: "auto-plan", name: t("auto_plan"), callback: () => new AutoPlanModal(this).open() });
     this.addCommand({ id: "resolve-timer-conflicts", name: "Resolve timer conflicts", checkCallback: (checking) => {
       const conflicted = this.workTimer?.needsResolution(); if (conflicted && !checking) new TimerConflictModal(this).open(); return conflicted;
     } });

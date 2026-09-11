@@ -34,6 +34,7 @@ export interface ReconcileResult {
   failed: number;
 }
 
+const refreshInlineWidgets = StateEffect.define<null>();
 
 export function resolveInlineTask(app: App, plugin: Pick<OpalTasksPlugin, "index">,
   target: string, sourcePath: string): Task | null {
@@ -192,6 +193,10 @@ export async function convertEditorLine(plugin: OpalTasksPlugin, editor: Editor,
     return false;
   }
 
+  // Mirror TaskNotes' post-conversion sequencing: warm the new file's metadata, then force one
+  // editor rebuild after the replacement transaction and TaskIndex's debounced upsert have run.
+  if (taskFile) await refreshConvertedInlineTask(plugin, editor, taskFile, win);
+
   if (quick.schedule) {
     try { await scheduleInlineTask(plugin, { id, title: quick.title.trim(), estimate: quick.fields.estimate }, quick.schedule); }
     catch (error) {
@@ -206,6 +211,17 @@ function scheduleInlineTask(plugin: OpalTasksPlugin, task: { id: string; title: 
   return plugin.scheduling.scheduleTask(task, schedule.allDay
     ? { allDay: true, date: schedule.date, source: "manual" }
     : { start: schedule.start, duration: schedule.duration, source: "manual" });
+}
+
+/** Warm Obsidian's cache, then rebuild after the new task and replacement link can resolve. */
+async function refreshConvertedInlineTask(plugin: OpalTasksPlugin, editor: Editor, taskFile: TFile,
+  win: Window): Promise<void> {
+  try { await plugin.app.vault.cachedRead(taskFile); }
+  catch { /* The index event remains a fallback if the cache warm-up fails. */ }
+  win.setTimeout(() => {
+    const view = (editor as Editor & { cm?: EditorView }).cm;
+    if (view) view.dispatch({ effects: refreshInlineWidgets.of(null) });
+  }, 100);
 }
 
 function priorityNumber(task: Task): string | null {
@@ -283,8 +299,6 @@ export function createInlineTaskElement(plugin: OpalTasksPlugin, task: Task, doc
   return root;
 }
 
-const refreshInlineWidgets = StateEffect.define<null>();
-
 class TaskLinkWidget extends WidgetType {
   constructor(private plugin: OpalTasksPlugin, private task: Task) { super(); }
   eq(other: TaskLinkWidget): boolean {
@@ -305,12 +319,16 @@ class ConvertLineWidget extends WidgetType {
     button.className = "bt-inline-convert";
     button.setAttribute("aria-label", t("cmd_convert_inline_task"));
     setIcon(button, "circle-plus");
-    button.onclick = (event) => {
+    const activate = (event: Event): void => {
       event.preventDefault(); event.stopPropagation();
       const info = view.state.field(editorInfoField, false);
-      if (info?.editor && info.file) void convertEditorLine(this.plugin, info.editor, info.file, this.line,
-        view.dom.ownerDocument.defaultView ?? window);
+      if (info?.editor && info.file) {
+        const win = view.dom.ownerDocument.defaultView ?? window;
+        void convertEditorLine(this.plugin, info.editor, info.file, this.line, win);
+      }
     };
+    const win = view.dom.ownerDocument.defaultView;
+    button.addEventListener(win && "PointerEvent" in win ? "pointerdown" : "mousedown", activate);
     return button;
   }
   ignoreEvent(): boolean { return true; }

@@ -676,10 +676,11 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     return;
   }
   if (meta?.type === "area" && ctx.opts.layout === "list") renderAreaList(root, ctx, meta, childProjects, source(), today);
-  else if (meta?.type === "area" && ctx.opts.layout === "board") renderAreaKanban(root, ctx, meta, childProjects, source(), today);
-  else if (meta?.type === "project" && ctx.opts.layout === "board"
-    && ctx.opts.prioritySwimlanes === true) {
-    renderTaskSwimlaneBoard(root, ctx, source(), today, { project: name, projectId: meta.id, status: meta.workflowStatus, priority: meta.priority });
+  // The Area dashboard is richer than an ordinary task board, so keep it for the default
+  // status grouping. As soon as the user chooses another grouping, use the ordinary board:
+  // that choice must remain the horizontal axis even when priority swimlanes are enabled.
+  else if (meta?.type === "area" && ctx.opts.layout === "board" && ctx.opts.group === "none") {
+    renderAreaKanban(root, ctx, meta, childProjects, source(), today);
   }
   else renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name, projectId: meta?.id, status: meta?.workflowStatus, priority: meta?.priority },
       () => noteHeadSig(plugin, isInbox ? null : projectPath));
@@ -925,61 +926,6 @@ function renderAreaKanban(root: HTMLElement, ctx: PageCtx, area: ProjItem, proje
     },
     onAdd: (column, lane) => plugin.openNewTask(baseName(area.path), undefined, false,
       column.id, undefined, undefined, (lane?.id as Priority | undefined) ?? "normal", area.id),
-  });
-}
-
-/** Optional status × priority board for a single Project. Unlike an Area board it contains only
- * task cards, but uses the same four displayed priority buckets and independent two-axis drag. */
-function renderTaskSwimlaneBoard(root: HTMLElement, ctx: PageCtx, filtered: Task[], today: string, add: BoardAdd): void {
-  const plugin = ctx.plugin;
-  const tasks = shownAreaTasks(filtered, ctx.opts.showDone);
-  const subs = effectiveSubtasks(ctx.opts);
-  const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs));
-  const statuses = boardStatusAxes(boardStatuses(), ctx.opts.showDone, ctx.opts.showEmptyBoardAxes);
-  const columns: UnifiedBoardColumn[] = statuses.map((status) => ({
-    id: status.id, title: statusLabel(status.id), tint: statusTint(status.id),
-    count: (lane) => cards.filter((task) => task.status === status.id
-      && (!lane || priorityBucket(task.priority) === lane.id)).length,
-  }));
-  const lanes: UnifiedBoardLane[] = PRIOS.map((priority, index) => ({
-    id: priority.value, label: t(priority.key), shortLabel: `P${index + 1}`,
-  }));
-  renderUnifiedBoard(root, ctx, {
-    key: "project-swimlanes|" + ctx.pageKey,
-    columns,
-    lanes,
-    setupCell: (cell, column, lane, projection) => {
-      if (projection === "mobile" || !lane) return;
-      cell.addEventListener("dragover", (e) => {
-        if (!dragTask()) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        cell.addClass("is-drop");
-      });
-      cell.addEventListener("dragleave", (e) => { if (!cell.contains(e.relatedTarget as Node | null)) cell.removeClass("is-drop"); });
-      cell.addEventListener("drop", (e) => {
-        e.preventDefault();
-        cell.removeClass("is-drop");
-        const path = e.dataTransfer?.getData("text/plain") || dragTask();
-        const task = path ? plugin.index.get(path) : undefined;
-        endTaskDrag();
-        if (!task) return;
-        void applyDropPage(plugin, task, add).then(async () => {
-          if (task.status !== column.id) await plugin.setTaskStatus(task, column.id);
-          if (priorityBucket(task.priority) !== lane.id) await plugin.setTaskPriority(task, lane.id as Priority);
-        });
-      });
-    },
-    renderCell: (cell, column, lane, projection) => {
-      const status = statuses.find((item) => item.id === column.id)!;
-      const cellTasks = sortColumn(cards.filter((task) => task.status === column.id
-        && (!lane || priorityBucket(task.priority) === lane.id)), status.kind, ctx.opts.sort, ctx.opts.sortDir, orderKey(plugin));
-      for (const task of cellTasks) renderTask(cell, ctx, task, today, 0, false,
-        { flat: true, colId: column.id, subs, showDone: ctx.opts.showDone,
-          draggable: projection !== "mobile", boardMove: projection === "mobile" });
-    },
-    onAdd: (column, lane) => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
-      column.id, undefined, undefined, (lane?.id as Priority | undefined) ?? add.priority, add.projectId),
   });
 }
 
@@ -1284,7 +1230,7 @@ function sortColumn(list: Task[], kind: StatusKind, sort: FilterSort, dir: SortD
 }
 
 // ── Generisches Spalten-Modell: das Board folgt der Gruppierung ──
-// Fundament für Status/Label/… – aktuell freigeschaltet: Status (Default) und Label.
+// Fundament für Status, Label, Priorität, Projekt und Datumsachsen.
 /** Basis-Kontext fürs „+ Aufgabe" einer Spalte (die Spalten-Dimension setzt die Spalte selbst). */
 interface BoardAdd { project?: string | null; projectId?: string | null; label?: string; today?: boolean; status?: TaskStatus; priority?: Priority; }
 interface BoardColumn {
@@ -1293,8 +1239,8 @@ interface BoardColumn {
   tint: string;                                 // Kopf-Punkt-Farbe
   kind: StatusKind;                             // steuert sortColumn (Nicht-Status = "open")
   has: (tk: Task) => boolean;                   // gehört die Aufgabe in diese Spalte?
-  onDrop?: (tk: Task, fromColId: string) => void; // Loslassen aus Spalte fromColId; fehlt = kein Drop-Ziel
-  onAdd?: () => void;                           // „+ Aufgabe" in dieser Spalte; fehlt = kein „+" (z. B. „Überfällig")
+  onDrop?: (tk: Task, fromColId: string) => void | Promise<void>; // Loslassen aus Spalte fromColId; fehlt = kein Drop-Ziel
+  onAdd?: (priority?: Priority) => void;         // „+ Aufgabe" in dieser Spalte; fehlt = kein „+" (z. B. „Überfällig")
 }
 
 /** One Kanban system, projected according to available pane width. Page-specific adapters only
@@ -1321,6 +1267,7 @@ interface UnifiedBoardModel {
     columnsHost: HTMLElement, drive: (clientX: number | null) => void): void;
   pinned?(column: UnifiedBoardColumn): boolean;
   scrollKey?: string;
+  columnAxisLabel?: string;
 }
 
 function selectedBoardValue(store: Map<string, string>, key: string, choices: readonly string[]): string {
@@ -1439,7 +1386,7 @@ function renderUnifiedBoard(root: HTMLElement, ctx: PageCtx, model: UnifiedBoard
     renderBoardTabs(board, visibleColumns.map((item) => ({
       id: item.id, label: item.title,
       count: lanes ? lanes.reduce((n, lane) => n + item.count(lane), 0) : item.count(),
-    })), column.id, (id) => { boardColumnSelection.set(selectionKey, id); ctx.redraw(); }, t("chip_status"));
+    })), column.id, (id) => { boardColumnSelection.set(selectionKey, id); ctx.redraw(); }, model.columnAxisLabel ?? t("chip_status"));
     if (lanes) {
       const stack = board.createDiv({ cls: "bt-board-mobile-lanes" });
       // Empty matrix rows add enormous vertical dead space on a phone, so the compact default
@@ -1472,8 +1419,8 @@ function statusColumns(plugin: OpalTasksPlugin, add: BoardAdd): BoardColumn[] {
   return boardStatuses().map((col) => ({
     id: col.id, title: statusLabel(col.id), tint: statusTint(col.id), kind: col.kind,
     has: (tk: Task) => tk.status === col.id,
-    onDrop: (tk: Task) => { if (tk.status !== col.id) void plugin.setTaskStatus(tk, col.id); },
-    onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, col.id, undefined, undefined, add.priority, add.projectId),
+    onDrop: (tk: Task) => tk.status !== col.id ? plugin.setTaskStatus(tk, col.id) : undefined,
+    onAdd: (priority) => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, col.id, undefined, undefined, priority ?? add.priority, add.projectId),
   }));
 }
 
@@ -1486,15 +1433,15 @@ function labelColumns(plugin: OpalTasksPlugin, tasks: Task[], add: BoardAdd): Bo
   const cols: BoardColumn[] = names.map((name) => ({
     id: name, title: "#" + name, tint: plugin.getLabelColor(name) ?? "var(--bt-label)", kind: "open",
     has: (tk: Task) => tk.labels.includes(name),
-    onDrop: (tk: Task, fromColId: string) => void plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, name),
-    onAdd: () => plugin.openNewTask(add.project ?? undefined, name, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, add.priority, add.projectId),
+    onDrop: (tk: Task, fromColId: string) => plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, name),
+    onAdd: (priority) => plugin.openNewTask(add.project ?? undefined, name, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, priority ?? add.priority, add.projectId),
   }));
   if (tasks.some((t) => t.labels.length === 0)) {
     cols.push({
       id: NO_LABEL, title: t("no_label"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => tk.labels.length === 0,
-      onDrop: (tk: Task, fromColId: string) => void plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, null),
-      onAdd: () => plugin.openNewTask(add.project ?? undefined, undefined, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, add.priority, add.projectId),
+      onDrop: (tk: Task, fromColId: string) => plugin.swapTaskLabel(tk, fromColId === NO_LABEL ? null : fromColId, null),
+      onAdd: (priority) => plugin.openNewTask(add.project ?? undefined, undefined, add.today ?? false, add.status ?? firstOpenStatus(), undefined, undefined, priority ?? add.priority, add.projectId),
     });
   }
   return cols;
@@ -1508,7 +1455,7 @@ function priorityColumns(plugin: OpalTasksPlugin, add: BoardAdd): BoardColumn[] 
   return KANBAN_PRIOS.map((p) => ({
     id: p.value, title: t(p.key), tint: p.color, kind: "open",
     has: (tk: Task) => eff(tk.priority) === p.value,
-    onDrop: (tk: Task) => { if (eff(tk.priority) !== p.value) void plugin.setTaskPriority(tk, p.value); },
+    onDrop: (tk: Task) => eff(tk.priority) !== p.value ? plugin.setTaskPriority(tk, p.value) : undefined,
     onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, add.status, undefined, undefined, p.value, add.projectId),
   }));
 }
@@ -1531,18 +1478,18 @@ function projectColumns(plugin: OpalTasksPlugin, tasks: Task[], add: BoardAdd): 
   const cols: BoardColumn[] = names.map((name) => ({
     id: name, title: projectDisplayName(name), tint: colorOf.get(name) ?? "var(--bt-nav-project)", kind: "open",
     has: (tk: Task) => !!tk.project && baseName(tk.project) === name,
-    onDrop: (tk: Task) => { if (!tk.project || baseName(tk.project) !== name) void plugin.setTaskProject(tk, name); },
-    onAdd: () => {
+    onDrop: (tk: Task) => !tk.project || baseName(tk.project) !== name ? plugin.setTaskProject(tk, name) : undefined,
+    onAdd: (priority) => {
       const project = byProjectName.get(name);
-      plugin.openNewTask(name, add.label, add.today ?? false, project?.workflowStatus ?? add.status, undefined, undefined, project?.priority ?? add.priority, project?.id);
+      plugin.openNewTask(name, add.label, add.today ?? false, project?.workflowStatus ?? add.status, undefined, undefined, priority ?? project?.priority ?? add.priority, project?.id);
     },
   }));
   if (tasks.some((t) => isInboxLink(t.project))) {
     cols.push({
       id: NO_PROJECT, title: t("nav_inbox"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => isInboxLink(tk.project),
-      onDrop: (tk: Task) => { if (!isInboxLink(tk.project)) void plugin.setTaskProject(tk, null); },   // in den Eingang = Projekt leeren
-      onAdd: () => plugin.openNewTask(undefined, add.label, add.today ?? false, add.status, undefined, undefined, add.priority),
+      onDrop: (tk: Task) => !isInboxLink(tk.project) ? plugin.setTaskProject(tk, null) : undefined,   // in den Eingang = Projekt leeren
+      onAdd: (priority) => plugin.openNewTask(undefined, add.label, add.today ?? false, add.status, undefined, undefined, priority ?? add.priority),
     });
   }
   return cols;
@@ -1563,16 +1510,16 @@ function dateColumns(plugin: OpalTasksPlugin, cards: Task[], today: string, fiel
     if (key === "nodate") return {
       id: "nodate", title: t("sec_no_date"), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => !dateOfTask(tk),
-      onDrop: (tk: Task) => { if (dateOfTask(tk)) void plugin.setTaskDate(tk, field, ""); },   // Datum löschen
-      onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, add.status, undefined, undefined, add.priority, add.projectId),
+      onDrop: (tk: Task) => dateOfTask(tk) ? plugin.setTaskDate(tk, field, "") : undefined,   // Datum löschen
+      onAdd: (priority) => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false, add.status, undefined, undefined, priority ?? add.priority, add.projectId),
     };
     const d = key.slice(2);   // "d:2026-07-15" -> "2026-07-15"
     return {
       id: key, title: groupLabel(d, today), tint: "var(--text-muted)", kind: "open",
       has: (tk: Task) => dateOfTask(tk) === d,
-      onDrop: (tk: Task) => { if (dateOfTask(tk) !== d) void plugin.setTaskDate(tk, field, d); },
-      onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
-        add.status, d, undefined, add.priority, add.projectId),
+      onDrop: (tk: Task) => dateOfTask(tk) !== d ? plugin.setTaskDate(tk, field, d) : undefined,
+      onAdd: (priority) => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false,
+        add.status, d, undefined, priority ?? add.priority, add.projectId),
     };
   });
 }
@@ -1757,7 +1704,8 @@ function attachTaskReorder(row: HTMLElement, grip: HTMLElement, list: HTMLElemen
  * Spalte, sondern auch den Platz darin. Bei jeder anderen Sortierung wäre das sinnlos: die
  * nächste Neuzeichnung würde die Handarbeit sofort wieder überschreiben.
  */
-function setupColumnDnd(colEl: HTMLElement, col: BoardColumn, plugin: OpalTasksPlugin, manual: boolean, page: BoardAdd): void {
+function setupColumnDnd(colEl: HTMLElement, col: BoardColumn, plugin: OpalTasksPlugin, manual: boolean,
+  page: BoardAdd, lanePriority?: Priority): void {
   const listEl = (): HTMLElement | null => colEl.querySelector<HTMLElement>(".bt-kanban-list");
   const dragged = (): Task | undefined => { const p = dragTask(); return p ? plugin.index.get(p) : undefined; };
   colEl.addEventListener("dragover", (e) => {
@@ -1795,13 +1743,18 @@ function setupColumnDnd(colEl: HTMLElement, col: BoardColumn, plugin: OpalTasksP
       if (before !== undefined) {
         await plugin.moveTaskBefore(task, before ? plugin.index.get(before) ?? null : null);
       }
-      col.onDrop?.(task, fromCol ?? "");
+      await col.onDrop?.(task, fromCol ?? "");
+      // Swimlanes are an independent second axis. Apply them after the column mutation so two
+      // frontmatter writes cannot race and accidentally restore the old grouping value.
+      if (lanePriority && priorityBucket(task.priority) !== lanePriority) {
+        await plugin.setTaskPriority(task, lanePriority);
+      }
     });
   });
 }
 
-/** Kanban-Board zeichnen: Spalten folgen der Gruppierung (Label → Label-Spalten, sonst Status).
- *  Ziehbare Karten + „+ Aufgabe" je Spalte (legt mit der Spalten-Dimension an). */
+/** Kanban-Board zeichnen: Spalten folgen immer der Gruppierung; aktivierte Prioritäts-Swimlanes
+ *  kommen als unabhängige vertikale Achse hinzu. Ziehen/„+ Aufgabe" setzen beide Dimensionen. */
 function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today: string,
   opts: ViewOptions, add: BoardAdd): void {
   const plugin = ctx.plugin;
@@ -1839,13 +1792,25 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
   const columnById = new Map(cols.map((column) => [column.id, column] as const));
   const tasksByColumn = new Map(cols.map((column) => [column.id,
     sortColumn(cards.filter((task) => column.has(task)), column.kind, opts.sort, opts.sortDir, orderKey(plugin))] as const));
+  const isArea = ctx.page.kind === "project" && isAreaPath(plugin.app, ctx.page.key);
+  const swimlanesEnabled = ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY
+    && (isArea ? opts.prioritySwimlanes !== false : opts.prioritySwimlanes === true);
+  const lanes: UnifiedBoardLane[] | undefined = swimlanesEnabled
+    ? PRIOS.map((priority, index) => ({ id: priority.value, label: t(priority.key), shortLabel: `P${index + 1}` }))
+    : undefined;
+  const tasksInCell = (columnId: string, lane?: UnifiedBoardLane): Task[] => {
+    const columnTasks = tasksByColumn.get(columnId) ?? [];
+    return lane ? columnTasks.filter((task) => priorityBucket(task.priority) === lane.id) : columnTasks;
+  };
   const columns: UnifiedBoardColumn[] = cols.map((column) => ({
     id: column.id, title: column.title, tint: column.tint,
-    count: () => tasksByColumn.get(column.id)?.length ?? 0,
+    count: (lane) => tasksInCell(column.id, lane).length,
   }));
   renderUnifiedBoard(root, ctx, {
     key: "kanban|" + ctx.pageKey + "|" + groupKey,
     columns,
+    lanes,
+    columnAxisLabel: t("filter_group_" + groupKey),
     scrollKey,
     pinned: (column) => isSentinelCol(column.id),
     decorateHeader: (shell, head, column, columnsHost, drive) => {
@@ -1854,13 +1819,19 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
       setIcon(head.createSpan({ cls: "bt-kanban-grip" }), "grip-vertical");
       attachColumnDrag(shell, head, columnsHost, groupKey, plugin, drive);
     },
-    setupCell: (shell, column, _lane, projection) => {
+    setupCell: (shell, column, lane, projection) => {
       const source = columnById.get(column.id);
-      if (projection !== "mobile" && source?.onDrop) setupColumnDnd(shell, source, plugin, opts.sort === "manual", add);
+      // Grouping by priority while swimlanes are on intentionally keeps the selected grouping
+      // as columns. Since both axes then describe the same field, only diagonal cells are valid.
+      if (groupKey === "priority" && lane && lane.id !== column.id) return;
+      if (projection !== "mobile" && source?.onDrop) {
+        setupColumnDnd(shell, source, plugin, opts.sort === "manual", add,
+          groupKey === "priority" ? undefined : lane?.id as Priority | undefined);
+      }
     },
-    renderCell: (listEl, column, _lane, projection) => {
+    renderCell: (listEl, column, lane, projection) => {
       const col = columnById.get(column.id)!;
-      const colTasks = tasksByColumn.get(column.id) ?? [];
+      const colTasks = tasksInCell(column.id, lane);
     // Abhaken schreibt die Notiz -> der Index meldet -> MainView.draw() baut alles neu. Ohne das
     // Folgende spränge die Spalte dabei nach oben, und wer unten mehrere Karten abhaken will,
     // müsste nach jeder einzelnen erneut hinunterscrollen.
@@ -1934,8 +1905,9 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
     // Maximum – das Scroll-Ereignis schreibt den geklemmten Wert dann selbst zurück.
     if (savedTop) listEl.scrollTop = savedTop;
     },
-    canAdd: (column) => !!columnById.get(column.id)?.onAdd,
-    onAdd: (column) => columnById.get(column.id)?.onAdd?.(),
+    canAdd: (column, lane) => !!columnById.get(column.id)?.onAdd
+      && !(groupKey === "priority" && lane && lane.id !== column.id),
+    onAdd: (column, lane) => columnById.get(column.id)?.onAdd?.(lane?.id as Priority | undefined),
   });
 }
 

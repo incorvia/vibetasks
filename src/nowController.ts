@@ -6,6 +6,7 @@ import { buildPullForward, meetingOccurrenceKey } from "./pullForward";
 import { blockKind } from "./timeService";
 import { isAllDaySchedule, type CalEvent, type Priority, type Task, type TimeBlock } from "./types";
 import { isDone } from "./statuses";
+import { bucketEvents } from "./calendarModel";
 
 export const NOW_RUN_KEY = "opal_tasks-now-run";
 export const NOW_UNDO_KEY = "opal_tasks-now-undo";
@@ -71,7 +72,7 @@ export class NowController extends Component {
         tasks.push({ kind: "task", key: `task:${block.id}`, start: block.start, end, title: task.title, task, block });
       } else tasks.push({ kind: "allocation", key: `block:${block.id}`, start: block.start, end, title: block.scope.title_snapshot, block });
     }
-    for (const event of this.plugin.gcalFeed.eventsIn(day, day)) {
+    for (const { event } of bucketEvents(this.plugin.gcalFeed.eventsIn(day, day), [day]).get(day) ?? []) {
       if (event.allDay) { allDay.push(event); continue; }
       tasks.push({ kind: "meeting", key: `event:${meetingOccurrenceKey(event)}`, start: event.start, end: event.end, title: event.title, event });
     }

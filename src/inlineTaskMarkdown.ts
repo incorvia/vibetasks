@@ -109,9 +109,11 @@ export function inlineLinkRanges(text: string, offset = 0): LinkRange[] {
   return ranges.sort((a, b) => a.from - b.from);
 }
 
-/** Whether an editor selection/cursor intersects a replaceable link range. */
+/** Whether an editor selection/cursor intersects a replaceable half-open link range. */
 export function selectionTouchesInlineRange(selections: readonly { from: number; to: number }[], from: number, to: number): boolean {
-  return selections.some((range) => range.from <= to && range.to >= from);
+  return selections.some((range) => range.from === range.to
+    ? range.from >= from && range.from < to
+    : range.from < to && range.to > from);
 }
 
 function decodeLinkTarget(value: string): string {
