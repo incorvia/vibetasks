@@ -23,6 +23,7 @@ const SETTINGS_TAB_KEYS = ["set_tab_tasks_planning", "set_tab_data_sync"];
 const GCAL_HIDE_KEYS = [
   "gcalfeed_hide_event", "gcalfeed_hidden_events", "gcalfeed_hidden_events_desc", "gcalfeed_restore_hidden",
 ];
+const NOW_MODE_KEYS = ["now_blitz", "now_stop_focus", "now_stop_blitz", "now_queued"];
 
 describe("Öffnen-Menü: in jeder Sprache übersetzt", () => {
   it("kennt alle zehn Sprachen", () => {
@@ -153,6 +154,21 @@ describe("Hidden calendar events: translated in every locale", () => {
       for (const [index, key] of GCAL_HIDE_KEYS.entries()) {
         expect(t(key, 2), `${locale}/${key} fehlt`).not.toBe(key);
         expect(t(key, 2), `${locale}/${key} ist englisch`).not.toBe(en[index]);
+      }
+    }
+    setLocale("en");
+  });
+});
+
+describe("Focus and Blitz controls: translated in every locale", () => {
+  it("does not silently fall back to English", () => {
+    setLocale("en");
+    const en = NOW_MODE_KEYS.map((key) => t(key));
+    for (const locale of LOCALES.filter((value) => value !== "en")) {
+      setLocale(locale);
+      for (const [index, key] of NOW_MODE_KEYS.entries()) {
+        expect(t(key), `${locale}/${key} fehlt`).not.toBe(key);
+        if (key !== "now_blitz") expect(t(key), `${locale}/${key} ist englisch`).not.toBe(en[index]);
       }
     }
     setLocale("en");

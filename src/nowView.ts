@@ -27,6 +27,7 @@ const itemType = (item: NowItem): string => t(item.kind === "meeting" ? "now_mee
 
 export class NowView extends ItemView {
   private unsubscribe: (() => void) | null = null;
+  private openDisclosures = new Set<string>();
   constructor(leaf: WorkspaceLeaf, private plugin: OpalTasksPlugin) { super(leaf); }
   getViewType(): string { return VIEW_NOW; }
   getDisplayText(): string { return t("now_title"); }
@@ -47,19 +48,31 @@ export class NowView extends ItemView {
     const button = parent.createEl("button", { cls: "bt-now-icon-btn" });
     tip(button, label); setIcon(button, icon); button.onclick = action; return button;
   }
-  private taskMenu(parent: HTMLElement, item: Extract<NowItem, { kind: "task" }>): void {
+  private currentMenu(parent: HTMLElement, item: Exclude<NowItem, { kind: "meeting" }>): void {
     const more = this.iconButton(parent, t("more_actions"), "ellipsis", (event) => {
       event.stopPropagation();
       openPopover(more, (pop, close) => {
-        popRow(pop, "file-text", t("now_open_note"), () => { void this.plugin.openTaskInEditor(item.task); close(); });
-        if (item.task.priority !== "lowest") popRow(pop, "arrow-down", t("now_demote"), () => { void this.plugin.nowController.demoteAndSkipCurrent(); close(); });
+        if (item.kind === "task") popRow(pop, "file-text", t("now_open_note"), () => { void this.plugin.openTaskInEditor(item.task); close(); });
+        popRow(pop, "plus", t("now_add_five"), () => { void this.plugin.nowController.extendCurrent(); close(); });
+        if (item.kind !== "task") return;
         popRow(pop, "calendar-clock", t("now_defer_one"), () => { void this.plugin.nowController.deferCurrent(1); close(); });
         for (const days of [2, 3]) popRow(pop, "calendar-clock", t("now_defer_days", days), () => { void this.plugin.nowController.deferCurrent(days); close(); });
+        popRow(pop, "skip-forward", t("now_skip"), () => { void this.plugin.nowController.skipCurrent(); close(); });
+        if (item.task.priority !== "lowest") popRow(pop, "arrow-down", t("now_demote"), () => { void this.plugin.nowController.demoteAndSkipCurrent(); close(); });
       });
     });
   }
   draw(): void {
-    const root = this.contentEl; root.empty();
+    const root = this.contentEl;
+    // The controller redraws this view every second. Remember the native disclosure state before
+    // replacing the DOM so an expanded section does not immediately collapse on the next tick.
+    root.querySelectorAll<HTMLDetailsElement>("details[data-disclosure-key]").forEach((details) => {
+      const key = details.dataset.disclosureKey;
+      if (!key) return;
+      if (details.open) this.openDisclosures.add(key);
+      else this.openDisclosures.delete(key);
+    });
+    root.empty();
     const snap = this.plugin.nowController.snapshot(), now = Date.now();
     const header = root.createDiv({ cls: "bt-now-head" });
     header.createDiv({ cls: "bt-now-heading", text: t("view_today") });
@@ -80,9 +93,9 @@ export class NowView extends ItemView {
     this.renderList(root, t("now_up_next"), immediate, false, snap.upcoming.length);
     this.renderDayParts(root, later);
     if (snap.allDay.length) this.renderAllDay(root, snap);
-    if (snap.skipped.length) this.renderDisclosure(root, t("now_parked_today"), snap.skipped, true);
-    if (snap.pastEvents.length) this.renderDisclosure(root, t("now_past_events"), snap.pastEvents);
-    if (snap.completed.length) this.renderDisclosure(root, t("now_completed_today", snap.completed.length), snap.completed, false, true);
+    if (snap.skipped.length) this.renderDisclosure(root, "parked", t("now_parked_today"), snap.skipped, true);
+    if (snap.pastEvents.length) this.renderDisclosure(root, "past-events", t("now_past_events"), snap.pastEvents);
+    if (snap.completed.length) this.renderDisclosure(root, "completed", t("now_completed_today", snap.completed.length), snap.completed, false, true);
   }
   private renderConflicts(root: HTMLElement, snap: NowSnapshot): void {
     root.createDiv({ cls: "bt-now-error", text: t("now_overlap") });
@@ -102,16 +115,20 @@ export class NowView extends ItemView {
   }
   private renderCurrent(card: HTMLElement, item: NowItem, snap: NowSnapshot, now: number): void {
     const remaining = Math.ceil((Date.parse(item.end) - now) / 60000);
-    const state = snap.status === "paused" || snap.status === "recovery" ? t("now_paused")
+    const queued = snap.status === "stopped" && item.kind === "task";
+    const state = queued ? t("now_queued")
+      : snap.status === "paused" || snap.status === "recovery" ? t("now_paused")
       : t(item.kind === "meeting" ? "now_meeting" : item.kind === "allocation" ? "now_work_block" : "now_now");
     const amount = t(remaining < 0 ? "now_minutes_over" : "now_minutes_left", Math.abs(remaining));
-    card.createDiv({ cls: `bt-now-eyebrow${remaining < 0 ? " is-overtime" : ""}`, text: `${state} · ${amount}`.toLocaleUpperCase() });
+    card.createDiv({ cls: `bt-now-eyebrow${!queued && remaining < 0 ? " is-overtime" : ""}`,
+      text: `${state} · ${queued ? duration(item) : amount}`.toLocaleUpperCase() });
     const title = card.createDiv({ cls: "bt-now-title", text: item.title });
     tipWhenClipped(title, title, item.title);
 
     const nextFixed = snap.upcoming.find((candidate) => candidate.kind !== "task" && Date.parse(candidate.start) >= now);
     let context = `${time(item.start)}–${time(item.end)}`;
-    if (item.kind === "task" && nextFixed) context = t("now_focus_until", time(nextFixed.start));
+    if (queued && item.task.project) context += ` · ${baseName(item.task.project)}`;
+    else if (item.kind === "task" && nextFixed) context = t("now_focus_until", time(nextFixed.start));
     else if (item.kind === "task" && item.task.project) context = baseName(item.task.project);
     else if (item.kind === "allocation") {
       const active = this.plugin.workTimer.active();
@@ -119,6 +136,10 @@ export class NowView extends ItemView {
       if (task) context = task.title;
     }
     card.createDiv({ cls: "bt-now-context", text: context });
+
+    // A queued block is only a suggestion until Focus or Blitz starts its timer. Avoid showing
+    // time-based progress here, since that makes scheduled-but-idle work look active.
+    if (queued) return;
 
     const span = Math.max(1, Date.parse(item.end) - Date.parse(item.start));
     const progress = Math.min(1, Math.max(0, (now - Date.parse(item.start)) / span));
@@ -131,24 +152,18 @@ export class NowView extends ItemView {
   }
   private renderControls(root: HTMLElement, snap: NowSnapshot): void {
     const controls = root.createDiv({ cls: "bt-now-controls" });
-    if (snap.status === "stopped") this.button(controls, t("now_start_day"), () => void this.plugin.nowController.start(), true);
-    else if (snap.status === "paused" || snap.status === "recovery") this.button(controls, t(snap.current && snap.current.kind !== "meeting" ? "now_resume_focus" : "now_resume_day"), () => void this.plugin.nowController.resume(), true);
-    else this.button(controls, t("now_pause"), () => void this.plugin.nowController.pause(), true);
-
-    if (snap.current) {
-      const done = snap.current.kind === "meeting"
-        ? t(Date.now() < Date.parse(snap.current.end) ? "now_end_early" : "now_finished")
-        : t(snap.current.kind === "allocation" ? "now_finish_block" : "now_done");
-      this.button(controls, done, () => void this.plugin.nowController.completeCurrent());
-      if (snap.current.kind !== "meeting") this.button(controls, t("now_add_five"), () => void this.plugin.nowController.extendCurrent());
-      if (snap.current.kind === "task") this.taskMenu(controls, snap.current);
+    if (snap.status === "stopped") {
+      this.button(controls, t("now_focus"), () => void this.plugin.nowController.start(false), true, "timer");
+      this.button(controls, t("now_blitz"), () => void this.plugin.nowController.start(true), true, "zap");
+      return;
     }
-
-    if (snap.status !== "stopped" || snap.canUndo) {
-      const secondary = root.createDiv({ cls: "bt-now-secondary-controls" });
-      if (snap.status !== "stopped") this.button(secondary, t("now_stop_day"), () => void this.plugin.nowController.stop(), false, "square");
-      if (snap.canUndo) this.button(secondary, t("now_undo_schedule"), () => void this.plugin.nowController.undoSchedule(), false, "undo-2");
-    }
+    this.button(controls, t(snap.blitz ? "now_stop_blitz" : "now_stop_focus"), () => void this.plugin.nowController.stop(), false, "square");
+    if (!snap.current) return;
+    const done = snap.current.kind === "meeting"
+      ? t(Date.now() < Date.parse(snap.current.end) ? "now_end_early" : "now_finished")
+      : t(snap.current.kind === "allocation" ? "now_finish_block" : "now_done");
+    this.button(controls, done, () => void this.plugin.nowController.completeCurrent(), true, "check");
+    if (snap.current.kind !== "meeting") this.currentMenu(controls, snap.current);
   }
   private section(root: HTMLElement, title: string, meta?: string): HTMLElement {
     const wrap = root.createDiv({ cls: "bt-now-section" });
@@ -164,17 +179,19 @@ export class NowView extends ItemView {
   private renderDayParts(root: HTMLElement, items: NowItem[]): void {
     for (const part of ["morning", "afternoon", "evening"] as const) {
       const matches = items.filter((item) => dayPart(item) === part);
-      if (matches.length) this.renderDisclosure(root, t(`now_${part}`), matches);
+      if (matches.length) this.renderDisclosure(root, `day-part:${part}`, t(`now_${part}`), matches);
     }
   }
   private renderAllDay(root: HTMLElement, snap: NowSnapshot): void {
-    const details = root.createEl("details", { cls: "bt-now-disclosure" });
+    const details = root.createEl("details", { cls: "bt-now-disclosure", attr: { "data-disclosure-key": "all-day" } });
+    details.open = this.openDisclosures.has("all-day");
     const summary = details.createEl("summary"); summary.createSpan({ text: t("now_all_day") }); summary.createSpan({ text: String(snap.allDay.length) });
     const body = details.createDiv({ cls: "bt-now-disclosure-body" });
     for (const item of snap.allDay) body.createDiv({ cls: "bt-now-context", text: "title" in item ? item.title : t("now_all_day") });
   }
-  private renderDisclosure(root: HTMLElement, title: string, items: NowItem[], skipped = false, completed = false): void {
-    const details = root.createEl("details", { cls: `bt-now-disclosure${completed ? " is-completed" : ""}` });
+  private renderDisclosure(root: HTMLElement, key: string, title: string, items: NowItem[], skipped = false, completed = false): void {
+    const details = root.createEl("details", { cls: `bt-now-disclosure${completed ? " is-completed" : ""}`, attr: { "data-disclosure-key": key } });
+    details.open = this.openDisclosures.has(key);
     const summary = details.createEl("summary"); summary.createSpan({ text: title }); summary.createSpan({ text: String(items.length) });
     const body = details.createDiv({ cls: "bt-now-disclosure-body" });
     for (const item of items) this.renderRow(body, item, skipped);

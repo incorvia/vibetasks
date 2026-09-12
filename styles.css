@@ -4259,7 +4259,7 @@ button.bt-inline-convert {
   scrollbar-gutter: stable;
 }
 .bt-now-head, .bt-now-section-head, .bt-now-row, .bt-now-controls,
-.bt-now-secondary-controls, .bt-now-btn, .bt-now-icon-btn,
+.bt-now-btn, .bt-now-icon-btn,
 .bt-now-disclosure summary { display: flex; align-items: center; }
 .bt-now-head { justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .bt-now-heading { font-size: 1.65em; font-weight: 700; letter-spacing: -.025em; }
@@ -4310,18 +4310,8 @@ button.bt-now-replan:hover { color: var(--text-normal); background: transparent;
 .bt-now-progress-value { height: 100%; border-radius: inherit; background: var(--interactive-accent); }
 .bt-now-progress.is-overtime { background: rgba(var(--color-red-rgb), .18); }
 .bt-now-progress.is-overtime .bt-now-progress-value { background: var(--text-error); }
-.bt-now-controls { flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.bt-now-controls { flex-wrap: nowrap; gap: 8px; margin-top: 12px; }
 .bt-now-controls > .bt-now-btn { flex: 1 1 auto; }
-.bt-now-secondary-controls { flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.bt-now-secondary-controls .bt-now-btn {
-  min-height: 36px;
-  padding-inline: 7px;
-  border-color: transparent;
-  color: var(--text-muted);
-  background: transparent;
-  box-shadow: none;
-}
-.bt-now-secondary-controls .bt-now-btn:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .bt-now-btn {
   justify-content: center;
   gap: 6px;

@@ -11,7 +11,7 @@ import { bucketEvents } from "./calendarModel";
 export const NOW_RUN_KEY = "opal_tasks-now-run";
 export const NOW_UNDO_KEY = "opal_tasks-now-undo";
 export type NowRunStatus = "stopped" | "running" | "paused" | "waiting" | "recovery";
-type StoredRun = { date: string; status: NowRunStatus; skipped: string[]; fixedKey?: string; pausedTaskId?: string; pausedBlockId?: string; error?: string };
+type StoredRun = { date: string; status: NowRunStatus; skipped: string[]; blitz?: boolean; fixedKey?: string; pausedTaskId?: string; pausedBlockId?: string; error?: string };
 type UndoMove = { id: string; before: string; after: string };
 type StoredUndo = { date: string; moves: UndoMove[] };
 export type NowItem =
@@ -20,7 +20,7 @@ export type NowItem =
   | { kind: "meeting"; key: string; start: string; end: string; title: string; event: CalEvent };
 export interface NowSnapshot {
   status: NowRunStatus; current: NowItem | null; upcoming: NowItem[]; completed: NowItem[];
-  allDay: (Task | CalEvent)[]; skipped: NowItem[]; pastEvents: NowItem[]; error?: string; canUndo: boolean; conflicts: NowItem[];
+  allDay: (Task | CalEvent)[]; skipped: NowItem[]; pastEvents: NowItem[]; error?: string; canUndo: boolean; conflicts: NowItem[]; blitz: boolean;
 }
 
 const timedEnd = (start: string, minutes: number): string => new Date(Date.parse(start) + minutes * 60_000).toISOString();
@@ -39,7 +39,9 @@ export class NowController extends Component {
     super();
     const today = localDay(new Date());
     const saved = plugin.app.loadLocalStorage(NOW_RUN_KEY) as StoredRun | null;
-    this.run = saved?.date === today ? { ...saved, status: saved.status === "stopped" ? "stopped" : "recovery" } : { date: today, status: "stopped", skipped: [] };
+    this.run = saved?.date === today
+      ? { ...saved, blitz: saved.blitz ?? true, status: saved.status === "stopped" ? "stopped" : "recovery" }
+      : { date: today, status: "stopped", skipped: [], blitz: saved?.blitz ?? true };
     this.lastDay = today;
     this.persist();
   }
@@ -65,6 +67,8 @@ export class NowController extends Component {
   }
   status(): NowRunStatus { return this.effectiveStatus(); }
   isRunning(): boolean { const status = this.effectiveStatus(); return status === "running" || status === "waiting"; }
+  blitzEnabled(): boolean { return this.run.blitz ?? true; }
+  setBlitzEnabled(enabled: boolean): void { this.run.blitz = enabled; this.persist(); }
 
   private items(): { timed: NowItem[]; allDay: (Task | CalEvent)[] } {
     const day = this.run.date, tasks: NowItem[] = [], allDay: (Task | CalEvent)[] = [];
@@ -107,22 +111,27 @@ export class NowController extends Component {
         if (!isAllDaySchedule(block)) current = { kind: "task", key: `task:${block.id}`, start: block.start, end: timedEnd(block.start, block.duration), title: task.title, task, block };
       }
     }
-    if (!current && this.run.fixedKey) current = open.find((item) => item.key === this.run.fixedKey) ?? null;
     const time = now.getTime();
+    if (!current && this.run.fixedKey) current = open.find((item) => item.key === this.run.fixedKey && Date.parse(item.end) > time) ?? null;
     const overlapping = open.filter((item) => item.kind !== "task" && Date.parse(item.start) <= time && Date.parse(item.end) > time);
     if (!current && overlapping.length === 1) current = overlapping[0];
-    if (!current && this.isRunning()) current = open.find((item) => item.kind === "task" && Date.parse(item.start) <= time && Date.parse(item.end) > time) ?? null;
+    // A scheduled task owns the Now card for its whole time block, even before Focus or Blitz has
+    // been started. This makes the card an invitation to begin the current block and also removes
+    // that task from Up next instead of incorrectly presenting the interval as free time.
+    if (!current) current = open.find((item) => item.kind === "task" && Date.parse(item.start) <= time && Date.parse(item.end) > time) ?? null;
     const pastEvents = open.filter((item) => item !== current && item.kind === "meeting" && Date.parse(item.end) <= time);
     // Missed work remains visible for review; elapsed calendar events move out of the action queue.
     const upcoming = open.filter((item) => item !== current && !pastEvents.includes(item));
     return { status: this.effectiveStatus(), current, upcoming, completed, allDay, skipped, pastEvents, error: this.run.error,
-      canUndo: !!this.undo(), conflicts: overlapping.length > 1 && !this.run.fixedKey ? overlapping : [] };
+      canUndo: !!this.undo(), conflicts: overlapping.length > 1 && !this.run.fixedKey ? overlapping : [], blitz: this.blitzEnabled() };
   }
 
-  start(): Promise<void> { return this.serial(async () => {
+  start(blitz = this.blitzEnabled()): Promise<void> { return this.serial(async () => {
     if (this.plugin.workTimer.needsResolution()) throw new Error("Resolve timer conflicts before starting the day.");
-    this.run = { date: localDay(new Date()), status: "running", skipped: this.run.date === localDay(new Date()) ? this.run.skipped : [] };
-    this.persist(); await this.advance();
+    this.run = { date: localDay(new Date()), status: "running", skipped: this.run.date === localDay(new Date()) ? this.run.skipped : [], blitz };
+    this.persist();
+    if (blitz) await this.replanRemaining();
+    await this.advance();
   }); }
   pause(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current, active = this.plugin.workTimer.active();
@@ -136,17 +145,30 @@ export class NowController extends Component {
     if (taskId) { await this.plugin.workTimer.startTask(taskId, blockId); this.persist(); return; }
     await this.advance();
   }); }
-  stop(): Promise<void> { return this.serial(async () => { await this.plugin.workTimer.stop(); this.run = { date: localDay(new Date()), status: "stopped", skipped: [] }; this.persist(); }); }
+  stop(): Promise<void> { return this.serial(async () => { await this.plugin.workTimer.stop(); this.run = { date: localDay(new Date()), status: "stopped", skipped: [], blitz: this.blitzEnabled() }; this.persist(); }); }
   parkCurrent(): Promise<void> { return this.deferCurrent(1); }
+  skipCurrent(): Promise<void> { return this.serial(async () => {
+    const current = this.snapshot().current; if (!current || current.kind !== "task") return;
+    const automate = this.isRunning() && this.blitzEnabled();
+    await this.plugin.workTimer.stop();
+    if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
+    delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
+    if (automate) this.run.status = "running";
+    this.persist();
+    if (automate) { await this.replanRemaining(); await this.advance(); }
+    else this.emit();
+  }); }
   deferCurrent(days: number): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
-    const automate = this.isRunning();
+    const automate = this.isRunning() && this.blitzEnabled();
     await this.plugin.workTimer.stop();
     await this.plugin.setTaskDeferUntil(current.task, futureDay(days));
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
     delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
     if (automate) this.run.status = "running";
-    this.persist(); await this.advance();
+    this.persist();
+    if (automate) { await this.replanRemaining(); await this.advance(); }
+    else this.emit();
   }); }
   returnTo(taskId: string): Promise<void> { return this.serial(async () => {
     const task = this.plugin.index.getById(taskId); if (task) await this.plugin.setTaskDeferUntil(task, null);
@@ -154,7 +176,7 @@ export class NowController extends Component {
   }); }
   demoteAndSkipCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
-    const automate = this.isRunning();
+    const automate = this.isRunning() && this.blitzEnabled();
     const index = PRIORITIES.indexOf(current.task.priority), next = PRIORITIES[Math.min(PRIORITIES.length - 1, index + 1)];
     await this.plugin.workTimer.stop();
     await this.plugin.setTaskDeferUntil(current.task, futureDay(1));
@@ -162,7 +184,9 @@ export class NowController extends Component {
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
     delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
     if (automate) this.run.status = "running";
-    this.persist(); await this.advance();
+    this.persist();
+    if (automate) { await this.replanRemaining(); await this.advance(); }
+    else this.emit();
   }); }
   chooseCommitment(key: string): Promise<void> { return this.serial(async () => {
     const choice = this.snapshot().conflicts.find((item) => item.key === key); if (!choice) return;
@@ -175,16 +199,9 @@ export class NowController extends Component {
     await this.plugin.repository.ensureAutoPlanSchema();
     await this.plugin.scheduling.resizeBlock(current.block.id, previousDuration + minutes);
     try {
-      // Replan only work that already has a remaining placement today. Extending the current
-      // item must not quietly pull unrelated backlog tasks into the day.
-      const now = new Date(), input = collectAutoPlanInput(this.plugin, now, 1);
-      const scheduled = new Set(input.blocks.filter((block) => !isAllDaySchedule(block)
-        && blockKind(block) === "task_schedule" && block.scope.type === "task" && block.status === "planned"
-        && block.id !== current.block.id && localDay(new Date(block.start)) === this.run.date
-        && Date.parse(block.start) + block.duration * 60_000 > now.getTime()).map((block) => block.scope.id));
-      const scoped = { ...input, tasks: input.tasks.filter((item) => scheduled.has(item.task.id)) };
-      const preview = this.plugin.scheduling.previewAutoPlan(scoped);
-      if (preview.candidateTaskIds.length) await this.plugin.scheduling.applyAutoPlan(preview);
+      // A duration change invalidates the accepted queue, but it must not reprioritize it or pull
+      // unrelated backlog into the day. Reflow only the remaining auto-planned blocks.
+      if (this.blitzEnabled()) await this.replanRemaining();
     } catch (error) {
       await this.plugin.scheduling.resizeBlock(current.block.id, previousDuration);
       throw error;
@@ -193,25 +210,25 @@ export class NowController extends Component {
   }); }
   completeCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current) return;
-    const automate = this.isRunning();
+    const automate = this.isRunning() && this.blitzEnabled();
     if (current.kind === "task") await this.plugin.workTimer.completeTask(current.task.id);
     else if (current.kind === "meeting") await this.plugin.timeStore.completeMeeting(current.event);
     else { await this.plugin.workTimer.stop(); await this.plugin.timeStore.completeBlock(current.block.id); }
     delete this.run.fixedKey;
-    if (automate) { await this.pullForward(); await this.advance(); } else this.emit();
+    if (automate) { await this.replanRemaining(); await this.advance(); } else this.emit();
   }); }
   completeMeeting(event: CalEvent): Promise<void> { return this.serial(async () => {
     await this.plugin.timeStore.completeMeeting(event);
     if (this.run.fixedKey === `event:${meetingOccurrenceKey(event)}`) delete this.run.fixedKey;
-    if (this.isRunning()) { await this.pullForward(); await this.advance(); } else this.emit();
+    if (this.isRunning() && this.blitzEnabled()) { await this.replanRemaining(); await this.advance(); } else this.emit();
   }); }
   /** Called after completion from any other Opal Tasks surface. */
   taskCompleted(taskId: string): void {
-    if (!this.isRunning()) return;
+    if (!this.isRunning() || !this.blitzEnabled()) return;
     void this.serial(async () => {
       if (this.plugin.workTimer.active()?.task_id === taskId) await this.plugin.workTimer.stop();
       if (this.snapshot().current?.kind === "allocation") { this.emit(); return; }
-      await this.pullForward(); await this.advance();
+      await this.replanRemaining(); await this.advance();
     });
   }
 
@@ -237,10 +254,17 @@ export class NowController extends Component {
   private completedEventKeys(): string[] {
     return this.plugin.timeStore.meetingCompletions(this.run.date).map((item) => `${item.calendar_id}\u0000${item.event_id}\u0000${item.occurrence_start}`);
   }
-  private async pullForward(): Promise<void> {
+  private async replanRemaining(): Promise<void> {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const input = collectAutoPlanInput(this.plugin, new Date(), 1);
-      const preview = buildPullForward({ ...input, day: this.run.date, skippedTaskIds: this.run.skipped,
+      const now = new Date(), snap = this.snapshot(now);
+      // Belt-and-suspenders guard for the execution path: an ongoing meeting/allocation visible in
+      // Today is an absolute floor even if the feed changes while the plan is being calculated.
+      // Completing that commitment removes it from the snapshot first, deliberately releasing it.
+      const ongoingFixed = [snap.current, ...snap.upcoming].filter((item): item is Exclude<NowItem, { kind: "task" }> =>
+        !!item && item.kind !== "task" && Date.parse(item.start) <= now.getTime() && Date.parse(item.end) > now.getTime());
+      const floor = ongoingFixed.reduce((value, item) => Math.max(value, Date.parse(item.end)), now.getTime());
+      const input = collectAutoPlanInput(this.plugin, now, 1);
+      const preview = buildPullForward({ ...input, now: new Date(floor), day: this.run.date, skippedTaskIds: this.run.skipped,
         completedEventKeys: this.completedEventKeys() });
       if (!preview.moves.length) return;
       try {
@@ -266,12 +290,12 @@ export class NowController extends Component {
     if (day !== this.lastDay) {
       this.lastDay = day;
       if (this.isRunning()) await this.stop();
-      this.run = { date: day, status: "stopped", skipped: [] }; this.persist(); return;
+      this.run = { date: day, status: "stopped", skipped: [], blitz: this.blitzEnabled() }; this.persist(); return;
     }
     if (!this.isRunning()) { this.emit(); return; }
     const snap = this.snapshot(), active = this.plugin.workTimer.active();
     const dueFixed = snap.upcoming.some((item) => item.kind !== "task" && Date.parse(item.start) <= Date.now() && Date.parse(item.end) > Date.now());
-    const dueTask = !active && snap.current?.kind === "task";
+    const dueTask = this.blitzEnabled() && !active && snap.current?.kind === "task";
     if (dueFixed || dueTask) void this.serial(() => this.advance()); else this.emit();
   }
 }

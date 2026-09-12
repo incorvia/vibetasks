@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { NOW_RUN_KEY, NowController } from "../src/nowController";
 import { addDays } from "../src/calendarModel";
-import { localDay } from "../src/autoPlanner";
+import { localDay, type TimeMap } from "../src/autoPlanner";
+import { meetingOccurrenceKey } from "../src/pullForward";
 import type { CalEvent, Task, TimeBlock } from "../src/types";
 
 const event = (id: string, start: string, end: string): CalEvent => ({
@@ -9,6 +10,18 @@ const event = (id: string, start: string, end: string): CalEvent => ({
 });
 
 describe("Opal Now queue", () => {
+  it("defaults Blitz on and persists an explicit opt-out", () => {
+    const saveLocalStorage = vi.fn();
+    const controller = new NowController({ app: { loadLocalStorage: () => null, saveLocalStorage } } as never);
+
+    expect(controller.blitzEnabled()).toBe(true);
+    saveLocalStorage.mockClear();
+    controller.setBlitzEnabled(false);
+
+    expect(controller.blitzEnabled()).toBe(false);
+    expect(saveLocalStorage).toHaveBeenCalledWith(NOW_RUN_KEY, expect.objectContaining({ blitz: false }));
+  });
+
   it("treats a restored active timer as running and resumes the same focus after a real pause", async () => {
     const now = new Date(), day = localDay(now);
     const task: Task = {
@@ -67,6 +80,58 @@ describe("Opal Now queue", () => {
     expect(snapshot.current?.title).toBe("current");
     expect(snapshot.upcoming.map((item) => item.title)).toEqual(["future"]);
     expect(snapshot.pastEvents.map((item) => item.title)).toEqual(["past"]);
+  });
+
+  it("features an ongoing scheduled task while stopped and starts it with Focus", async () => {
+    const now = new Date(), day = localDay(now);
+    const task: Task = {
+      id: "current", path: "current.md", title: "Current task", titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 30, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "current-block", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(now.getTime() - 10 * 60_000).toISOString(), duration: 30,
+      mode: "focus", selector: "manual", status: "planned", source: "auto",
+    };
+    const startTask = vi.fn(async () => undefined);
+    const plugin = {
+      app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
+      timeStore: { blocksIn: () => [block], block: () => block, isMeetingComplete: () => false },
+      index: { getById: () => task },
+      workTimer: { active: () => null, startTask, needsResolution: () => false },
+      gcalFeed: { eventsIn: () => [] },
+    };
+    const controller = new NowController(plugin as never);
+
+    const snapshot = controller.snapshot(now);
+    expect(snapshot.status).toBe("stopped");
+    expect(snapshot.current?.title).toBe("Current task");
+    expect(snapshot.upcoming).toEqual([]);
+
+    await controller.start(false);
+    expect(startTask).toHaveBeenCalledWith(task.id, block.id);
+  });
+
+  it("releases a fixed calendar event when its end time passes", () => {
+    const day = localDay(new Date());
+    const lunch = event("lunch", `${day}T12:00:00`, `${day}T13:00:00`);
+    const plugin = {
+      app: {
+        loadLocalStorage: (key: string) => key === NOW_RUN_KEY
+          ? { date: day, status: "running", skipped: [], fixedKey: `event:${meetingOccurrenceKey(lunch)}` }
+          : null,
+        saveLocalStorage: () => undefined,
+      },
+      timeStore: { blocksIn: () => [], isMeetingComplete: () => false },
+      index: { getById: () => undefined }, workTimer: { active: () => null },
+      gcalFeed: { eventsIn: () => [lunch] },
+    };
+
+    const snapshot = new NowController(plugin as never).snapshot(new Date(`${day}T13:01:00`));
+
+    expect(snapshot.current).toBeNull();
+    expect(snapshot.pastEvents.map((item) => item.title)).toEqual(["lunch"]);
   });
 
   it("omits an all-day event on its exclusive end date", () => {
@@ -142,5 +207,116 @@ describe("Opal Now queue", () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(setTaskDeferUntil).toHaveBeenCalledWith(task, expectedDay);
     expect(controller.snapshot().skipped.map((item) => item.title)).toEqual(["Active"]);
+  });
+
+  it("reflows once and starts the next task after a Blitz skip", async () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 8, 10, 10, 15);
+    vi.setSystemTime(now);
+    const day = localDay(now);
+    const makeTask = (id: string): Task => ({
+      id, path: `${id}.md`, title: id, titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 30, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    });
+    const current = makeTask("current"), next = makeTask("next");
+    const makeBlock = (id: string, task: Task, hour: number): TimeBlock => ({
+      id, kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(2026, 8, 10, hour).toISOString(), duration: 30, mode: "focus", selector: "manual",
+      status: "planned", source: "auto",
+    });
+    const currentBlock = makeBlock("current-block", current, 10), nextBlock = makeBlock("next-block", next, 11);
+    const blocks = [currentBlock, nextBlock];
+    let active: { session_id: string; task_id: string; started_at: string; block_id: string } | null = {
+      session_id: "session", task_id: current.id, started_at: currentBlock.start, block_id: currentBlock.id,
+    };
+    const storage = new Map<string, unknown>([[NOW_RUN_KEY, { date: day, status: "running", skipped: [] }]]);
+    const map: TimeMap = { id: "default", name: "Work", days: { 4: [{ start: "09:00", end: "17:00" }] } };
+    const updateBlocks = vi.fn(async (_date: string, changes: { id: string; patch: { start?: string } }[]) => {
+      for (const change of changes) {
+        const found = blocks.find((block) => block.id === change.id);
+        if (found && !found.allDay && change.patch.start) found.start = change.patch.start;
+      }
+    });
+    const startTask = vi.fn(async (taskId: string, blockId?: string) => {
+      active = { session_id: "next-session", task_id: taskId, started_at: new Date().toISOString(), block_id: blockId ?? "" };
+    });
+    const plugin = {
+      app: {
+        loadLocalStorage: (key: string) => storage.get(key) ?? null,
+        saveLocalStorage: (key: string, value: unknown) => { storage.set(key, value); },
+        vault: { getMarkdownFiles: () => [] }, metadataCache: { getFileCache: () => null },
+      },
+      settings: { timeMaps: [map], defaultTimeMapId: "default", autoPlanExcludedLabels: [] },
+      timeStore: {
+        blocksIn: () => blocks, blocks: () => blocks, block: (id: string) => blocks.find((block) => block.id === id) ?? null,
+        isMeetingComplete: () => false, meetingCompletions: () => [], updateBlocks,
+      },
+      index: { getById: (id: string) => [current, next].find((task) => task.id === id), all: () => [current, next] },
+      workTimer: { active: () => active, stop: vi.fn(async () => { active = null; }), startTask, needsResolution: () => false },
+      gcalFeed: { eventsIn: () => [] }, setTaskDeferUntil: vi.fn(async () => undefined),
+    };
+
+    try {
+      const controller = new NowController(plugin as never);
+      await controller.skipCurrent();
+
+      expect(updateBlocks).toHaveBeenCalledOnce();
+      expect(updateBlocks.mock.calls[0][1]).toHaveLength(1);
+      expect(new Date(nextBlock.start).getTime()).toBe(now.getTime());
+      expect(startTask).toHaveBeenCalledWith(next.id, nextBlock.id);
+      expect(plugin.setTaskDeferUntil).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("replans an already half-elapsed block before starting Blitz", async () => {
+    vi.useFakeTimers();
+    const now = new Date(2026, 8, 10, 10, 15);
+    vi.setSystemTime(now);
+    const day = localDay(now);
+    const task: Task = {
+      id: "current", path: "current.md", title: "Current", titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 30, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "block", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(2026, 8, 10, 10).toISOString(), duration: 30, mode: "focus", selector: "manual",
+      status: "planned", source: "auto",
+    };
+    let active: { session_id: string; task_id: string; started_at: string; block_id: string } | null = null;
+    const updateBlocks = vi.fn(async (_date: string, changes: { id: string; patch: { start?: string } }[]) => {
+      if (changes[0]?.patch.start) block.start = changes[0].patch.start;
+    });
+    const startTask = vi.fn(async (taskId: string, blockId?: string) => {
+      active = { session_id: "session", task_id: taskId, started_at: new Date().toISOString(), block_id: blockId ?? "" };
+    });
+    const plugin = {
+      app: {
+        loadLocalStorage: () => null, saveLocalStorage: () => undefined,
+        vault: { getMarkdownFiles: () => [] }, metadataCache: { getFileCache: () => null },
+      },
+      settings: { timeMaps: [{ id: "default", name: "Work", days: { 4: [{ start: "09:00", end: "17:00" }] } }], defaultTimeMapId: "default", autoPlanExcludedLabels: [] },
+      timeStore: {
+        blocksIn: () => [block], blocks: () => [block], block: () => block, isMeetingComplete: () => false,
+        meetingCompletions: () => [], updateBlocks,
+      },
+      index: { getById: () => task, all: () => [task] },
+      workTimer: { active: () => active, stop: vi.fn(), startTask, needsResolution: () => false },
+      gcalFeed: { eventsIn: () => [] },
+    };
+
+    try {
+      const controller = new NowController(plugin as never);
+      await controller.start(true);
+
+      expect(updateBlocks).toHaveBeenCalledOnce();
+      expect(new Date(block.start).getTime()).toBe(now.getTime());
+      expect(startTask).toHaveBeenCalledWith(task.id, block.id);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
