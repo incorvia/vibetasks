@@ -459,19 +459,6 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
-.bt-project-embed-progress-track {
-  display: inline-block;
-  width: 52px;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: linear-gradient(to right,
-    var(--interactive-accent) var(--bt-project-embed-progress, 0%),
-    var(--background-modifier-border-hover) var(--bt-project-embed-progress, 0%));
-}
-.bt-project-embed-progress.is-complete .bt-project-embed-progress-track {
-  background: var(--text-muted);
-}
 .bt-project-embed-progress-label { font-weight: 600; }
 @media (max-width: 500px) {
   .bt-project-embed-meta {
@@ -550,7 +537,7 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 }
 /* Lists sit inside the embed card rather than against its frame. Keep section headings on the
    main content line, while task rows and their dividers get a small nested inset. */
-.bt-project-embed .bt-list {
+.bt-project-embed .bt-list:not(.bt-area-project-tasks) {
   box-sizing: border-box;
   padding-inline: var(--size-4-3);
   padding-bottom: var(--size-4-2);
@@ -561,31 +548,13 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
   padding-top: 11px;
   padding-bottom: 11px;
 }
-/* Area chevrons normally hang into the wide page gutter. An embed has a visible frame instead,
-   so pull them inward rather than leaving them almost flush with its left border. */
-.bt-project-embed .bt-area-project-section > .bt-section-title > .bt-section-chevron {
-  left: -12px;
-}
-/* The shared add control can otherwise be auto-placed into a responsive header grid and leave an
-   empty track to its right. In embeds, pin it to the section's actual content edge. */
+/* Area projects use the same compact tree row in a full page and in a note embed. */
 .bt-project-embed .bt-area-project-section > .bt-section-title {
-  padding-left: var(--size-4-2);
-  padding-right: 38px;
-}
-.bt-project-embed .bt-area-project-section > .bt-section-title > .bt-section-add {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  margin: 0;
-  transform: translateY(-50%);
+  padding-inline: 2px;
 }
 .bt-project-embed.bt-mobile .bt-area-project-section > .bt-section-title {
-  min-height: 46px;
-  padding-left: 24px;
-  row-gap: 2px;
-}
-.bt-project-embed.bt-mobile .bt-area-project-section > .bt-section-title > .bt-section-chevron {
-  left: 0;
+  min-height: 44px;
+  padding-inline: 2px;
 }
 .bt-project-embed .bt-sizer.is-empty {
   min-height: 0;
@@ -1340,6 +1309,7 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 }
 .bt-nav-ic { display: inline-flex; flex-shrink: 0; }
 .bt-nav-ic svg { width: 16px; height: 16px; }
+.bt-project-progress,
 .bt-nav-progress {
   width: 16px; height: 16px; flex-shrink: 0; border-radius: 50%;
   background: conic-gradient(from -90deg,
@@ -1349,10 +1319,12 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 }
 /* A project with no tasks is different from one that has tasks but is still at 0%: keep the
    former as a quiet neutral outline. Partial projects fill clockwise; 100% is a solid accent dot. */
+.bt-project-progress.is-empty,
 .bt-nav-progress.is-empty {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--text-faint);
 }
+.bt-project-progress.is-complete,
 .bt-nav-progress.is-complete { box-shadow: none; }
 /* Seitenleisten-Farben: Boards einzeln, Labels/Bereiche je gemeinsam. Projektkreise nutzen den
    Akzent; eine per-Item-Frontmatter-Farbe (inline gesetzt) sticht auch dort die Vorgabe. */
@@ -2954,13 +2926,6 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-priority[data-priority="highest"] { color: var(--bt-prio-1); background: color-mix(in srgb, var(--bt-prio-1) 11%, transparent); }
 .bt-area-project-priority[data-priority="high"] { color: var(--bt-prio-2); background: color-mix(in srgb, var(--bt-prio-2) 13%, transparent); }
 .bt-area-project-priority[data-priority="medium"] { color: color-mix(in srgb, var(--bt-prio-3) 78%, var(--text-normal)); background: color-mix(in srgb, var(--bt-prio-3) 11%, transparent); }
-.bt-area-project-progress-track {
-  display: inline-block; width: 58px; height: 4px; overflow: hidden; border-radius: 999px;
-  background: linear-gradient(to right,
-    var(--bt-area-project-progress-color, var(--interactive-accent)) var(--bt-area-project-progress, 0%),
-    var(--background-modifier-border-hover) var(--bt-area-project-progress, 0%));
-}
-.bt-area-project-progress-track.is-complete { --bt-area-project-progress-color: var(--text-muted); }
 .bt-area-project-progress { min-width: 34px; color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; }
 .bt-view button.bt-area-project-add {
   display: inline-grid; place-items: center; box-sizing: border-box;
@@ -2971,24 +2936,37 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-add svg { width: 14px; height: 14px; }
 .bt-area-project-card-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
 .bt-area-project-tasks {
+  position: relative;
   display: flex; flex-direction: column; gap: 0;
-  width: 100%; margin: 0; padding-top: 0;
+  box-sizing: border-box;
+  width: calc(100% - 8px); margin: 0 0 8px 8px; padding: 0 0 0 26px;
+}
+.bt-area-project-tasks::before {
+  content: ""; position: absolute; pointer-events: none;
+  left: 0; top: -7px; bottom: 15px;
+  border-left: 1px solid var(--background-modifier-border);
 }
 .bt-area-project-card-tasks.bt-hidden, .bt-area-project-tasks.bt-hidden { display: none; }
+.bt-area-project-tasks:empty { display: none; }
 .bt-area-project-card-tasks .bt-task { border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
 .bt-area-project-section {
   container-type: inline-size;
+  border-bottom: 1px solid var(--bt-line);
 }
+.bt-area-loose-task-section { border-bottom: 1px solid var(--bt-line); }
 .bt-area-project-section + .bt-area-project-section { margin-top: 0; }
 .bt-area-project-section > .bt-section-title {
-  position: relative; min-height: 52px; margin-top: 0; padding: 8px 0;
+  min-height: 44px; margin-top: 0; padding: 8px 2px;
+  border-bottom: 0;
 }
-.bt-area-project-section > .bt-section-title > .bt-section-chevron {
-  position: absolute; left: -24px; top: 50%; transform: translateY(-50%);
-}
+.bt-area-project-section > .bt-section-title > .bt-section-leading { display: inline-flex; order: 1; }
+.bt-area-project-section > .bt-section-title > .bt-section-lbl { order: 2; }
+.bt-area-project-section > .bt-section-title > .bt-section-meta { order: 3; }
+.bt-area-project-section > .bt-section-title > .bt-section-add { order: 4; }
+.bt-area-project-section > .bt-section-title > .bt-section-chevron { order: 5; }
 .bt-area-project-tasks > .bt-task { min-height: 58px; padding-top: 11px; padding-bottom: 11px; }
-.bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { left: 0; border-top-color: var(--bt-line); }
-.bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom-color: var(--bt-line); }
+.bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { display: none; }
+.bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom-color: transparent; }
 .bt-area-project-tasks > .bt-task > .bt-task-tail {
   align-self: flex-start; margin: 0 2px 0 auto; padding-top: 1px; flex: 0 0 auto;
   color: var(--text-muted); white-space: nowrap;
@@ -3015,15 +2993,13 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 
 @container (max-width: 520px) {
   .bt-area-project-section .bt-area-project-head {
-    display: grid; grid-template-columns: minmax(0, 1fr) 32px;
-    align-items: center; column-gap: 7px; row-gap: 7px;
+    display: flex; align-items: center; gap: 7px;
   }
   .bt-area-project-section .bt-section-lbl {
-    grid-column: 1; grid-row: 1; overflow: visible; text-overflow: clip;
-    white-space: normal; overflow-wrap: anywhere;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .bt-area-project-section .bt-section-meta { grid-column: 1 / 3; grid-row: 2; flex-wrap: wrap; }
-  .bt-area-project-section .bt-section-add { grid-column: 2; grid-row: 1; margin-left: auto; }
+  .bt-area-project-section .bt-section-meta { flex-wrap: nowrap; }
+  .bt-area-project-section .bt-section-add { margin-left: auto; }
 }
 
 /* Tablet selects one priority but retains every status column. Mobile selects one status and,
@@ -3929,18 +3905,18 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   .bt-view > .bt-inline-new.bt-task-modal {
     max-width: calc(100% - 12px);
   }
-  .bt-area-project-head {
+  .bt-area-project-card .bt-area-project-head {
     display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
     align-items: center; column-gap: 7px; row-gap: 6px;
   }
-  .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
-  .bt-area-project-icon { grid-column: 2; grid-row: 1; }
-  .bt-area-project-title {
+  .bt-area-project-card .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-title {
     grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
     white-space: normal; overflow-wrap: anywhere;
   }
-  .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
-  .bt-area-project-add { grid-column: 4; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+  .bt-area-project-card .bt-area-project-add { grid-column: 4; grid-row: 1; }
 }
 @media (pointer: coarse) {
   .bt-view .bt-board-head .bt-head-actions button.bt-page-add,
@@ -4051,18 +4027,18 @@ body.is-phone .workspace-leaf-content[data-type="opal_tasks-main"]
 .bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions button.bt-page-add:hover,
 .bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions .bt-mobile-head-today:hover { background: var(--background-modifier-hover); }
 .bt-view.bt-mobile .bt-page-top .bt-mobile-head-actions .bt-page-add-ic svg { width: 20px; height: 20px; }
-.bt-view.bt-mobile .bt-area-project-head {
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-head {
   display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
   align-items: center; column-gap: 7px; row-gap: 6px;
 }
-.bt-view.bt-mobile .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
-.bt-view.bt-mobile .bt-area-project-icon { grid-column: 2; grid-row: 1; }
-.bt-view.bt-mobile .bt-area-project-title {
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-title {
   grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
   white-space: normal; overflow-wrap: anywhere;
 }
-.bt-view.bt-mobile .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
-.bt-view.bt-mobile .bt-area-project-add { grid-column: 4; grid-row: 1; }
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+.bt-view.bt-mobile .bt-area-project-card .bt-area-project-add { grid-column: 4; grid-row: 1; }
 /* Hover-only manual insertion affordances become permanently visible on touch. The page Add
    action is the unambiguous mobile creation path. */
 .bt-view.bt-mobile .bt-row-insert { display: none; }
@@ -4538,7 +4514,21 @@ button.bt-now-icon-btn {
   text-transform: uppercase;
 }
 .bt-now-row { gap: 12px; min-height: 66px; padding: 10px 6px; border-top: 1px solid var(--background-modifier-border); }
-.bt-now-row-time { flex: 0 0 68px; color: var(--text-muted); font-size: .82em; font-variant-numeric: tabular-nums; }
+.bt-now-row-time {
+  position: relative; display: flex; align-items: center; flex: 0 0 68px; min-height: 28px;
+  color: var(--text-muted); font-size: .82em; font-variant-numeric: tabular-nums;
+}
+.bt-now-row-time-label { transition: opacity 100ms ease; }
+button.bt-now-row-start {
+  position: absolute; inset: 0 auto 0 0; min-height: 28px; padding: 2px 8px;
+  border: 0; border-radius: var(--radius-s); background: var(--interactive-accent); color: var(--text-on-accent);
+  font-size: inherit; font-weight: 650; line-height: 1; opacity: 0; pointer-events: none; box-shadow: none;
+}
+.bt-now-row-time.has-start-action:hover .bt-now-row-time-label,
+.bt-now-row-time.has-start-action:focus-within .bt-now-row-time-label { opacity: 0; }
+.bt-now-row-time.has-start-action:hover button.bt-now-row-start,
+button.bt-now-row-start:focus-visible { opacity: 1; pointer-events: auto; }
+button.bt-now-row-start:hover { background: var(--interactive-accent-hover); box-shadow: none; }
 .bt-now-row-time.is-fixed { color: var(--text-accent); }
 .bt-now-row.is-missed .bt-now-row-time { color: var(--text-error); }
 .bt-now-row-time svg { width: 12px; height: 12px; margin-left: 5px; vertical-align: -2px; }
@@ -4573,3 +4563,8 @@ button.bt-now-icon-btn {
   .bt-now-current { padding: 16px; }
   .bt-now-row-time { flex-basis: 60px; }
 }
+@media (pointer: coarse) {
+  .bt-now-row-time.has-start-action .bt-now-row-time-label { opacity: 0; }
+  .bt-now-row-time button.bt-now-row-start { opacity: 1; pointer-events: auto; }
+}
+.bt-recovery-key { font-family: var(--font-monospace); }

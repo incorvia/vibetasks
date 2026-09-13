@@ -7,6 +7,7 @@ import { combineDT } from "./format";
 import { updateRecord } from "./mdbaseRepository";
 import { t } from "./i18n";
 import { GCalAuth, GCalAuthError } from "./gcalAuth";
+import type { SealedGCalConnection } from "./gcalPairing";
 
 /**
  * Google-Kalender-Sync, **Zwei-Wege (Stufe A Push + Stufe B Pull/Konflikt)**. Bewusst
@@ -166,8 +167,8 @@ export function seedGCalCache(
 
 export interface GCalSyncSettings {
   enabled: boolean;
-  clientId: string;
-  clientSecret: string;
+  /** Encrypted transport copy only. Its recovery key never enters the vault. */
+  pairing?: SealedGCalConnection;
   calendarId: string;              // Ziel-Kalender ("" bis gewählt)
   timezone: string;                // IANA, z. B. "Europe/Berlin"
   defaultDurationMin: number;      // Länge, wenn eine Aufgabe eine Uhrzeit, aber keine Dauer hat
@@ -179,18 +180,15 @@ export interface GCalSyncSettings {
   excludeInbox: boolean;           // den Eingang (Aufgaben ohne Projekt) vom Sync ausschließen
   notifyConflicts: boolean;        // (Stufe B) bei Konflikten benachrichtigen
   showStatusBar: boolean;
-  // Token UND Anzeige-E-Mail liegen bewusst NICHT hier, sondern geräte-lokal (app.saveLocalStorage,
-  // siehe TokenStore in main.ts). Ein Refresh-Token ist ein Dauerzugriff auf den Kalender – in
-  // data.json wandert er über jeden Sync, jedes Backup und jede Versionshistorie mit. Folge:
-  // Die Verbindung gilt pro Gerät, jedes Gerät verbindet sich einmal selbst.
+  // Zugangsdaten, Token UND Anzeige-E-Mail liegen bewusst NICHT hier, sondern geräte-lokal in
+  // Obsidians SecretStorage (siehe GCalSecretStore). `pairing` ist ausschließlich eine mit einem
+  // separat übertragenen Schlüssel verschlüsselte Transportkopie für weitere Geräte.
   // `lastSynced` und `syncTokens` liegen NICHT mehr hier, sondern im geräte-lokalen GCalCache
   // (s. dort). Sie sind Abgleich-Zustand eines Geräts, keine Einstellung des Vaults.
 }
 
 export const DEFAULT_GCAL_SETTINGS: GCalSyncSettings = {
   enabled: false,
-  clientId: "",
-  clientSecret: "",
   calendarId: "",
   timezone: "Europe/Berlin",
   defaultDurationMin: 60,

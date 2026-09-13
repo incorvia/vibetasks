@@ -43,15 +43,19 @@ Plugin-weiter State in `data.json` (nicht pro Notiz):
 Zeitzone aus `moment.tz`/Obsidian-Locale; Default `Europe/Berlin`, in Settings überschreibbar.
 
 ## OAuth (`src/gcalAuth.ts`)
-Nutzer legt **eigenen** OAuth-Client an (kein Secret im Plugin; Anleitung = bestehender Leitfaden
-Abschnitt 2 → in Settings verlinken/einbetten). Zwei Flows nach `Platform.isMobile`:
+Nutzer legt **eigenen** OAuth-Client an (kein fest eingebautes Secret im Plugin; Anleitung =
+bestehender Leitfaden Abschnitt 2 → in Settings verlinken/einbetten):
 - **Desktop:** Loopback-Server (`http` aus Electron) auf `127.0.0.1:<port>` + **PKCE**
   (`code_challenge`), `redirect_uri` = Loopback. Kein Secret.
-- **Mobile:** **Device-Code-Flow** (`oauth2.googleapis.com/device/code`) – Code am Zweitgerät.
+- **Mobile:** Kein Device-Code-Flow: Google erlaubt dort keine Calendar-Scopes. Der Desktop
+  verschlüsselt Client-Zugang + Refresh-Token lokal per AES-GCM; nur der Ciphertext wird über
+  `data.json` synchronisiert. Der getrennt übertragene Recovery-Key entsperrt die Verbindung
+  einmalig in Obsidian SecretStorage des Mobilgeräts.
 
 Alle HTTP-Calls über **`requestUrl`** (nicht `fetch` – CORS/Origin). Scopes:
 `https://www.googleapis.com/auth/calendar.events`. Token-Refresh transparent vor jedem Lauf;
-Revoke-Command zum Abmelden. Token in `data.json` (Hinweis in Settings: unverschlüsselt).
+globaler Revoke-Command zum Abmelden. Zugangsdaten, Token und Recovery-Key liegen nur im
+geräte-lokalen SecretStorage; `data.json` enthält optional den verschlüsselten Transport-Ciphertext.
 
 ## Sync-Engine (`src/gcalSync.ts`)
 ### Push (Stufe A)
@@ -92,9 +96,11 @@ Inline in der Settings-Sektion, nicht als Modal-Wand. Drei Schritte, jeder erst 
 vorige erledigt ist:
 1. **Google-Zugang anlegen** — Button „Anleitung öffnen" (öffnet den bestehenden Leitfaden bzw. eine
    gekürzte In-App-Fassung). Klartext, kein Jargon außerhalb dieses Schritts.
-2. **Zugangsdaten einfügen** — zwei Felder Client-ID / Client-Secret (Desktop) mit Inline-Hilfe
-   („findest du unter … → JSON"). Auf Mobile: nur Client-ID (Device-Code-Flow).
-3. **Autorisieren** — Button startet Loopback- (Desktop) bzw. Device-Code-Flow (Mobile).
+2. **Zugangsdaten einfügen** — zwei Felder Client-ID / Client-Secret (nur Desktop) mit Inline-Hilfe
+   („findest du unter … → JSON"). Beide landen in Obsidian SecretStorage.
+3. **Autorisieren / entsperren** — Desktop startet den Loopback-Flow. Danach kann ein Recovery-Key
+   erzeugt und später aus SecretStorage erneut angezeigt werden. Mobile übernimmt den synchronisierten
+   Ciphertext und fragt diesen Schlüssel genau einmal ab.
 Nach Erfolg klappt der Assistent zu und wird durch den Verbunden-Zustand ersetzt.
 
 ### 2. Verbunden-Zustand (Status-Kopf)
@@ -174,7 +180,7 @@ Konsumenten"). So bleibt UI austauschbar und testbar, ohne Netz-/Auth-Logik zu b
 - `styles.css` — `.bt-gcal`-Indikator, Statusleisten-Zustände, Assistent-Layout (kein Build nötig).
 
 ## Verifikation
-1. **Auth**: Desktop-Loopback + Mobile-Device-Code je einmal; Token-Refresh nach Ablauf.
+1. **Auth**: Desktop-Loopback; verschlüsseltes Pairing auf Mobile; Token-Refresh nach Ablauf.
 2. **Push**: Aufgabe mit `dueTime`+`duration` → Zeitblock; ohne → Ganztags; `reminders` → Popups;
    erledigt/Papierkorb → Event-Verhalten korrekt.
 3. **Pull**: Event in Google verschoben → `due`/`dueTime` in Notiz angepasst; Event gelöscht →

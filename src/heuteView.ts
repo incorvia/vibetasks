@@ -627,22 +627,12 @@ function embeddedProjectMeta(parent: HTMLElement, plugin: OpalTasksPlugin, proje
         priorityEl.dataset.priority = priority;
       }
     }
-  }
-  const tasks = plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
-  if (tasks.length) {
-    const done = tasks.filter((task) => isDone(task.status)).length;
-    const percentage = Math.round((done / tasks.length) * 100);
-    const label = t("subtasks_progress", done, tasks.length);
-    const progress = meta.createSpan({
-      cls: "bt-project-embed-progress" + (done === tasks.length ? " is-complete" : ""),
-      attr: {
-        role: "progressbar", title: label, "aria-label": label,
-        "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percentage),
-      },
-    });
-    progress.style.setProperty("--bt-project-embed-progress", `${percentage}%`);
-    progress.createSpan({ cls: "bt-project-embed-progress-track" });
-    progress.createSpan({ cls: "bt-project-embed-progress-label", text: `${done}/${tasks.length}` });
+    const progress = plugin.index.projectProgress(project.path);
+    const progressGroup = meta.createSpan({ cls: "bt-project-embed-progress" });
+    createProjectProgress(progressGroup, progress,
+      projectDisplayColor(project, listProjectsAndAreas(plugin.app).bereiche, plugin.settings.projectColorMode),
+      "bt-project-embed-progress-ring");
+    if (progress.total) progressGroup.createSpan({ cls: "bt-project-embed-progress-label", text: `${progress.done}/${progress.total}` });
   }
   if (!meta.childElementCount) meta.remove();
 }
@@ -853,8 +843,7 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
       invisibleProjectTasks.push(...tasks);
       continue;
     }
-    const progress = plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
-    const done = progress.filter((task) => isDone(task.status)).length;
+    const progress = plugin.index.projectProgress(project.path);
     const priority = priorityBucket(project.priority);
     const priorityIndex = PRIOS.findIndex((candidate) => candidate.value === priority);
     const group = createListSection(root, {
@@ -862,6 +851,11 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
       className: "bt-area-project-section",
       headerClassName: "bt-area-project-head",
       listClassName: "bt-area-project-tasks",
+      renderLeading: (leading) => {
+        createProjectProgress(leading, progress,
+          projectDisplayColor(project, [area], plugin.settings.projectColorMode),
+          "bt-area-project-progress-ring");
+      },
       onTitleClick: () => ctx.open({ kind: "project", key: project.path }),
       renderMeta: (meta) => {
         if (priority !== "normal" && priorityIndex >= 0) {
@@ -872,23 +866,10 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
           });
           priorityEl.dataset.priority = priority;
         }
-        if (progress.length) {
-          const percentage = Math.round((done / progress.length) * 100);
-          const track = meta.createSpan({
-            cls: "bt-area-project-progress-track" + (percentage === 100 ? " is-complete" : ""),
-            attr: {
-              role: "progressbar", "aria-label": t("subtasks_progress", done, progress.length),
-              "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percentage),
-            },
-          });
-          track.style.setProperty("--bt-area-project-progress", `${percentage}%`);
-          const projectColor = projectDisplayColor(project, [area], plugin.settings.projectColorMode);
-          if (projectColor && percentage < 100) track.style.setProperty("--bt-area-project-progress-color", projectColor);
-        }
         meta.createSpan({
           cls: "bt-area-project-progress",
           text: isDone(project.workflowStatus) ? statusLabel(project.workflowStatus)
-            : progress.length ? `${done}/${progress.length}` : statusLabel(project.workflowStatus),
+            : progress.total ? `${progress.done}/${progress.total}` : statusLabel(project.workflowStatus),
         });
       },
       add: {
@@ -914,7 +895,8 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
   }
   const loose = [...direct, ...invisibleProjectTasks, ...visible.filter((task) => task.project && !projectPaths.has(task.project) && task.project !== area.path)];
   if (loose.length) section(root, ctx, t("sec_tasks"), sortAreaTasks(loose, ctx), today,
-    false, false, nestingHosts(plugin, loose, effectiveSubtasks(ctx.opts)));
+    false, false, nestingHosts(plugin, loose, effectiveSubtasks(ctx.opts)), [], "", undefined, false,
+    { className: "bt-area-loose-task-section", listClassName: "bt-area-project-tasks", listTail: true });
 }
 
 function attachAreaCellDnd(cell: HTMLElement, ctx: PageCtx, area: ProjItem, status: TaskStatus, priority?: Priority): void {
@@ -2128,12 +2110,15 @@ function renderEventBands(list: HTMLElement, ctx: PageCtx, events: DayEvent[], d
 /** Zeichnet eine Sektion und gibt ihren Überschriften-Kopf zurück – daran hängen Aufrufer
  *  optionale Kopf-Aktionen (z. B. „Verschieben" bei „Überfällig"), ohne dass section() sie
  *  kennen muss. Wer den Rückgabewert nicht braucht, ignoriert ihn wie bisher. */
-function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[], today: string, collapsible = false, trash = false, present?: Set<string>, events: DayEvent[] = [], eventKey = "", ownRow?: (t: Task) => boolean, bare = false): HTMLElement {
+function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[], today: string, collapsible = false, trash = false, present?: Set<string>, events: DayEvent[] = [], eventKey = "", ownRow?: (t: Task) => boolean, bare = false,
+  shell?: { className?: string; listClassName?: string; listTail?: boolean }): HTMLElement {
   const top = trash ? tasks : visibleRows(tasks, present, ownRow);
   const group = createListSection(parent, {
     title,
     count: top.length,
     bare,
+    className: shell?.className,
+    listClassName: shell?.listClassName,
     ...(collapsible ? {
       collapsible: {
         collapsed: ctx.doneCollapsed,
@@ -2183,7 +2168,8 @@ function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[]
   let recycled = false;      // Zeilen ausgehängt, nur der Platzhalter steht (s. recycle)
   let pxProRow = 0;          // an DIESER Sektion gemessene Zeilenhöhe (0 = noch nie gemessen)
   const drawSlice = (von: number, bis: number): void => {
-    for (const task of rowsNow.slice(von, bis)) renderTask(list, ctx, task, today, 0, trash, { subs, manual, showDone: o.showDone, impliedDate, deadlineImplied, hideProject });
+    for (const task of rowsNow.slice(von, bis)) renderTask(list, ctx, task, today, 0, trash,
+      { subs, manual, showDone: o.showDone, impliedDate, deadlineImplied, hideProject, listTail: shell?.listTail });
     annotateSubtaskTree(list);
   };
   /** Nächsten Schub anhängen; gibt zurück, ob danach noch etwas fehlt. */
@@ -2854,7 +2840,22 @@ function paintProjectProgress(el: HTMLElement, progress: ProjectTaskProgress): v
   el.style.setProperty("--bt-nav-progress", `${percentage}%`);
   el.classList.toggle("is-empty", progress.total === 0);
   el.classList.toggle("is-complete", progress.total > 0 && progress.done === progress.total);
+  el.setAttr("role", "progressbar");
+  el.setAttr("aria-valuemin", "0");
+  el.setAttr("aria-valuemax", "100");
+  el.setAttr("aria-valuenow", String(Math.round(percentage)));
   tip(el, t("subtasks_progress", progress.done, progress.total));
+}
+
+/** The project completion pie is one visual primitive in navigation, Area lists and embeds. */
+function createProjectProgress(parent: HTMLElement, progress: ProjectTaskProgress,
+  color?: string | null, className?: string): HTMLElement {
+  const el = parent.createSpan({
+    cls: ["bt-project-progress", className ?? ""].filter(Boolean).join(" "),
+  });
+  if (color) el.style.setProperty("--bt-nav-progress-color", color);
+  paintProjectProgress(el, progress);
+  return el;
 }
 
 /** Div klick- UND tastaturbedienbar machen (role=button/tabindex kommen vom Aufrufer):
@@ -2869,9 +2870,7 @@ function navItem(c: HTMLElement, plugin: OpalTasksPlugin, o: NavItemOpts): void 
   const item = c.createDiv({ cls: "bt-nav-item" + (o.active ? " is-active" : "") + (o.cls ? " " + o.cls : ""), attr: { role: "button", tabindex: "0" } });
   if (o.depth) item.style.setProperty("--bt-nav-depth", String(o.depth));
   if (o.progress) {
-    const progress = item.createSpan({ cls: "bt-nav-progress" });
-    if (o.iconColor) progress.style.setProperty("--bt-nav-progress-color", o.iconColor);
-    paintProjectProgress(progress, o.progress);
+    const progress = createProjectProgress(item, o.progress, o.iconColor, "bt-nav-progress");
     if (o.progressKey) navProgresses?.set(o.progressKey, progress);
   } else {
     const ic = item.createSpan({
@@ -3058,9 +3057,7 @@ function renderReorderList(c: HTMLElement, plugin: OpalTasksPlugin, sec: NavSect
     tip(grip, t("menu_reorder"));
     setIcon(grip, "grip-vertical");
     if (e.progress) {
-      const progress = row.createSpan({ cls: "bt-nav-progress" });
-      if (e.color) progress.style.setProperty("--bt-nav-progress-color", e.color);
-      paintProjectProgress(progress, e.progress);
+      const progress = createProjectProgress(row, e.progress, e.color, "bt-nav-progress");
       if (e.progressKey) navProgresses?.set(e.progressKey, progress);
     } else {
       const ic = row.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, e.icon);

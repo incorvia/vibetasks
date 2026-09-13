@@ -201,6 +201,18 @@ export class NowController extends Component {
     const choice = this.snapshot().conflicts.find((item) => item.key === key); if (!choice) return;
     await this.plugin.workTimer.stop(); this.run.fixedKey = choice.key; this.run.status = "running"; delete this.run.error; this.persist();
   }); }
+  /** Pull a future task or meeting into Now without waiting for its scheduled start. */
+  startEarly(key: string): Promise<void> { return this.serial(async () => {
+    const now = new Date(), item = this.snapshot(now).upcoming.find((candidate) =>
+      candidate.key === key && candidate.kind !== "allocation" && Date.parse(candidate.start) > now.getTime());
+    if (!item) return;
+    if (this.plugin.workTimer.needsResolution()) throw new Error("Resolve timer conflicts before starting another item.");
+    await this.plugin.workTimer.stop();
+    const date = localDay(now), skipped = this.run.date === date ? this.run.skipped : [];
+    this.run = { date, status: "running", skipped, blitz: false, ...(item.kind === "meeting" ? { fixedKey: item.key } : {}) };
+    if (item.kind === "task") await this.plugin.workTimer.startTask(item.task.id, item.block.id);
+    this.persist();
+  }); }
   extendCurrent(minutes = 5): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current;
     if (!current || current.kind === "meeting") return;

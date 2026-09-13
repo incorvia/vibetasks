@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ColorComponent, ExtraButtonComponent } from "obsidian";
+import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ColorComponent, ExtraButtonComponent, Modal } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { ChipId, ChipTier, ChipSurface, MetaColorKey, NavSortMode, DEFAULT_SETTINGS } from "./types";
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
@@ -14,6 +14,7 @@ import { ProjectColorMode } from "./projectColor";
 import { DEFAULT_TIME_MAP, type TimeMap, type TimeMapRange } from "./autoPlanner";
 import { listProjectsAndAreas } from "./taskService";
 import { validationReportPath } from "./validationReport";
+import { ConfirmModal } from "./confirmModal";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
@@ -21,6 +22,40 @@ type SettingsPage = "general" | "planning" | "appearance" | "data";
 
 /** README-Abschnitt mit der Google-Kalender-Einrichtung (statt nur zur Console zu verlinken). */
 const GCAL_GUIDE_URL = "https://github.com/incorvia/opal_tasks#google-calendar-sync";
+
+/** Reveals the device-keystore copy. The recovery key is never written to settings or logs. */
+class GCalRecoveryKeyModal extends Modal {
+  constructor(app: App, private readonly recoveryKey: string) { super(app); }
+
+  onOpen(): void {
+    const { contentEl, modalEl } = this;
+    modalEl.addClass("bt-confirm-modal");
+    contentEl.createEl("h3", { text: t("gcal_pair_key_title") });
+    contentEl.createEl("p", { text: t("gcal_pair_key_desc") });
+    const key = contentEl.createEl("textarea", {
+      cls: "bt-new-input bt-recovery-key",
+      attr: { readonly: "", rows: "3", "aria-label": t("gcal_pair_key_title") },
+    });
+    key.value = this.recoveryKey;
+    key.onclick = () => key.select();
+    const foot = contentEl.createDiv({ cls: "bt-foot" });
+    foot.createDiv();
+    const actions = foot.createDiv({ cls: "bt-actions" });
+    actions.createEl("button", { text: t("gcal_pair_copy") }).onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(this.recoveryKey);
+        new Notice(t("gcal_pair_copied"));
+      } catch {
+        key.focus(); key.select();
+        new Notice(t("gcal_pair_copy_failed"));
+      }
+    };
+    actions.createEl("button", { cls: "mod-cta", text: t("whatsnew_ok") }).onclick = () => this.close();
+    window.setTimeout(() => { key.focus(); key.select(); }, 0);
+  }
+
+  onClose(): void { this.contentEl.empty(); }
+}
 
 /** Pointer-basiertes Ziehen einer Chip-Zeile ZWISCHEN den drei Tier-Zonen (Maus + Touch,
  *  Popout-sicher über row.ownerDocument). Beim Loslassen ruft onDrop() – der Aufrufer liest
@@ -662,44 +697,98 @@ export class OpalTasksSettingTab extends PluginSettingTab {
 
     // ── Nicht verbunden: Assistent ──
     if (!p.gcalAuth.isConnected()) {
+      if (Platform.isMobile) {
+        if (!g.pairing) {
+          containerEl.createDiv({ cls: "setting-item-description", text: t("gcal_mobile_waiting") });
+          containerEl.createDiv({ cls: "setting-item-description bt-gcal-hint", text: t("gcal_mobile_waiting_desc") });
+          return;
+        }
+        containerEl.createDiv({ cls: "setting-item-description", text: t("gcal_mobile_unlock_desc") });
+        let recoveryKey = "";
+        let unlockBtn: import("obsidian").ButtonComponent | null = null;
+        new Setting(containerEl).setName(t("gcal_recovery_key")).addText((txt) => {
+          txt.inputEl.type = "password";
+          txt.inputEl.autocomplete = "off";
+          txt.inputEl.autocapitalize = "off";
+          txt.inputEl.spellcheck = false;
+          txt.setPlaceholder("opal1.…").onChange((value) => {
+            recoveryKey = value.trim();
+            unlockBtn?.setDisabled(!recoveryKey);
+          });
+        });
+        new Setting(containerEl).addButton((button) => {
+          unlockBtn = button;
+          button.setButtonText(t("gcal_unlock_btn")).setCta().setDisabled(true).onClick(async () => {
+            button.setButtonText(t("gcal_unlocking")).setDisabled(true);
+            try { await p.gcalUnlockPairing(recoveryKey); }
+            catch (error) { new Notice(t("gcal_unlock_failed", error instanceof Error ? error.message : String(error))); }
+            redraw();
+          });
+        });
+        containerEl.createDiv({ cls: "setting-item-description bt-gcal-hint", text: t("gcal_recovery_key_hint") });
+        return;
+      }
+
       containerEl.createDiv({ cls: "setting-item-description", text: t("gcal_setup_desc") });
       new Setting(containerEl).addButton((b) => b.setButtonText(t("gcal_help_btn"))
         .onClick(() => window.open(GCAL_GUIDE_URL)));
+      const initial = p.gcalCredentials();
+      let clientId = initial.clientId;
+      let clientSecret = initial.clientSecret ?? "";
       // „Verbinden" muss reaktiv (de)aktiviert werden, sobald beide Felder gefüllt sind –
       // sonst bliebe der Button vom leeren Erst-Render dauerhaft deaktiviert.
       let connectBtn: import("obsidian").ButtonComponent | null = null;
-      const refreshConnect = (): void => { connectBtn?.setDisabled(!g.clientId || !g.clientSecret); };
+      const changed = (): void => {
+        p.setGCalCredentials(clientId, clientSecret);
+        connectBtn?.setDisabled(!clientId || !clientSecret);
+      };
       new Setting(containerEl).setName(t("gcal_client_id")).addText((txt) =>
-        txt.setValue(g.clientId).onChange((v) => { g.clientId = v.trim(); void p.saveSettings(); refreshConnect(); }));
+        txt.setValue(clientId).onChange((value) => { clientId = value.trim(); changed(); }));
       new Setting(containerEl).setName(t("gcal_client_secret")).addText((txt) => {
         txt.inputEl.type = "password";
-        txt.setValue(g.clientSecret).onChange((v) => { g.clientSecret = v.trim(); void p.saveSettings(); refreshConnect(); });
+        txt.setValue(clientSecret).onChange((value) => { clientSecret = value.trim(); changed(); });
       });
       containerEl.createDiv({ cls: "setting-item-description bt-gcal-hint", text: t("gcal_setup_hint") });
       new Setting(containerEl).addButton((b) => {
         connectBtn = b;
-        b.setButtonText(t("gcal_connect_btn")).setCta().setDisabled(!g.clientId || !g.clientSecret)
+        b.setButtonText(t("gcal_connect_btn")).setCta().setDisabled(!clientId || !clientSecret)
           .onClick(async () => {
             b.setButtonText(t("gcal_connecting")).setDisabled(true);
-            try {
-              await p.gcalConnect((dp) => new Notice(t("gcal_device_prompt", dp.verificationUrl, dp.userCode), 0));
-            } catch (e) {
+            try { await p.gcalConnect(); }
+            catch (e) {
               new Notice(t("gcal_connect_failed", e instanceof Error ? e.message : String(e)));
             }
             redraw();
           });
       });
-      // Der Token liegt geräte-lokal (s. main.ts, GCAL_TOKEN_KEY) – das muss vor dem Verbinden
-      // dastehen, sonst wundern sich Nutzer, warum das zweite Gerät nicht mitkommt.
-      containerEl.createDiv({ cls: "setting-item-description bt-gcal-hint", text: t("gcal_device_only") });
+      containerEl.createDiv({ cls: "setting-item-description bt-gcal-hint", text: t("gcal_secret_storage_hint") });
       return;
     }
 
     // ── Verbunden: Kopf mit Status ──
     const head = new Setting(containerEl).setName(t("gcal_connected_as", p.gcalAuth.account() ?? "—"))
-      .addButton((b) => b.setButtonText(t("gcal_disconnect_btn"))
-        .onClick(async () => { await p.gcalDisconnect(); redraw(); }));
+      .addButton((b) => b.setButtonText(t("gcal_remove_device_btn"))
+        .onClick(() => new ConfirmModal(this.app, {
+          title: t("gcal_remove_device_confirm_title"),
+          message: t("gcal_remove_device_confirm_desc"),
+          confirmText: t("gcal_remove_device_btn"),
+        }, () => void p.gcalDisconnect().then(redraw)).open()));
     head.nameEl.prepend(createSpan({ cls: "bt-gcal-dot" }));
+
+    new Setting(containerEl).setName(t("gcal_pair_device")).setDesc(t("gcal_pair_device_desc"))
+      .addButton((button) => button.setButtonText(t(g.pairing ? "gcal_pair_show" : "gcal_pair_create")).onClick(async () => {
+        try {
+          const result = await p.gcalCreatePairing();
+          new GCalRecoveryKeyModal(this.app, result.recoveryKey).open();
+        } catch (error) {
+          new Notice(t("gcal_pair_failed", error instanceof Error ? error.message : String(error)));
+        }
+        redraw();
+      }))
+      .addExtraButton((button) => {
+        button.setIcon("trash-2").setTooltip(t("gcal_pair_remove")).setDisabled(!g.pairing);
+        button.onClick(async () => { if (g.pairing) { await p.gcalRemovePairing(); redraw(); } });
+      });
 
     // Kein Ziel-Kalender (z. B. Auto-Anlage fehlgeschlagen) → deutlich führen statt still nichts tun.
     if (!g.calendarId) containerEl.createDiv({ cls: "bt-gcal-warn", text: t("gcal_no_calendar_warn") });
@@ -764,6 +853,21 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     new Setting(av).setName(t("gcal_statusbar")).addToggle((tg) =>
       tg.setValue(g.showStatusBar).onChange((v) => { g.showStatusBar = v; void p.saveSettings(); p.refreshGCalStatusBar(); }));
     boolRow("gcal_notify_conflicts", () => g.notifyConflicts, (v) => (g.notifyConflicts = v));
+    new Setting(av).setName(t("gcal_revoke_everywhere")).setDesc(t("gcal_revoke_everywhere_desc"))
+      .addButton((button) => {
+        button.setButtonText(t("gcal_revoke_btn"));
+        button.buttonEl.addClass("mod-warning");
+        button.onClick(() => {
+          new ConfirmModal(this.app, {
+            title: t("gcal_revoke_confirm_title"),
+            message: t("gcal_revoke_confirm_desc"),
+            confirmText: t("gcal_revoke_btn"),
+          }, () => void (async () => {
+            try { await p.gcalRevokeEverywhere(); redraw(); }
+            catch (error) { new Notice(t("gcal_revoke_failed", error instanceof Error ? error.message : String(error))); }
+          })()).open();
+        });
+      });
   }
 
   /**

@@ -355,10 +355,11 @@ Opal Tasks mirrors planned **time blocks** into Google Calendar. Google start/en
 3. **Consent screen** — open *Google Auth Platform → Get started*: set an app name and your email, and choose **Audience = External**. Then open **Audience** and **Publish app** so the status is **In production**.
    > ⚠️ **Important:** In *Testing* mode, refresh tokens for calendar scopes expire after **7 days**, so the sync would break every week. *In production* they stay valid. You do **not** need Google to verify the app while you are the only user.
 4. **Create the client** — go to *Clients → Create client*, set Application type to **Desktop app**, click **Create**, then copy the **Client ID** and **Client secret**.
-5. **Connect** — in Obsidian open *Settings → Opal Tasks → Google Calendar*, paste the Client ID and secret, and click **Connect**. On the “Google hasn’t verified this app” screen choose **Advanced → Continue** — this is expected for a personal app.
+5. **Connect on desktop** — in Obsidian Desktop open *Settings → Opal Tasks → Google Calendar*, paste the Client ID and secret, and click **Connect**. On the “Google hasn’t verified this app” screen choose **Advanced → Continue** — this is expected for a personal app.
 6. **Calendar** — Opal Tasks creates and selects a dedicated **“Opal Tasks”** calendar (small blast radius; your other calendars are never touched). Done.
+7. **Unlock another device (optional)** — on the connected desktop, choose **Create recovery key**. Let the vault sync, then enter that key once in *Settings → Opal Tasks → Google Calendar* on the other device. Later, **Show recovery key** retrieves the same key from Obsidian Secret Storage on any unlocked device.
 
-The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.created`) are requested when you connect — there is nothing to pre-register in the consent screen. On **mobile**, step 5 uses a device-code login (you enter a short code on another device) instead of the desktop loopback flow.
+The required permissions (`calendar.events`, `calendar.readonly`, `calendar.app.created`) are requested when you connect — there is nothing to pre-register in the consent screen. Google does not permit Calendar scopes in its device-code flow, so mobile uses the encrypted device-pairing step above rather than trying to authorize directly.
 
 ### What syncs
 
@@ -381,7 +382,9 @@ Project, label and filter pages deliberately stay free of them: those are about 
 
 ### Where credentials live
 
-Your Client ID/secret and the OAuth token are stored locally in `.obsidian/plugins/opal_tasks/data.json` (git-ignored). **Disconnect** in settings revokes the token with Google and deletes it locally. If you sync your vault by other means (Obsidian Sync, Dropbox, iCloud…), this file travels with it.
+Your Client ID/secret, OAuth token, and recovery key are stored per device in Obsidian **Secret Storage**, encrypted at rest by the operating system. They are never written to the vault. If you enable device pairing, `data.json` contains only an AES-GCM-encrypted connection package; its recovery key never enters the vault, its backups, or its version history.
+
+**Remove from this device** clears that device's local secrets without interrupting other paired devices. **Revoke Google access everywhere** invalidates the shared Google token and removes the encrypted connection package from the vault.
 
 ## On your phone
 

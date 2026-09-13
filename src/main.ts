@@ -39,7 +39,9 @@ import { ImportTaskNotesModal } from "./importTaskNotes";
 import { WhatsNewModal } from "./whatsNew";
 import { calendarDayAnchor } from "./calendarView";
 import { bucketEvents } from "./calendarModel";
-import { GCalAuth, TokenStore, DevicePrompt, GCalTokens, planTokenMigration } from "./gcalAuth";
+import { GCalAuth, GCalCredentials, GCalTokens, planTokenMigration } from "./gcalAuth";
+import { GCalSecretStore } from "./gcalSecrets";
+import { GCalPairingResult, openGCalConnection, sealGCalConnection } from "./gcalPairing";
 import { GCalSync, GCalSyncHost, GCalCache, LegacyGCalLink, emptyGCalCache, calIndex, seedGCalCache, resignLegacySignature, DEFAULT_GCAL_SETTINGS, listCalendars, ensureDefaultCalendar, fetchAccountEmail, CalendarInfo, GCalStatusInfo } from "./gcalSync";
 import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
 import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord, type ValidationIssue } from "./mdbaseRepository";
@@ -101,6 +103,7 @@ export default class OpalTasksPlugin extends Plugin {
   gcalAuth!: GCalAuth;
   gcalSync!: GCalSync;
   gcalFeed!: GCalFeed;
+  private gcalSecrets!: GCalSecretStore;
   private gcalCache!: GCalCache;   // geräte-lokal (GCAL_CACHE_KEY), NICHT in data.json
   private device!: DeviceState;    // geräte-lokal (DEVICE_STATE_KEY), NICHT in data.json
   private gcalStatusBar: HTMLElement | null = null;
@@ -131,6 +134,7 @@ export default class OpalTasksPlugin extends Plugin {
 
   async onload(): Promise<void> {
     registerIcons();
+    this.gcalSecrets = new GCalSecretStore(this.app.secretStorage);
     await this.loadSettings();
     this.repository = new MdbaseRepository(this.app);
     bindRepository(this.app, this.repository);
@@ -3247,7 +3251,7 @@ export default class OpalTasksPlugin extends Plugin {
       || Array.isArray(this.settings.gcalFeed.hiddenEvents)) this.settings.gcalFeed.hiddenEvents = {};
     this.device = Object.assign({}, DEFAULT_DEVICE_STATE,
       this.app.loadLocalStorage(DEVICE_STATE_KEY) as Partial<DeviceState> | null);
-    let dirty = this.migrateGCalTokens();
+    let dirty = this.migrateGCalSecrets();
     dirty = this.migrateGCalCache() || dirty;
     dirty = this.migrateDeviceState() || dirty;
     if (dirty) await this.saveSettings();
@@ -3331,28 +3335,48 @@ export default class OpalTasksPlugin extends Plugin {
     if (n) this.app.saveLocalStorage(GCAL_CACHE_KEY, this.gcalCache);
   }
 
-  /** Einmalige Umstellung (ab 1.36.0): Bis 1.35.x lagen Refresh-Token und Anzeige-E-Mail in
-   *  data.json und wanderten damit über jeden Sync auf jedes Gerät – und in jedes Backup.
-   *
-   *  Das Gerät, das die Datei nach dem Update zuerst öffnet, übernimmt den Token in seinen
-   *  lokalen Speicher: Dort bleibt die Verbindung ohne Zutun bestehen. Auf allen anderen Geräten
-   *  ist danach keiner mehr da; sie verbinden sich einmal selbst (Hinweis beim Start, s. onload).
-   *
-   *  Gibt zurück, ob data.json dadurch zu bereinigen war. Der `delete` ist Pflicht, nicht Kosmetik:
-   *  `Object.assign` oben kopiert die alten Felder mit, obwohl der Typ sie nicht mehr kennt –
-   *  ohne das Löschen schriebe saveSettings() den Token stumm wieder zurück. */
-  private migrateGCalTokens(): boolean {
+  /**
+   * Zugangsdaten und Tokens aus beiden alten Klartext-Speichern in Obsidian SecretStorage
+   * übernehmen. Vor 1.36 lagen Tokens in data.json, danach in app-localStorage; Client-ID und
+   * -Secret lagen bis zu dieser Migration weiterhin in data.json. Ein bereits vorhandenes Secret
+   * gewinnt immer. Erst NACH erfolgreichem setSecret werden die alten Kopien entfernt.
+   */
+  private migrateGCalSecrets(): boolean {
     const raw = this.settings.gcal as unknown as Record<string, unknown>;
-    if (!("tokens" in raw) && !("account" in raw)) return false;
-    const adopt = planTokenMigration(
-      raw.tokens as GCalTokens | null | undefined,
-      raw.account as string | null | undefined,
-      !!this.app.loadLocalStorage(GCAL_TOKEN_KEY),
-    );
-    if (adopt) this.app.saveLocalStorage(GCAL_TOKEN_KEY, adopt);
-    delete raw.tokens;
-    delete raw.account;
-    return true;
+    const local = this.app.loadLocalStorage(GCAL_TOKEN_KEY) as GCalTokens | null;
+    let dirty = false;
+
+    if (!this.gcalSecrets.credentials()) {
+      const clientId = typeof raw.clientId === "string" ? raw.clientId : "";
+      const clientSecret = typeof raw.clientSecret === "string" ? raw.clientSecret : undefined;
+      if (clientId) this.gcalSecrets.saveCredentials({ clientId, clientSecret });
+    }
+    if (!this.gcalSecrets.load()) {
+      const legacy = planTokenMigration(
+        raw.tokens as GCalTokens | null | undefined,
+        raw.account as string | null | undefined,
+        false,
+      );
+      const adopt = local?.refreshToken
+        ? { ...local, account: local.account ?? (typeof raw.account === "string" ? raw.account : undefined) }
+        : legacy;
+      if (adopt) void this.gcalSecrets.save(adopt);
+    }
+
+    // Token-Kopien dürfen weg, sobald SecretStorage sie sicher enthält. Die synchronisierten
+    // Zugangsdaten löschen wir dagegen erst, wenn DIESES Gerät auch einen Token hat. Sonst könnte
+    // ein Handy ohne lokalen Token die Datei zuerst migrieren und dem noch nicht aktualisierten
+    // Desktop die Client-Zugangsdaten unter den Füßen weg synchronisieren.
+    if (this.gcalSecrets.load()) {
+      if (local) { this.app.saveLocalStorage(GCAL_TOKEN_KEY, null); dirty = true; }
+      if ("tokens" in raw) { delete raw.tokens; dirty = true; }
+      if ("account" in raw) { delete raw.account; dirty = true; }
+    }
+    if (this.gcalSecrets.credentials() && this.gcalSecrets.load()) {
+      if ("clientId" in raw) { delete raw.clientId; dirty = true; }
+      if ("clientSecret" in raw) { delete raw.clientSecret; dirty = true; }
+    }
+    return dirty;
   }
   /** Gespeichert wird nur, was vom Standard abweicht (s. settingsDelta.ts) – sonst friert die
    *  Datei jeden Standardwert ein und eine Verbesserung im Code erreicht keinen Bestandsnutzer. */
@@ -3394,16 +3418,11 @@ export default class OpalTasksPlugin extends Plugin {
    *  in place; Persistenz läuft über saveSettings (data.json). Auf Unload wird gestoppt. */
   private setupGCal(): void {
     const gcal = this.settings.gcal!;
-    // Der Token liegt geräte-lokal, NICHT in data.json (s. GCAL_TOKEN_KEY). Nebeneffekt, der
-    // ausdrücklich gewollt ist: data.json wird nicht mehr stündlich neu geschrieben, nur weil
-    // ein Access-Token erneuert wurde – das war eine Hauptquelle für Sync-Konflikte.
-    const store: TokenStore = {
-      load: () => (this.app.loadLocalStorage(GCAL_TOKEN_KEY) as GCalTokens | null) ?? null,
-      save: (tokens) => { this.app.saveLocalStorage(GCAL_TOKEN_KEY, tokens); return Promise.resolve(); },
-    };
+    // Zugangsdaten und Tokens liegen im verschlüsselten, geräte-lokalen SecretStorage. Dadurch
+    // erzeugt ein stündlicher Token-Refresh weder data.json-Schreiblast noch Sync-Konflikte.
     this.gcalAuth = new GCalAuth(
-      () => ({ clientId: gcal.clientId, clientSecret: gcal.clientSecret }),
-      store,
+      () => this.gcalSecrets.credentials(),
+      this.gcalSecrets,
     );
     // Abgleich-Cache: geräte-lokal, weil er bei JEDEM Sync-Lauf neu geschrieben wird (gemessen:
     // alle 5 Minuten auch ohne Änderung, beim Arbeiten im Sekundentakt). In data.json war er die
@@ -3518,12 +3537,98 @@ export default class OpalTasksPlugin extends Plugin {
     new Notice(t("gcal_reconnect_notice"), 0);   // bleibt stehen: der Nutzer muss handeln
   }
 
-  /** Mit Google verbinden: Login (Desktop-Loopback bzw. Mobile-Device-Flow), danach Anzeige-
-   *  E-Mail holen, bei Bedarf eigenen „Opal Tasks"-Kalender anlegen, aktivieren, initial pushen.
-   *  Wirft bei Fehler (die UI zeigt die Meldung). */
-  async gcalConnect(onDevicePrompt?: (p: DevicePrompt) => void): Promise<void> {
+  /** Geräte-lokale OAuth-Zugangsdaten. Der Settings-Tab zeigt/bearbeitet sie nur auf Desktop. */
+  gcalCredentials(): GCalCredentials {
+    return this.gcalSecrets.credentials() ?? { clientId: "", clientSecret: "" };
+  }
+
+  setGCalCredentials(clientId: string, clientSecret: string): void {
+    const id = clientId.trim(), secret = clientSecret.trim();
+    this.gcalSecrets.saveCredentials(id ? { clientId: id, clientSecret: secret || undefined } : null);
+  }
+
+  /**
+   * Aktuelle Verbindung für ein weiteres Gerät verschlüsseln. Nur der Ciphertext wird mit dem
+   * Vault synchronisiert; der Recovery-Key bleibt im geräte-lokalen SecretStorage und kann dort
+   * für ein späteres Gerät wieder angezeigt werden.
+   */
+  async gcalCreatePairing(): Promise<GCalPairingResult> {
     const g = this.settings.gcal!;
-    await this.gcalAuth.connect(onDevicePrompt);
+    const credentials = this.gcalSecrets.credentials();
+    const tokens = this.gcalSecrets.load();
+    if (!credentials || !tokens) throw new Error("Google is not connected on this device.");
+    const existingKey = g.pairing ? this.gcalSecrets.pairingKey() : null;
+    if (g.pairing && existingKey) {
+      try {
+        const existing = await openGCalConnection(g.pairing, existingKey);
+        if (existing.credentials.clientId === credentials.clientId
+          && existing.credentials.clientSecret === credentials.clientSecret
+          && existing.refreshToken === tokens.refreshToken) {
+          return { bundle: g.pairing, recoveryKey: existingKey };
+        }
+      } catch { /* fremdes/veraltetes Bundle: unten sicher ersetzen */ }
+    }
+    const result = await sealGCalConnection(credentials, tokens);
+    const previousPairing = g.pairing;
+    const previousKey = this.gcalSecrets.pairingKey();
+    g.pairing = result.bundle;
+    this.gcalSecrets.savePairingKey(result.recoveryKey);
+    try { await this.saveSettings(); }
+    catch (error) {
+      g.pairing = previousPairing;
+      this.gcalSecrets.savePairingKey(previousKey);
+      throw error;
+    }
+    return result;
+  }
+
+  /** Entschlüsselte Desktop-Verbindung prüfen und erst dann dauerhaft im Geräte-Keystore ablegen. */
+  async gcalUnlockPairing(recoveryKey: string): Promise<void> {
+    const bundle = this.settings.gcal?.pairing;
+    if (!bundle) throw new Error("No synced Google connection is available yet.");
+    const imported = await openGCalConnection(bundle, recoveryKey);
+    const oldCredentials = this.gcalSecrets.credentials();
+    const oldTokens = this.gcalSecrets.load();
+    const oldPairingKey = this.gcalSecrets.pairingKey();
+    this.gcalSecrets.saveCredentials(imported.credentials);
+    this.gcalSecrets.savePairingKey(recoveryKey.trim());
+    await this.gcalSecrets.save({
+      accessToken: "",
+      refreshToken: imported.refreshToken,
+      expiresAt: 0,
+      account: imported.account,
+      scope: imported.scope,
+    });
+    try {
+      // Sofort refreshen: Damit werden widerrufene/abgelaufene Transfers erkannt, bevor die UI
+      // „Verbunden" meldet. Der frische Access-Token bleibt ausschließlich in SecretStorage.
+      await this.gcalAuth.getAccessToken();
+      await this.finishGCalConnection();
+    } catch (error) {
+      this.gcalSecrets.saveCredentials(oldCredentials);
+      this.gcalSecrets.savePairingKey(oldPairingKey);
+      await this.gcalSecrets.save(oldTokens);
+      throw error;
+    }
+  }
+
+  /** Desktop-Loopback-OAuth, danach gemeinsamen Verbindungsabschluss ausführen. */
+  async gcalConnect(): Promise<void> {
+    await this.gcalAuth.connect();
+    await this.finishGCalConnection();
+  }
+
+  /** Anzeige-Mail/Kalender/Feed nach OAuth oder Pairing identisch initialisieren. */
+  private async finishGCalConnection(): Promise<void> {
+    const g = this.settings.gcal!;
+    // Ein unvollständig migriertes Gerät kann die alten Klartextfelder absichtlich noch in
+    // data.json belassen haben (Race-Schutz in migrateGCalSecrets). Nach erfolgreicher Verbindung
+    // sind beide Secrets sicher vorhanden und die letzten Alt-Kopien dürfen endgültig weg.
+    const raw = g as unknown as Record<string, unknown>;
+    delete raw.clientId;
+    delete raw.clientSecret;
+    delete raw.tokens;
+    delete raw.account;
     // Anzeige-E-Mail gehört zum geräte-lokalen Token, nicht in die Einstellungen – sie beschreibt
     // DIESE Verbindung. Schlägt der Abruf fehl, bleibt sie leer; die Verbindung steht trotzdem.
     try { await this.gcalAuth.setAccount(await fetchAccountEmail(this.gcalAuth)); } catch { /* optional */ }
@@ -3564,15 +3669,36 @@ export default class OpalTasksPlugin extends Plugin {
     void this.gcalSync.syncNow();
   }
 
-  /** Verbindung trennen (Token widerrufen + löschen). Kalenderwahl bleibt für erneutes Verbinden. */
+  /** Nur dieses Gerät entfernen. Der geteilte Token bleibt auf bereits verbundenen Geräten gültig. */
   async gcalDisconnect(): Promise<void> {
-    const g = this.settings.gcal!;
-    await this.gcalAuth.disconnect();   // widerruft + löscht den geräte-lokalen Token
-    g.enabled = false;
+    await this.gcalSecrets.save(null);
+    this.gcalSecrets.saveCredentials(null);
+    this.gcalSecrets.savePairingKey(null);
     await this.gcalFeed.clear();   // gezeigte Termine + Snapshot verwerfen (Verbindung ist weg)
+    this.refreshGCalStatusBar();
+    this.renderMain();
+  }
+
+  /** Google-Zugriff widerrufen und auch die synchronisierte Transportkopie entfernen. */
+  async gcalRevokeEverywhere(): Promise<void> {
+    await this.gcalAuth.revoke();
+    this.gcalSecrets.saveCredentials(null);
+    if (this.settings.gcal) {
+      this.settings.gcal.enabled = false;
+      delete this.settings.gcal.pairing;
+    }
+    this.gcalSecrets.savePairingKey(null);
+    await this.gcalFeed.clear();
     await this.saveSettings();
     this.refreshGCalStatusBar();
     this.renderMain();
+  }
+
+  async gcalRemovePairing(): Promise<void> {
+    if (!this.settings.gcal?.pairing) return;
+    delete this.settings.gcal.pairing;
+    this.gcalSecrets.savePairingKey(null);
+    await this.saveSettings();
   }
 
   /** Kalenderliste für den Ziel-Kalender-Picker. */

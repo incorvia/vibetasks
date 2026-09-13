@@ -197,11 +197,21 @@ export class NowView extends ItemView {
     for (const item of items) this.renderRow(body, item, skipped);
   }
   private renderRow(parent: HTMLElement, item: NowItem, skipped = false, markMissed = false): void {
-    const missed = markMissed && Date.parse(item.end) <= Date.now();
+    const now = Date.now(), missed = markMissed && Date.parse(item.end) <= now;
     const row = parent.createDiv({ cls: `bt-now-row${missed ? " is-missed" : ""}` });
-    const when = row.createDiv({ cls: "bt-now-row-time", text: time(item.start) });
-    if (item.kind !== "task") { when.addClass("is-fixed"); setIcon(when.createSpan(), item.kind === "meeting" ? "video" : "lock"); }
-    if (missed) { const warning = when.createSpan(); tip(warning, t("now_waiting")); setIcon(warning, "triangle-alert"); }
+    const when = row.createDiv({ cls: "bt-now-row-time" });
+    const timeLabel = when.createSpan({ cls: "bt-now-row-time-label", text: time(item.start) });
+    if (item.kind !== "task") { when.addClass("is-fixed"); setIcon(timeLabel.createSpan(), item.kind === "meeting" ? "video" : "lock"); }
+    if (missed) { const warning = timeLabel.createSpan(); tip(warning, t("now_waiting")); setIcon(warning, "triangle-alert"); }
+    if (!skipped && Date.parse(item.start) > now) {
+      when.addClass("has-start-action");
+      const start = when.createEl("button", { cls: "bt-now-row-start", text: t(item.kind === "task" ? "now_focus" : "now_start") });
+      start.onclick = (event) => {
+        event.stopPropagation();
+        if (item.kind === "allocation") void this.plugin.startTimeBlock(item.block);
+        else void this.plugin.nowController.startEarly(item.key);
+      };
+    }
     const body = row.createDiv({ cls: "bt-now-row-body" });
     const title = body.createDiv({ cls: "bt-now-row-title", text: item.title });
     tipWhenClipped(row, title, item.title);

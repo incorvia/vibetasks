@@ -6,9 +6,9 @@ import { Platform, requestUrl } from "obsidian";
  * damit dieses Modul nur „Tokens besorgen/erneuern/widerrufen" kann und sonst nichts.
  * Settings-UI und Sync-Engine sind dünne Konsumenten (Prinzip wie reminders.ts).
  *
- * Zwei Flows nach Plattform:
- *  - Desktop: Loopback-Server auf 127.0.0.1 + PKCE (kein Browser-Redirect-Hosting nötig).
- *  - Mobile:  Device-Code-Flow (Code am Zweitgerät eingeben).
+ * Desktop authorisiert über einen Loopback + PKCE. Google unterstützt Calendar-Berechtigungen
+ * nicht im Device-Code-Flow; Mobilgeräte übernehmen deshalb eine lokal verschlüsselte
+ * Desktop-Verbindung (gcalPairing.ts) und legen sie in Obsidian SecretStorage ab.
  *
  * Kein Client-Secret im Plugin — der Nutzer legt einen eigenen OAuth-Client an
  * (Anleitung im Setup-Assistenten). „Desktop-App"-Clients liefern zwar ein Secret,
@@ -20,8 +20,6 @@ import { Platform, requestUrl } from "obsidian";
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke";
-const DEVICE_ENDPOINT = "https://oauth2.googleapis.com/device/code";
-const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 
 /** calendar.events = Events schreiben; calendar.readonly = Kalenderliste/Anzeige;
  *  calendar.app.created = eigenen „Opal Tasks"-Sekundärkalender anlegen/verwalten (schmales Recht,
@@ -55,7 +53,7 @@ interface LoopbackServer {
 
 export interface GCalCredentials {
   clientId: string;
-  clientSecret?: string;   // Desktop-Client; bei Device-Flow ebenfalls nötig
+  clientSecret?: string;   // Desktop-Client; bei installierten Apps kein vertrauliches Secret
 }
 
 export interface GCalTokens {
@@ -87,13 +85,6 @@ export function planTokenMigration(
 export interface TokenStore {
   load(): GCalTokens | null;
   save(tokens: GCalTokens | null): Promise<void>;
-}
-
-/** Wird beim Device-Flow aufgerufen, damit die UI Code + URL anzeigen kann. */
-export interface DevicePrompt {
-  userCode: string;
-  verificationUrl: string;
-  expiresInSec: number;
 }
 
 export class GCalAuthError extends Error {}
@@ -192,11 +183,12 @@ export class GCalAuth {
     return next.accessToken;
   }
 
-  /** Plattform-passender Login. onDevicePrompt nur für den Mobile-Device-Flow relevant. */
-  async connect(onDevicePrompt?: (p: DevicePrompt) => void): Promise<GCalTokens> {
-    const tokens = Platform.isDesktopApp
-      ? await this.connectLoopback()
-      : await this.connectDevice(onDevicePrompt);
+  /** Google erlaubt den Loopback-Flow nur auf Desktop; Mobile wird per Pairing importiert. */
+  async connect(): Promise<GCalTokens> {
+    if (!Platform.isDesktopApp) {
+      throw new GCalAuthError("Connect on desktop, then unlock the synced connection on this device.");
+    }
+    const tokens = await this.connectLoopback();
     await this.store.save(tokens);
     return tokens;
   }
@@ -209,12 +201,10 @@ export class GCalAuth {
     await this.store.save({ ...t, account: email ?? undefined });
   }
 
-  /** Verbindung trennen: Refresh-Token bei Google widerrufen + lokal löschen (best effort). */
-  async disconnect(): Promise<void> {
+  /** Ein fehlgeschlagener Widerruf bleibt sichtbar und löscht lokal nichts. */
+  async revoke(): Promise<void> {
     const t = this.store.load();
-    if (t?.refreshToken) {
-      try { await postForm(REVOKE_ENDPOINT, { token: t.refreshToken }); } catch { /* egal */ }
-    }
+    if (t?.refreshToken) await postForm(REVOKE_ENDPOINT, { token: t.refreshToken });
     await this.store.save(null);
   }
 
@@ -293,49 +283,6 @@ export class GCalAuth {
     return toTokens(json);
   }
 
-  // ── Mobile: Device-Code-Flow ──
-  private async connectDevice(onPrompt?: (p: DevicePrompt) => void): Promise<GCalTokens> {
-    const creds = this.requireCredentials();
-    const dev = await postForm(DEVICE_ENDPOINT, { client_id: creds.clientId, scope: GCAL_SCOPE });
-
-    const deviceCode = dev.device_code as string;
-    const intervalMs = ((dev.interval as number | undefined) ?? 5) * 1000;
-    const expiresAt = Date.now() + ((dev.expires_in as number | undefined) ?? 1800) * 1000;
-    onPrompt?.({
-      userCode: dev.user_code as string,
-      verificationUrl: (dev.verification_url as string) ?? (dev.verification_uri as string),
-      expiresInSec: (dev.expires_in as number | undefined) ?? 1800,
-    });
-
-    // Auf Zustimmung am Zweitgerät warten (authorization_pending → weiter pollen).
-    let wait = intervalMs;
-    for (;;) {
-      if (Date.now() > expiresAt) throw new GCalAuthError("The sign-in code has expired.");
-      await sleep(wait);
-      const res = await requestUrl({
-        url: TOKEN_ENDPOINT,
-        method: "POST",
-        contentType: "application/x-www-form-urlencoded",
-        body: form({
-          client_id: creds.clientId,
-          ...(creds.clientSecret ? { client_secret: creds.clientSecret } : {}),
-          device_code: deviceCode,
-          grant_type: DEVICE_GRANT,
-        }),
-        throw: false,
-      });
-      const json = (res.json ?? {}) as Record<string, unknown>;
-      if (res.status < 400) return toTokens(json);
-      const err = json.error as string | undefined;
-      if (err === "authorization_pending") continue;
-      if (err === "slow_down") { wait += 5000; continue; }
-      throw new GCalAuthError((json.error_description as string) || err || `HTTP ${res.status}`);
-    }
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => window.setTimeout(r, ms));
 }
 
 /** Schlichte Abschluss-Seite im Browser nach dem Loopback-Redirect. */

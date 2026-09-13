@@ -145,6 +145,56 @@ describe("Opal Now queue", () => {
     expect(startTask).toHaveBeenCalledWith(task.id, block.id);
   });
 
+  it("can focus a future scheduled task early", async () => {
+    const now = new Date(), day = localDay(now);
+    const task: Task = {
+      id: "future", path: "future.md", title: "Future task", titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 30, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "future-block", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(now.getTime() + 60 * 60_000).toISOString(), duration: 30,
+      mode: "focus", selector: "manual", status: "planned", source: "manual",
+    };
+    let active: { session_id: string; task_id: string; started_at: string; block_id: string } | null = null;
+    const startTask = vi.fn(async (taskId: string, blockId?: string) => {
+      active = { session_id: "early", task_id: taskId, started_at: now.toISOString(), block_id: blockId ?? "" };
+    });
+    const plugin = {
+      app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
+      timeStore: { blocksIn: () => [block], block: () => block, isMeetingComplete: () => false },
+      index: { getById: () => task },
+      workTimer: { active: () => active, stop: vi.fn(async () => { active = null; }), startTask, needsResolution: () => false },
+      gcalFeed: { eventsIn: () => [] },
+    };
+    const controller = new NowController(plugin as never);
+
+    await controller.startEarly(`task:${block.id}`);
+
+    expect(startTask).toHaveBeenCalledWith(task.id, block.id);
+    expect(controller.snapshot(now).current?.title).toBe(task.title);
+    expect(controller.snapshot(now)).toMatchObject({ status: "running", blitz: false });
+  });
+
+  it("can start a future meeting early", async () => {
+    const now = new Date(), day = localDay(now);
+    const meeting = event("future-meeting", new Date(now.getTime() + 60 * 60_000).toISOString(), new Date(now.getTime() + 90 * 60_000).toISOString());
+    const plugin = {
+      app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
+      timeStore: { blocksIn: () => [], isMeetingComplete: () => false },
+      index: { getById: () => undefined },
+      workTimer: { active: () => null, stop: vi.fn(async () => undefined), needsResolution: () => false },
+      gcalFeed: { eventsIn: () => [meeting] },
+    };
+    const controller = new NowController(plugin as never);
+
+    await controller.startEarly(`event:${meetingOccurrenceKey(meeting)}`);
+
+    expect(controller.snapshot(now).current?.title).toBe(meeting.title);
+    expect(controller.snapshot(now).upcoming).toEqual([]);
+  });
+
   it("releases a fixed calendar event when its end time passes", () => {
     const day = localDay(new Date());
     const lunch = event("lunch", `${day}T12:00:00`, `${day}T13:00:00`);

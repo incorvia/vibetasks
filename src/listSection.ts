@@ -8,6 +8,7 @@ export interface ListSectionOptions {
   className?: string;
   headerClassName?: string;
   listClassName?: string;
+  renderLeading?: (parent: HTMLElement) => void;
   onTitleClick?: (event: MouseEvent) => void;
   renderMeta?: (parent: HTMLElement) => void;
   add?: { label: string; onClick: (button: HTMLButtonElement) => void };
@@ -49,6 +50,12 @@ export function createListSection(parent: HTMLElement, options: ListSectionOptio
   if (options.icon) {
     const icon = header.createSpan({ cls: "bt-section-icon" });
     setIcon(icon, options.icon);
+  }
+
+  if (options.renderLeading) {
+    const leading = header.createSpan({ cls: "bt-section-leading" });
+    options.renderLeading(leading);
+    if (!leading.childElementCount) leading.remove();
   }
 
   const label = header.createSpan({ cls: "bt-section-lbl", text: options.title });
