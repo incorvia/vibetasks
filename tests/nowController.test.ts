@@ -145,6 +145,46 @@ describe("Opal Now queue", () => {
     expect(startTask).toHaveBeenCalledWith(task.id, block.id);
   });
 
+  it("drops a trashed task from Now and clears its active device-local state", async () => {
+    const now = new Date(), day = localDay(now);
+    const task: Task = {
+      id: "trashed", path: "trashed.md", title: "Trashed task", titleInFm: true, status: "cancelled", priority: "normal",
+      due: null, dueTime: null, estimate: 30, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: now.toISOString(), externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "trashed-block", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(now.getTime() - 10 * 60_000).toISOString(), duration: 30,
+      mode: "focus", selector: "manual", status: "planned", source: "manual",
+    };
+    let active: { session_id: string; task_id: string; started_at: string; block_id: string } | null = {
+      session_id: "trashed-session", task_id: task.id, started_at: block.start, block_id: block.id,
+    };
+    const saved: unknown[] = [];
+    const stop = vi.fn(async () => { active = null; });
+    const plugin = {
+      app: {
+        loadLocalStorage: (key: string) => key === NOW_RUN_KEY
+          ? { date: day, status: "paused", skipped: [task.id], pausedTaskId: task.id, pausedBlockId: block.id, fixedKey: `task:${block.id}` }
+          : null,
+        saveLocalStorage: (_key: string, value: unknown) => { saved.push(value); },
+      },
+      timeStore: { blocksIn: () => [block], block: () => block, isMeetingComplete: () => false },
+      index: { ready: true, getById: () => task }, workTimer: { active: () => active, stop },
+      gcalFeed: { eventsIn: () => [] },
+    };
+    const controller = new NowController(plugin as never);
+
+    expect(controller.snapshot(now)).toMatchObject({ current: null, upcoming: [], allDay: [] });
+    await (controller as unknown as { tick(): Promise<void> }).tick();
+
+    expect(stop).toHaveBeenCalledOnce();
+    expect(saved.at(-1)).toMatchObject({ skipped: [] });
+    expect(saved.at(-1)).not.toHaveProperty("pausedTaskId");
+    expect(saved.at(-1)).not.toHaveProperty("pausedBlockId");
+    expect(saved.at(-1)).not.toHaveProperty("fixedKey");
+  });
+
   it("can focus a future scheduled task early", async () => {
     const now = new Date(), day = localDay(now);
     const task: Task = {

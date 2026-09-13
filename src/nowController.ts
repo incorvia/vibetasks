@@ -5,7 +5,7 @@ import { localDay } from "./autoPlanner";
 import { buildPullForward, meetingOccurrenceKey } from "./pullForward";
 import { blockKind } from "./timeService";
 import { isAllDaySchedule, type CalEvent, type Priority, type Task, type TimeBlock } from "./types";
-import { isDone } from "./statuses";
+import { isDone, isTrashed } from "./statuses";
 import { bucketEvents } from "./calendarModel";
 
 export const NOW_RUN_KEY = "opal_tasks-now-run";
@@ -83,10 +83,10 @@ export class NowController extends Component {
     const day = this.run.date, tasks: NowItem[] = [], allDay: (Task | CalEvent)[] = [];
     for (const block of this.plugin.timeStore.blocksIn(day, day)) {
       if (block.status === "cancelled") continue;
-      if (isAllDaySchedule(block)) { const task = this.plugin.index.getById(block.scope.id); if (task && block.status === "planned" && !isDone(task.status)) allDay.push(task); continue; }
+      if (isAllDaySchedule(block)) { const task = this.plugin.index.getById(block.scope.id); if (task && block.status === "planned" && !isDone(task.status) && !isTrashed(task.status)) allDay.push(task); continue; }
       const end = timedEnd(block.start, block.duration);
       if (blockKind(block) === "task_schedule" && block.scope.type === "task") {
-        const task = this.plugin.index.getById(block.scope.id); if (!task) continue;
+        const task = this.plugin.index.getById(block.scope.id); if (!task || isTrashed(task.status)) continue;
         tasks.push({ kind: "task", key: `task:${block.id}`, start: block.start, end, title: task.title, task, block });
       } else tasks.push({ kind: "allocation", key: `block:${block.id}`, start: block.start, end, title: block.scope.title_snapshot, block });
     }
@@ -114,7 +114,7 @@ export class NowController extends Component {
     if (active?.block_id && !current) current = open.find((item) => item.kind === "allocation" && item.block.id === active.block_id) ?? null;
     if (active && !current) {
       const task = this.plugin.index.getById(active.task_id), stored = active.block_id ? this.plugin.timeStore.block(active.block_id) : null;
-      if (task) {
+      if (task && !isTrashed(task.status)) {
         const block: TimeBlock = stored ?? { id: `active:${active.session_id}`, kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
           start: active.started_at, duration: task.estimate ?? 60, mode: "focus", selector: "manual", status: "planned", source: "manual" };
         if (!isAllDaySchedule(block)) current = { kind: "task", key: `task:${block.id}`, start: block.start, end: timedEnd(block.start, block.duration), title: task.title, task, block };
@@ -253,6 +253,26 @@ export class NowController extends Component {
     });
   }
 
+  /** Remove transient references that can outlive a task's calendar block. The task/index and
+   *  time-log writes remain the source of truth; this only closes a running timer and clears the
+   *  device-local Now cursor so it cannot recreate a trashed task as the current card. */
+  tasksDeleted(taskIds: readonly string[]): Promise<void> {
+    return this.serial(async () => {
+      const deleted = new Set(taskIds);
+      if (this.plugin.workTimer.active() && deleted.has(this.plugin.workTimer.active()!.task_id)) await this.plugin.workTimer.stop();
+      this.run.skipped = this.run.skipped.filter((id) => !deleted.has(id));
+      if (this.run.pausedTaskId && deleted.has(this.run.pausedTaskId)) {
+        delete this.run.pausedTaskId;
+        delete this.run.pausedBlockId;
+      }
+      if (this.run.fixedKey?.startsWith("task:")) {
+        const block = this.plugin.timeStore.block(this.run.fixedKey.slice("task:".length));
+        if (!block || block.scope.type === "task" && deleted.has(block.scope.id)) delete this.run.fixedKey;
+      }
+      this.persist();
+    });
+  }
+
   private async advance(): Promise<void> {
     if (!this.isRunning() || this.plugin.workTimer.needsResolution()) return;
     const now = new Date(), snap = this.snapshot(now);
@@ -312,6 +332,13 @@ export class NowController extends Component {
       this.lastDay = day;
       if (this.isRunning()) await this.stop();
       this.run = { date: day, status: "stopped", skipped: [], blitz: this.blitzEnabled() }; this.persist(); return;
+    }
+    // Self-heal deletions made before this lifecycle hook existed (or on another synced device).
+    // Wait for the task index's first complete build: "missing" is not trustworthy before then.
+    const activeBeforeTick = this.plugin.workTimer.active();
+    if (activeBeforeTick && this.plugin.index.ready) {
+      const task = this.plugin.index.getById(activeBeforeTick.task_id);
+      if (!task || isTrashed(task.status)) { await this.tasksDeleted([activeBeforeTick.task_id]); return; }
     }
     if (!this.isRunning()) { this.emit(); return; }
     const snap = this.snapshot(), active = this.plugin.workTimer.active();

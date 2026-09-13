@@ -234,6 +234,16 @@ export function createInlineTaskElement(plugin: OpalTasksPlugin, task: Task, doc
   const root = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
   root.className = "bt-inline-task" + (isDone(task.status) ? " is-done" : "");
   root.dataset.path = task.path;
+  // Obsidian 1.13's CodeMirror moves the selection on pointer-down before the eventual click.
+  // That puts the cursor inside the replaced link, removes this widget during `selectionSet`, and
+  // leaves only a blank replacement until mouse-up. Keep selection changes outside the widget so
+  // its title/status handlers receive a complete click gesture.
+  root.addEventListener("pointerdown", (event) => { event.stopPropagation(); });
+  root.addEventListener("mousedown", (event) => {
+    event.stopPropagation();
+    if (event.button === 0) event.preventDefault();
+  });
+  root.addEventListener("mouseup", (event) => { event.stopPropagation(); });
   const check = renderCheck(root, plugin, task, { compact: true });
   check.removeAttribute("data-check");
   check.setAttribute("role", "button");
@@ -348,7 +358,14 @@ function buildDecorations(view: EditorView, plugin: OpalTasksPlugin): Decoration
   const pending: { from: number; to: number; deco: Decoration }[] = [];
   const visitedLines = new Set<number>();
 
-  for (const range of view.visibleRanges) {
+  // During workspace restoration CodeMirror can report no visible range while the leaf is still
+  // being measured. An index refresh in that window must not replace the valid task link with an
+  // empty DecorationSet. Scan the document once as the startup fallback; normal editing remains
+  // limited to the measured visible ranges.
+  const scanRanges = view.inView && view.visibleRanges.length
+    ? view.visibleRanges
+    : [{ from: 0, to: view.state.doc.length }];
+  for (const range of scanRanges) {
     let line = view.state.doc.lineAt(range.from);
     while (line.from <= range.to) {
       if (!visitedLines.has(line.number) && !excluded.has(line.number - 1)) {
@@ -357,7 +374,8 @@ function buildDecorations(view: EditorView, plugin: OpalTasksPlugin): Decoration
           for (const link of inlineLinkRanges(line.text, line.from)) {
             const task = resolveInlineTask(plugin.app, plugin, link.target, sourcePath);
             if (task && !cursorTouches(view, link.from, link.to)) {
-              pending.push({ from: link.from, to: link.to, deco: Decoration.replace({ widget: new TaskLinkWidget(plugin, task) }) });
+              pending.push({ from: link.from, to: link.to,
+                deco: Decoration.replace({ widget: new TaskLinkWidget(plugin, task), inclusive: true }) });
             }
           }
         }
@@ -380,7 +398,7 @@ export function inlineTaskEditorExtensions(plugin: OpalTasksPlugin): Extension[]
     decorations: DecorationSet;
     constructor(readonly view: EditorView) { views.add(view); this.decorations = buildDecorations(view, plugin); }
     update(update: ViewUpdate): void {
-      if (update.docChanged || update.viewportChanged || update.selectionSet
+      if (update.docChanged || update.viewportChanged || update.selectionSet || update.focusChanged
         || update.transactions.some((tr) => tr.effects.some((effect) => effect.is(refreshInlineWidgets)))) {
         this.decorations = buildDecorations(update.view, plugin);
       }

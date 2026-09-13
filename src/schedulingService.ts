@@ -217,6 +217,15 @@ export class SchedulingService {
     });
   }
   async cancelFutureForTask(taskId: string): Promise<void> { await this.store.cancelFutureBlocks(taskId); }
+  /** A trashed task must not retain a live primary placement, even when that placement started
+   *  earlier today (or is an all-day placement for today). Completed placements remain history;
+   *  future allocations are still cleared by the existing scope-wide cleanup. */
+  async cancelPlansForTask(taskId: string): Promise<void> {
+    const schedules = this.store.blocksFor({ type: "task", id: taskId, title_snapshot: "" })
+      .filter((block) => blockKind(block) === "task_schedule" && block.status === "planned");
+    for (const schedule of schedules) await this.store.updateBlock(schedule.id, { status: "cancelled" });
+    await this.store.cancelFutureBlocks(taskId);
+  }
   /** Preserve the primary placement as calendar history; only other future allocations disappear. */
   async completeTask(taskId: string): Promise<void> {
     const schedule = this.getTaskSchedule(taskId);

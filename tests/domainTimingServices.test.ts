@@ -101,6 +101,26 @@ describe("SchedulingService contract", () => {
     expect(blocks.get(schedule.id)?.status).toBe("planned");
   });
 
+  it("cancels an already-started task placement when the task is trashed", async () => {
+    const { blocks, store, service } = schedulingFixture();
+    const schedule = await service.scheduleTask("t1", { start: "2020-01-01T09:00:00Z" });
+
+    await service.cancelPlansForTask("t1");
+
+    expect(blocks.get(schedule.id)?.status).toBe("cancelled");
+    expect(store.cancelFutureBlocks).toHaveBeenCalledWith("t1");
+  });
+
+  it("keeps completed placement history when the task is trashed", async () => {
+    const { blocks, service } = schedulingFixture();
+    const schedule = await service.scheduleTask("t1", { start: "2020-01-01T09:00:00Z" });
+    blocks.set(schedule.id, { ...schedule, status: "completed" });
+
+    await service.cancelPlansForTask("t1");
+
+    expect(blocks.get(schedule.id)?.status).toBe("completed");
+  });
+
   it("pins task schedules and applies then undoes an auto-plan without changing block identity", async () => {
     const { blocks, service } = schedulingFixture();
     const original = await service.scheduleTask("t1", { start: "2026-09-07T10:00:00-05:00", duration: 45 });

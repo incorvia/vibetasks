@@ -7,7 +7,7 @@ import { FilterSort, PageLayout, SortDir, ViewOptions, hasSortDir, sortTasks } f
 import { t, getLocale, projectDisplayName } from "./i18n";
 import { isInboxLink } from "./taskService";
 import { combineDT, todayStr } from "./format";
-import { isDone, isOpen } from "./statuses";
+import { isDone, isOpen, isTrashed } from "./statuses";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
 import { openPopover, popRow } from "./popover";
@@ -299,7 +299,13 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
     return bucketEvents(plugin.gcalFeed.eventsIn(gridDays[0], gridDays[gridDays.length - 1]), gridDays);
   };
   const timeBlocks = (): Map<string, BlockSlice[]> => gridDays.length
-    ? bucketBlocks(plugin.timeStore.blocksIn(gridDays[0], gridDays[gridDays.length - 1]), gridDays)
+    ? bucketBlocks(plugin.timeStore.blocksIn(gridDays[0], gridDays[gridDays.length - 1]).filter((block) => {
+        if (blockKind(block) !== "task_schedule" || block.scope.type !== "task") return true;
+        const linkedTask = plugin.index.getById(block.scope.id);
+        // The plan write and metadata-cache refresh are independent async paths. Suppress a stale
+        // block as soon as the task is known to be trashed; the persisted cancellation follows.
+        return !linkedTask || !isTrashed(linkedTask.status);
+      }), gridDays)
     : new Map<string, BlockSlice[]>();
 
   // Kalender + Seitenleiste stehen nebeneinander (das Panel schiebt das Raster, überlagert es nicht).

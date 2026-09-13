@@ -3141,9 +3141,7 @@ export default class OpalTasksPlugin extends Plugin {
    *  (Kaskade). Sonst blieben Kinder ohne sichtbaren Parent zurück und wären nur noch
    *  über die Suche, nicht mehr in den Boards erreichbar. */
   async cancelTask(task: Task, from: ChildSource & { descendants(p: string): Task[] } = this.index): Promise<void> {
-    const targets = [task, ...from.descendants(task.path)];
     await this.trashTasks([task], from);
-    for (const target of targets) await this.scheduling.cancelFutureForTask(target.id);
   }
 
   /** Aufgaben in den Papierkorb – jede inkl. ihres Unteraufgaben-Baums (collectTrashTargets: Dedup
@@ -3161,6 +3159,11 @@ export default class OpalTasksPlugin extends Plugin {
       const f = this.app.vault.getAbstractFileByPath(tk.path);
       if (f instanceof TFile) await updateRecord(this.app, f, (fm) => { this.ensureCanonical(fm); fm.status = cancelId; fm.cancelled = stamp; });
     }
+    // A placement that has already started (or an all-day placement for today) is not "future",
+    // but it must still stop representing a task that was just moved to the trash. Keeping this
+    // beside the cascade also covers project deletion, which calls trashTasks directly.
+    for (const target of targets) await this.scheduling.cancelPlansForTask(target.id);
+    await this.nowController?.tasksDeleted(targets.map((target) => target.id));
   }
 
   /** Einzelne Aufgabe wiederherstellen: zurück auf offen, beide Zeitstempel entfernen.
