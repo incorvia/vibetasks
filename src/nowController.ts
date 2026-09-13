@@ -69,6 +69,15 @@ export class NowController extends Component {
   isRunning(): boolean { const status = this.effectiveStatus(); return status === "running" || status === "waiting"; }
   blitzEnabled(): boolean { return this.run.blitz ?? true; }
   setBlitzEnabled(enabled: boolean): void { this.run.blitz = enabled; this.persist(); }
+  /** Whether Opal Now itself owns an active/paused Blitz run, rather than merely observing a timer. */
+  private isBlitzRun(): boolean { return this.run.status !== "stopped" && this.blitzEnabled(); }
+  /** The mode represented by the current timer. Direct task timers are Focus unless their block is Blitz. */
+  private currentIsBlitz(): boolean {
+    if (this.run.status !== "stopped") return this.blitzEnabled();
+    const active = this.plugin.workTimer.active();
+    const block = active?.block_id ? this.plugin.timeStore.block?.(active.block_id) : null;
+    return block?.mode === "blitz";
+  }
 
   private items(): { timed: NowItem[]; allDay: (Task | CalEvent)[] } {
     const day = this.run.date, tasks: NowItem[] = [], allDay: (Task | CalEvent)[] = [];
@@ -123,7 +132,7 @@ export class NowController extends Component {
     // Missed work remains visible for review; elapsed calendar events move out of the action queue.
     const upcoming = open.filter((item) => item !== current && !pastEvents.includes(item));
     return { status: this.effectiveStatus(), current, upcoming, completed, allDay, skipped, pastEvents, error: this.run.error,
-      canUndo: !!this.undo(), conflicts: overlapping.length > 1 && !this.run.fixedKey ? overlapping : [], blitz: this.blitzEnabled() };
+      canUndo: !!this.undo(), conflicts: overlapping.length > 1 && !this.run.fixedKey ? overlapping : [], blitz: this.currentIsBlitz() };
   }
 
   start(blitz = this.blitzEnabled()): Promise<void> { return this.serial(async () => {
@@ -149,7 +158,7 @@ export class NowController extends Component {
   parkCurrent(): Promise<void> { return this.deferCurrent(1); }
   skipCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
-    const automate = this.isRunning() && this.blitzEnabled();
+    const automate = this.isRunning() && this.isBlitzRun();
     await this.plugin.workTimer.stop();
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
     delete this.run.fixedKey; delete this.run.pausedTaskId; delete this.run.pausedBlockId;
@@ -160,7 +169,7 @@ export class NowController extends Component {
   }); }
   deferCurrent(days: number): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
-    const automate = this.isRunning() && this.blitzEnabled();
+    const automate = this.isRunning() && this.isBlitzRun();
     await this.plugin.workTimer.stop();
     await this.plugin.setTaskDeferUntil(current.task, futureDay(days));
     if (!this.run.skipped.includes(current.task.id)) this.run.skipped.push(current.task.id);
@@ -176,7 +185,7 @@ export class NowController extends Component {
   }); }
   demoteAndSkipCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current || current.kind !== "task") return;
-    const automate = this.isRunning() && this.blitzEnabled();
+    const automate = this.isRunning() && this.isBlitzRun();
     const index = PRIORITIES.indexOf(current.task.priority), next = PRIORITIES[Math.min(PRIORITIES.length - 1, index + 1)];
     await this.plugin.workTimer.stop();
     await this.plugin.setTaskDeferUntil(current.task, futureDay(1));
@@ -201,7 +210,7 @@ export class NowController extends Component {
     try {
       // A duration change invalidates the accepted queue, but it must not reprioritize it or pull
       // unrelated backlog into the day. Reflow only the remaining auto-planned blocks.
-      if (this.blitzEnabled()) await this.replanRemaining();
+      if (this.isBlitzRun()) await this.replanRemaining();
     } catch (error) {
       await this.plugin.scheduling.resizeBlock(current.block.id, previousDuration);
       throw error;
@@ -210,7 +219,7 @@ export class NowController extends Component {
   }); }
   completeCurrent(): Promise<void> { return this.serial(async () => {
     const current = this.snapshot().current; if (!current) return;
-    const automate = this.isRunning() && this.blitzEnabled();
+    const automate = this.isRunning() && this.isBlitzRun();
     if (current.kind === "task") await this.plugin.workTimer.completeTask(current.task.id);
     else if (current.kind === "meeting") await this.plugin.timeStore.completeMeeting(current.event);
     else { await this.plugin.workTimer.stop(); await this.plugin.timeStore.completeBlock(current.block.id); }
@@ -220,11 +229,11 @@ export class NowController extends Component {
   completeMeeting(event: CalEvent): Promise<void> { return this.serial(async () => {
     await this.plugin.timeStore.completeMeeting(event);
     if (this.run.fixedKey === `event:${meetingOccurrenceKey(event)}`) delete this.run.fixedKey;
-    if (this.isRunning() && this.blitzEnabled()) { await this.replanRemaining(); await this.advance(); } else this.emit();
+    if (this.isRunning() && this.isBlitzRun()) { await this.replanRemaining(); await this.advance(); } else this.emit();
   }); }
   /** Called after completion from any other Opal Tasks surface. */
   taskCompleted(taskId: string): void {
-    if (!this.isRunning() || !this.blitzEnabled()) return;
+    if (!this.isRunning() || !this.isBlitzRun()) return;
     void this.serial(async () => {
       if (this.plugin.workTimer.active()?.task_id === taskId) await this.plugin.workTimer.stop();
       if (this.snapshot().current?.kind === "allocation") { this.emit(); return; }
@@ -295,7 +304,7 @@ export class NowController extends Component {
     if (!this.isRunning()) { this.emit(); return; }
     const snap = this.snapshot(), active = this.plugin.workTimer.active();
     const dueFixed = snap.upcoming.some((item) => item.kind !== "task" && Date.parse(item.start) <= Date.now() && Date.parse(item.end) > Date.now());
-    const dueTask = this.blitzEnabled() && !active && snap.current?.kind === "task";
+    const dueTask = this.isBlitzRun() && !active && snap.current?.kind === "task";
     if (dueFixed || dueTask) void this.serial(() => this.advance()); else this.emit();
   }
 }

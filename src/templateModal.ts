@@ -1,13 +1,14 @@
 import { Modal, Notice, setIcon } from "obsidian";
 import { PromptModal } from "./confirmModal";
 import type OpalTasksPlugin from "./main";
-import { baseName, isInboxLink, listProjectsAndAreas } from "./taskService";
+import { baseName, isInboxLink, listProjectsAndAreas, type ProjItem } from "./taskService";
 import { openPopover, popRow } from "./popover";
 import { openDatePicker } from "./datePicker";
 import { dateOf, formatDate, todayStr } from "./format";
 import { AnchorMode } from "./templatePlan";
 import { applyTemplate, createEmptyTemplate, listTemplates, refreshTemplates, TemplateInfo } from "./templateService";
 import { t, projectDisplayName } from "./i18n";
+import { projectDisplayColor } from "./projectColor";
 
 /**
  * Die zwei Dialoge der Vorlagen: eine auswählen und eine anwenden.
@@ -216,7 +217,8 @@ export class ApplyTemplateModal extends Modal {
     const sel = inbox ? null : [...bereiche, ...projekte].find((p) => p.name === this.project);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
-    if (sel?.color) ic.setCssStyles({ color: sel.color });
+    const color = sel ? projectDisplayColor(sel, bereiche, this.plugin.settings.projectColorMode) : null;
+    if (color) ic.setCssStyles({ color });
     this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.project) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" });
     setIcon(car, "chevron-down");
@@ -228,10 +230,10 @@ export class ApplyTemplateModal extends Modal {
       const { bereiche, projekte } = listProjectsAndAreas(this.app);
       const pick = (name: string | null): void => { this.project = name; this.renderProjekt(); close(); };
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]): void => {
+      const group = (title: string, items: ProjItem[]): void => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.project === it.name, it.color ?? undefined);
+        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.project === it.name, projectDisplayColor(it, bereiche, this.plugin.settings.projectColorMode) ?? undefined);
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);

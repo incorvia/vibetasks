@@ -23,31 +23,18 @@ export function isLinkedCollectionNote(
     && typeof frontmatter.id !== "string";
 }
 
-/** Cursor destination when a dashboard opens its companion note. The generated header itself must
- *  not receive the selection: Live Preview exposes the raw fenced block on the active line. */
+/** Cursor destination when a dashboard opens its companion note. Keep the caret in the writing
+ *  space after frontmatter/title and above the generated task board at the footer. */
 export function linkedNoteEntryLine(content: string): number {
   const lines = content.replace(/\r\n?/g, "\n").split("\n");
-  for (let start = 0; start < lines.length; start++) {
-    if (!/^\s*```opal_tasks\s*$/.test(lines[start])) continue;
-    const endOffset = lines.slice(start + 1).findIndex((line) => /^\s*```\s*$/.test(line));
-    if (endOffset < 0) continue;
-    const end = start + 1 + endOffset;
-    const source = lines.slice(start + 1, end).join("\n");
-    if (!/^view:\s*project\s*$/m.test(source) || !/^section:\s*header\s*$/m.test(source)) {
-      start = end;
-      continue;
-    }
-    return Math.min(end + 1, Math.max(0, lines.length - 1));
-  }
-
-  // Defensive fallback for a manually damaged note: stay below frontmatter and a leading H1.
   let line = 0;
   if (lines[0]?.trim() === "---") {
     const end = lines.findIndex((candidate, index) => index > 0 && candidate.trim() === "---");
     if (end >= 0) line = end + 1;
   }
-  while (line < lines.length && !lines[line].trim()) line++;
-  if (/^#\s+/.test(lines[line] ?? "")) line++;
+  let firstContent = line;
+  while (firstContent < lines.length && !lines[firstContent].trim()) firstContent++;
+  if (/^#\s+/.test(lines[firstContent] ?? "")) line = firstContent + 1;
   return Math.min(line, Math.max(0, lines.length - 1));
 }
 
@@ -191,22 +178,28 @@ function hasProjectSection(content: string, id: string, section: ProjectEmbedSec
   });
 }
 
-/** Put the project identity immediately after frontmatter/title and keep its task list at the end. */
-export function ensureLinkedProjectEmbeds(content: string, id: string): string {
+/** Remove the generated top card introduced by older linked notes, including one surrounding blank
+ *  line on each side. User-authored blocks and blocks for another project remain untouched. */
+function withoutProjectHeader(content: string, id: string): string {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const blocks = [...content.matchAll(/^[ \t]*```opal_tasks[ \t]*\n[\s\S]*?^[ \t]*```[ \t]*$/gm)]
+    .filter((match) => /^view:\s*project\s*$/m.test(match[0])
+      && /^section:\s*header\s*$/m.test(match[0])
+      && new RegExp(`^id:\\s*${escaped}\\s*$`, "m").test(match[0]));
   let next = content;
-  if (!hasProjectSection(next, id, "header")) {
-    const header = projectEmbedBlock(id, "header");
-    const lines = next.split("\n");
-    let at = 0;
-    if (lines[0]?.trim() === "---") {
-      const end = lines.findIndex((line, i) => i > 0 && line.trim() === "---");
-      if (end >= 0) at = end + 1;
-    }
-    while (at < lines.length && lines[at].trim() === "") at++;
-    if (/^#\s+/.test(lines[at] ?? "")) at++;
-    lines.splice(at, 0, "", header, "");
-    next = lines.join("\n").replace(/^\n+/, content.startsWith("\n") ? "\n" : "");
+  for (const match of blocks.reverse()) {
+    let start = match.index;
+    let end = start + match[0].length;
+    if (next.slice(0, start).endsWith("\n\n")) start--;
+    if (next.slice(end).startsWith("\n\n")) end++;
+    next = next.slice(0, start) + next.slice(end);
   }
+  return next;
+}
+
+/** Keep the note's writing surface clear and its live task board at the footer. */
+export function ensureLinkedProjectEmbeds(content: string, id: string): string {
+  let next = withoutProjectHeader(content, id);
   if (!hasProjectSection(next, id, "tasks")) {
     const gap = next.length === 0 || next.endsWith("\n\n") ? "" : next.endsWith("\n") ? "\n" : "\n\n";
     next = `${next}${gap}${projectEmbedBlock(id, "tasks")}\n`;

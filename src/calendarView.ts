@@ -127,6 +127,7 @@ export function bucketBlocks(blocks: TimeBlock[], days: string[]): Map<string, B
 interface CalMount {
   sig: string;                       // Kontext-Signatur (s. calSignature)
   root: HTMLElement;                 // Kalender-Wurzel (isConnected-Prüfung)
+  headSig: () => string;             // page heading metadata, read fresh before a fast patch
   source: () => Task[];              // Aufgaben der Seite – frisch aus dem Index
   paint: (tasks: Task[]) => void;    // füllt NUR die aufgabenabhängigen Teile
 }
@@ -139,11 +140,11 @@ const mounts = new WeakMap<HTMLElement, CalMount>();
  *  Zeichnung in sich – inklusive der damaligen Kriterien (s. PageCtx.filter). Ohne diesen Teil
  *  der Signatur bliebe der Patch-Pfad gültig, während er weiter durch das alte Sieb schaut: Man
  *  stellt einen Filter ein und der Kalender zeigt unbeirrt alles. */
-function calSignature(ctx: PageCtx, opts: ViewOptions): string {
+function calSignature(ctx: PageCtx, opts: ViewOptions, headSig = ""): string {
   const key = pageKey(ctx);
   const today = todayStr();
   return [key, opts.calMode, anchors.get(key) ?? today, opts.showDone, opts.calPanel,
-    opts.calPanelSort, opts.calPanelSortDir, today, JSON.stringify(ctx.crit)].join("|");
+    opts.calPanelSort, opts.calPanelSortDir, today, JSON.stringify(ctx.crit), headSig].join("|");
 }
 
 /** Versucht, den bereits gezeichneten Kalender in `c` nur nachzufüllen. true = erledigt,
@@ -153,7 +154,7 @@ export function tryPatchCalendar(c: HTMLElement, ctx: PageCtx): boolean {
   if (!m || !m.root.isConnected) return false;
   const opts = ctx.opts;
   if (opts.layout !== "calendar") return false;
-  if (m.sig !== calSignature(ctx, opts)) return false;
+  if (m.sig !== calSignature(ctx, opts, m.headSig())) return false;
   m.paint(m.source());
   return true;
 }
@@ -171,7 +172,7 @@ export function calendarDayAnchor(ctx: PageCtx, opts: ViewOptions): string | nul
 /** Kalender zeichnen. `source` liefert die Aufgaben der Seite – als Funktion, damit der
  *  Patch-Pfad sie später frisch nachladen kann, ohne die Seiten-Logik zu kennen. */
 export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Task[], today: string,
-  opts: ViewOptions, redraw: () => void, add: CalendarAdd = {}): void {
+  opts: ViewOptions, redraw: () => void, add: CalendarAdd = {}, headSig: () => string = () => ""): void {
   const plugin = ctx.plugin;
   const tasks = source();
   root.addClass("bt-sizer-board");            // volle Pane-Breite (wie das Kanban)
@@ -331,7 +332,7 @@ export function renderCalendar(root: HTMLElement, ctx: PageCtx, source: () => Ta
 
   // Für das nächste Mal merken: gleiche Signatur -> nur noch paint() statt Neuaufbau.
   const host = root.parentElement;
-  if (host) mounts.set(host, { sig: calSignature(ctx, opts), root, source, paint });
+  if (host) mounts.set(host, { sig: calSignature(ctx, opts, headSig()), root, headSig, source, paint });
 }
 
 /** Kopftitel je Modus: „2026" | „Juli 2026" | „13. – 19. Juli 2026" | „Montag, 13. Juli 2026". */

@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer, Component, Keymap, Menu, TFile, ViewStateResult } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { PageCtx, PageRef, pageInfo, samePage, manageTitleKey } from "./pageCtx";
+import { PageCtx, PageRef, pageInfo, samePage, manageTitleKey, supportsPrioritySwimlanes } from "./pageCtx";
 import { dragTask, dragFromCol, startTaskDrag, endTaskDrag, applyDropPage } from "./taskDrag";
 import { sectionSig, SigLookup } from "./rowSignature";
 import { rowPlan, NO_PROJECT } from "./rowPlan";
@@ -37,6 +37,8 @@ import { boardStatusAxes, visibleBoardAxes } from "./boardAxes";
 import { linkedNoteExcerpt } from "./linkedProjectNote";
 import { blockKind } from "./timeService";
 import type { ProjectTaskProgress } from "./taskIndex";
+import { createListSection } from "./listSection";
+import { projectDisplayColor } from "./projectColor";
 
 /**
  * ── Transienter Anzeige-Zustand: IMMER mit dem Tab schlüsseln ─────────────────────────────────
@@ -174,11 +176,10 @@ function openHeaderNewTask(ctx: PageCtx, root: HTMLElement, anchor: HTMLElement,
   const empty = root.querySelector<HTMLElement>(":scope > .bt-empty");
   root.removeClass("is-empty");
   empty?.addClass("bt-hidden");
-  const sec = root.createDiv({ cls: "bt-section bt-content-group bt-task-compose-section" });
+  const group = createListSection(root, { title: t("sec_tasks"), className: "bt-task-compose-section" });
+  const sec = group.section;
   root.prepend(sec);
-  const head = sec.createEl("h6", { cls: "bt-section-title" });
-  head.createSpan({ cls: "bt-section-lbl", text: t("sec_tasks") });
-  const list = sec.createDiv({ cls: "bt-list" });
+  const list = group.list;
   openInlineNewTask(ctx, anchor, project, label, today, status, due, undefined, insert, {
     inside: list,
     onClose: () => {
@@ -599,6 +600,53 @@ function filterEmptyState(root: HTMLElement, ctx: PageCtx): void {
     { label: t("filter_clear"), onClick: () => ctx.setCriteria({ ...DEFAULT_CRITERIA }) });
 }
 
+/** The linked note's only generated surface is its footer board. Keep the project-level state and
+ *  progress beside that board's backlink so the note itself can start directly with user prose. */
+function embeddedProjectMeta(parent: HTMLElement, plugin: OpalTasksPlugin, project: ProjItem): void {
+  const meta = parent.createDiv({ cls: "bt-project-embed-meta" });
+  if (project.type === "project") {
+    const select = meta.createEl("select", {
+      cls: "bt-project-embed-status",
+      attr: { "aria-label": t("chip_status"), title: t("chip_status") },
+    });
+    for (const status of boardStatuses()) {
+      const option = select.createEl("option", { value: status.id, text: statusLabel(status.id) });
+      if (status.id === project.workflowStatus) option.selected = true;
+    }
+    select.onchange = () => void plugin.updateProjectWorkflow(project.path, select.value, project.priority);
+
+    const priority = priorityBucket(project.priority);
+    if (priority !== "normal") {
+      const priorityIndex = PRIOS.findIndex((candidate) => candidate.value === priority);
+      if (priorityIndex >= 0) {
+        const priorityEl = meta.createSpan({
+          cls: "bt-project-embed-priority",
+          text: `P${priorityIndex + 1}`,
+          attr: { title: t(PRIOS[priorityIndex].key) },
+        });
+        priorityEl.dataset.priority = priority;
+      }
+    }
+  }
+  const tasks = plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
+  if (tasks.length) {
+    const done = tasks.filter((task) => isDone(task.status)).length;
+    const percentage = Math.round((done / tasks.length) * 100);
+    const label = t("subtasks_progress", done, tasks.length);
+    const progress = meta.createSpan({
+      cls: "bt-project-embed-progress" + (done === tasks.length ? " is-complete" : ""),
+      attr: {
+        role: "progressbar", title: label, "aria-label": label,
+        "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percentage),
+      },
+    });
+    progress.style.setProperty("--bt-project-embed-progress", `${percentage}%`);
+    progress.createSpan({ cls: "bt-project-embed-progress-track" });
+    progress.createSpan({ cls: "bt-project-embed-progress-label", text: `${done}/${tasks.length}` });
+  }
+  if (!meta.childElementCount) meta.remove();
+}
+
 /** Projekt-Board: alle Aufgaben eines Projekts, nach Status/Datum gruppiert. */
 export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath: string): void {
   markIndexReady(ctx);
@@ -610,6 +658,9 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   applyReadableWidth(c, plugin);
   const root = c.createDiv({ cls: "bt-sizer bt-page-body bt-project-root" });
   const isInbox = projectPath === INBOX_KEY;   // eingebaute Eingang-Ansicht (keine Notiz)
+  // The path is the stable relationship key; the frontmatter title is the user-facing name.
+  // Renaming a project/area deliberately changes only that title, so never use the basename for
+  // presentation when the record still exists.
   const name = isInbox ? "" : baseName(projectPath);
   // Kopf: Kebab-Menü (wie Sidebar-Rechtsklick); Eingang ist eine Systemansicht → kein Menü.
   const isArea = !isInbox && isAreaPath(plugin.app, projectPath);
@@ -621,7 +672,9 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   const projItem: NavMenuItem | null = meta
     ? { sec: meta.type === "area" ? "areas" : "projects", key: meta.path, name: meta.name, hidden: meta.hidden, color: meta.color, type: meta.type, archived: meta.archived }
     : null;
-  const childProjects = meta?.type === "area" ? projectsInArea(meta, listProjectsAndAreas(plugin.app).projekte) : [];
+  const projectLists = listProjectsAndAreas(plugin.app);
+  const childProjects = meta?.type === "area" ? projectsInArea(meta, projectLists.projekte) : [];
+  const displayColor = meta ? projectDisplayColor(meta, projectLists.bereiche, plugin.settings.projectColorMode) : null;
   const openTask = (add: HTMLElement): void => {
     if (meta?.type === "area") {
       const menu = new Menu();
@@ -641,8 +694,9 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
     ? top.createDiv({ cls: "bt-project-embed-identity" })
     : top.createEl("h1", { cls: !isInbox && !ctx.embedded ? "bt-record-heading" : "" });
   if (ctx.embedded && meta) {
-    c.style.setProperty("--bt-project-context", meta.color || "var(--text-faint)");
-    renderProjectIdentity(heading, meta, () => void plugin.openOrActivatePage({ kind: "project", key: meta.path }));
+    c.style.setProperty("--bt-project-context", displayColor || "var(--text-faint)");
+    renderProjectIdentity(heading, { ...meta, color: displayColor }, () => void plugin.openOrActivatePage({ kind: "project", key: meta.path }));
+    embeddedProjectMeta(heading, plugin, meta);
   } else if (!isInbox && !ctx.embedded) {
     const recordLabel = `Opal Tasks · ${t(meta?.type === "area" ? "context_area_record" : "context_project_record")}`;
     const recordIcon = heading.createSpan({
@@ -650,14 +704,16 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
       attr: { "aria-label": recordLabel, title: recordLabel },
     });
     setIcon(recordIcon, entityIcon(meta?.type ?? "project", meta?.icon));
-    heading.createSpan({ cls: "bt-record-title", text: projectDisplayName(name) });
+    heading.createSpan({ cls: "bt-record-title", text: projectDisplayName(meta?.name ?? name) });
   } else {
     heading.setText(isInbox ? t("nav_inbox") : projectDisplayName(name));
   }
   pageHeader(top, ctx, heading,
     { ...(projItem ? { menu: projItem } : {}), hideTitle: ctx.embedded && !meta, onAdd: openTask });
   if (!ctx.embedded) pageDesc(top, plugin, meta?.description, projItem);
-  if (!ctx.embedded && meta && ctx.opts.layout !== "calendar") projectNotePreview(root, plugin, meta.path);
+  // Keep the companion-note bridge part of the list presentation only. Boards need their full
+  // width for columns, and a positive mode rule prevents future layouts from inheriting it.
+  if (!ctx.embedded && meta && ctx.opts.layout === "list") projectNotePreview(root, plugin, meta.path);
 
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
@@ -751,7 +807,10 @@ function renderAreaProjectHead(parent: HTMLElement, ctx: PageCtx, project: ProjI
   const collapsed = plugin.isProjectCollapsed(project.id);
   const chev = head.createSpan({ cls: "bt-area-project-chevron" });
   setIcon(chev, collapsed ? "chevron-right" : "chevron-down");
-  setIcon(head.createSpan({ cls: "bt-area-project-icon" }), project.icon);
+  const projectIcon = head.createSpan({ cls: "bt-area-project-icon" });
+  setIcon(projectIcon, project.icon);
+  const projectColor = projectDisplayColor(project, listProjectsAndAreas(plugin.app).bereiche, plugin.settings.projectColorMode);
+  if (projectColor) projectIcon.style.color = projectColor;
   const title = head.createSpan({ cls: "bt-area-project-title", text: project.name });
   title.onclick = (e) => { e.stopPropagation(); ctx.open({ kind: "project", key: project.path }); };
   // These values describe the project rather than forming part of its identity. Keeping them in
@@ -794,16 +853,61 @@ function renderAreaList(root: HTMLElement, ctx: PageCtx, area: ProjItem, project
       invisibleProjectTasks.push(...tasks);
       continue;
     }
-    const sec = root.createDiv({ cls: "bt-area-project-section bt-content-group" });
-    const list = sec.createDiv({ cls: "bt-list bt-area-project-tasks" });
-    renderAreaProjectHead(sec, ctx, project, plugin.index.all(), list);
+    const progress = plugin.index.all().filter((task) => task.project === project.path && !isTrashed(task.status));
+    const done = progress.filter((task) => isDone(task.status)).length;
+    const priority = priorityBucket(project.priority);
+    const priorityIndex = PRIOS.findIndex((candidate) => candidate.value === priority);
+    const group = createListSection(root, {
+      title: project.name,
+      className: "bt-area-project-section",
+      headerClassName: "bt-area-project-head",
+      listClassName: "bt-area-project-tasks",
+      onTitleClick: () => ctx.open({ kind: "project", key: project.path }),
+      renderMeta: (meta) => {
+        if (priority !== "normal" && priorityIndex >= 0) {
+          const priorityEl = meta.createSpan({
+            cls: "bt-area-project-priority",
+            text: `P${priorityIndex + 1}`,
+            attr: { title: t(PRIOS[priorityIndex].key) },
+          });
+          priorityEl.dataset.priority = priority;
+        }
+        if (progress.length) {
+          const percentage = Math.round((done / progress.length) * 100);
+          const track = meta.createSpan({
+            cls: "bt-area-project-progress-track" + (percentage === 100 ? " is-complete" : ""),
+            attr: {
+              role: "progressbar", "aria-label": t("subtasks_progress", done, progress.length),
+              "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percentage),
+            },
+          });
+          track.style.setProperty("--bt-area-project-progress", `${percentage}%`);
+          const projectColor = projectDisplayColor(project, [area], plugin.settings.projectColorMode);
+          if (projectColor && percentage < 100) track.style.setProperty("--bt-area-project-progress-color", projectColor);
+        }
+        meta.createSpan({
+          cls: "bt-area-project-progress",
+          text: isDone(project.workflowStatus) ? statusLabel(project.workflowStatus)
+            : progress.length ? `${done}/${progress.length}` : statusLabel(project.workflowStatus),
+        });
+      },
+      add: {
+        label: t("btn_add_task"),
+        onClick: () => plugin.openNewTask(baseName(project.path), undefined, false, project.workflowStatus, undefined, undefined, project.priority, project.id),
+      },
+      collapsible: {
+        collapsed: plugin.isProjectCollapsed(project.id),
+        onChange: (collapsed) => plugin.setProjectCollapsed(project.id, collapsed),
+      },
+    });
+    const list = group.list;
     const hosts = nestingHosts(plugin, tasks, effectiveSubtasks(ctx.opts));
     for (const task of sortAreaTasks(visibleRows(tasks, hosts), ctx)) {
       // The containing project section supplies the hierarchy. Keep task depth at zero so project
       // membership never masquerades as a task parent link; genuine subtasks still recurse below.
       renderTask(list, ctx, task, today, 0, false, {
         subs: effectiveSubtasks(ctx.opts), manual: ctx.opts.sort === "manual", showDone: ctx.opts.showDone,
-        hideProject: project.name,
+        hideProject: project.name, listTail: true,
       });
     }
     annotateSubtaskTree(list);
@@ -988,7 +1092,7 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
       return opts.showDone ? [...o, ...all.filter((t) => isDone(t.status))] : o;
     };
     // Der Redraw hier ist für die Navigation nötig (Blättern ändert nur den transienten Anker).
-    renderCalendar(root, ctx, calSource, today, opts, () => ctx.redraw(), add);
+    renderCalendar(root, ctx, calSource, today, opts, () => ctx.redraw(), add, headSig);
     return;
   }
   const subs = effectiveSubtasks(opts);
@@ -1465,7 +1569,9 @@ function priorityColumns(plugin: OpalTasksPlugin, add: BoardAdd): BoardColumn[] 
 function projectColumns(plugin: OpalTasksPlugin, tasks: Task[], add: BoardAdd): BoardColumn[] {
   const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
   const byProjectName = new Map([...bereiche, ...projekte].map((p) => [p.name, p] as const));
-  const colorOf = new Map(([...bereiche, ...projekte]).map((p) => [p.name, p.color] as const));
+  const colorOf = new Map(([...bereiche, ...projekte]).map((p) => [
+    p.name, projectDisplayColor(p, bereiche, plugin.settings.projectColorMode),
+  ] as const));
   // Nur ECHTE Projekte werden Spalten – „nicht einsortierte" (kein Projekt ODER Inbox-Verweis)
   // landen alle im einen Eingang-Bucket (unten), nie in einer eigenen Inbox-Spalte.
   const present = new Set(tasks.filter((t) => t.project && !isInboxLink(t.project)).map((t) => baseName(t.project!)));
@@ -1793,7 +1899,7 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
   const tasksByColumn = new Map(cols.map((column) => [column.id,
     sortColumn(cards.filter((task) => column.has(task)), column.kind, opts.sort, opts.sortDir, orderKey(plugin))] as const));
   const isArea = ctx.page.kind === "project" && isAreaPath(plugin.app, ctx.page.key);
-  const swimlanesEnabled = ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY
+  const swimlanesEnabled = supportsPrioritySwimlanes(ctx.page)
     && (isArea ? opts.prioritySwimlanes !== false : opts.prioritySwimlanes === true);
   const lanes: UnifiedBoardLane[] | undefined = swimlanesEnabled
     ? PRIOS.map((priority, index) => ({ id: priority.value, label: t(priority.key), shortLabel: `P${index + 1}` }))
@@ -2024,11 +2130,19 @@ function renderEventBands(list: HTMLElement, ctx: PageCtx, events: DayEvent[], d
  *  kennen muss. Wer den Rückgabewert nicht braucht, ignoriert ihn wie bisher. */
 function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[], today: string, collapsible = false, trash = false, present?: Set<string>, events: DayEvent[] = [], eventKey = "", ownRow?: (t: Task) => boolean, bare = false): HTMLElement {
   const top = trash ? tasks : visibleRows(tasks, present, ownRow);
-  const sec = parent.createDiv({ cls: "bt-section bt-content-group" + (bare ? " bt-section-bare" : "") });
-  const head = sec.createEl("h6", { cls: "bt-section-title" });
-  head.createSpan({ cls: "bt-section-lbl", text: title });
-  const countEl = head.createSpan({ cls: "bt-section-count", text: String(top.length) });   // Anzahl direkt neben dem Titel
-  const list = sec.createDiv({ cls: "bt-list" });
+  const group = createListSection(parent, {
+    title,
+    count: top.length,
+    bare,
+    ...(collapsible ? {
+      collapsible: {
+        collapsed: ctx.doneCollapsed,
+        onChange: (collapsed: boolean) => ctx.setDoneCollapsed(collapsed),
+      },
+    } : {}),
+  });
+  const { section: sec, header: head, list } = group;
+  const countEl = group.count!;
   // Termine des Tages (read-only) gebündelt in einer dezenten Box oben, vor den Aufgaben.
   if (events.length) renderEventBands(list.createDiv({ cls: "bt-gcal-daybox" }), ctx, events, eventKey);
   // EINMAL pro Section lesen (statt pro Zeile) und an renderTask durchreichen.
@@ -2173,14 +2287,6 @@ function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[]
   // Das Aushängen dagegen betrifft nur die Zeilen; ein Termin-Band bleibt stehen und stört nicht.
   if (budgeted) armRecycler();
 
-  if (collapsible) {
-    // Einklappbar (z. B. „Erledigt"): Chevron rechts in der Überschrift, Klick toggelt.
-    sec.addClass("bt-collapsible");
-    const chev = head.createSpan({ cls: "bt-collapse-ic" });
-    const apply = () => { sec.toggleClass("is-collapsed", ctx.doneCollapsed); setIcon(chev, ctx.doneCollapsed ? "chevron-right" : "chevron-down"); };
-    apply();
-    head.onclick = () => { ctx.setDoneCollapsed(!ctx.doneCollapsed); apply(); };
-  }
   return head;
 }
 
@@ -2362,7 +2468,7 @@ function noteHeadSig(plugin: OpalTasksPlugin, path: string | null): string {
   if (!path) return "";
   const f = plugin.app.vault.getAbstractFileByPath(path);
   const fm = f instanceof TFile ? plugin.app.metadataCache.getFileCache(f)?.frontmatter : null;
-  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.workflow_status ?? "",
+  return [path, fm?.title ?? "", fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.workflow_status ?? "",
     fm?.priority ?? "", fm?.area ?? "", fm?.priority_swimlanes ?? "", fm?.nav_hidden ?? ""].join("~");
 }
 
@@ -2483,7 +2589,7 @@ function renderTaskInsertControls(row: HTMLElement, ctx: PageCtx, task: Task): v
 
 function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, depth: number, trash = false,
   opts: { flat?: boolean; colId?: string; subs?: SubtaskDisplay; manual?: boolean; showDone?: boolean; impliedDate?: string;
-    deadlineImplied?: boolean; hideProject?: string; draggable?: boolean; boardMove?: boolean } = {}): void {
+    deadlineImplied?: boolean; hideProject?: string; draggable?: boolean; boardMove?: boolean; listTail?: boolean } = {}): void {
   const plugin = ctx.plugin;
   // Unteraufgaben-Darstellung: vom Aufrufer (section) EINMAL pro Section gereicht statt hier pro
   // Zeile ctx.opts zu lesen (bei Projektseiten ein metadataCache-Zugriff je Aufgabe).
@@ -2621,7 +2727,7 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
       };
     }
   }
-  if (plan.estimate) meta.createSpan({ cls: "bt-chip bt-estimate" }).createSpan({ cls: "bt-meta-txt", text: plan.estimate });
+  if (plan.estimate && !opts.listTail) meta.createSpan({ cls: "bt-chip bt-estimate" }).createSpan({ cls: "bt-meta-txt", text: plan.estimate });
   if (plan.recur) meta.createSpan({ cls: "bt-chip bt-recur" });
   // Erinnerungs-Indikator: nur Icon (alarm-clock, wie der Reminder-Chip im Editor), Details im Tooltip.
   if (plan.reminders.length) {
@@ -2682,6 +2788,11 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
     const bl = meta.createEl("a", { cls: "bt-backlink", text: "@" + (plan.backlink.inbox ? t("nav_inbox") : plan.backlink.text) });
     const ziel: PageRef = plan.backlink.inbox ? { kind: "project", key: INBOX_KEY } : { kind: "project", key: task.project! };
     bl.onclick = (e) => { e.stopPropagation(); ctx.open(ziel); };
+  }
+  if (!meta.childElementCount) meta.remove();
+  if (plan.estimate && opts.listTail) {
+    const estimate = row.createSpan({ cls: "bt-chip bt-estimate bt-task-tail" });
+    estimate.createSpan({ cls: "bt-meta-txt", text: plan.estimate });
   }
   // Klick auf die Zeile öffnet die Aufgabe (kein separater Stift – wäre redundant).
   // MIT Modifier stattdessen die NOTIZ – dieselbe Geste, die in der Seitenleiste (navItem) und
@@ -3109,6 +3220,15 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   // Live-Vorschau der Icon-Farbe (Farb-Picker): überschreibt für EINEN Eintrag die gespeicherte Farbe.
   const navColor = (path: string, stored: string | null): string | null =>
     plugin.colorPreview?.key === path ? plugin.colorPreview.color : stored;
+  const colorAreas = bereiche.map((area) => plugin.colorPreview?.key === area.path
+    ? { ...area, color: plugin.colorPreview.color }
+    : area);
+  const projectNavColor = (item: ProjItem): string | null => {
+    if ((item.type === "area" || plugin.settings.projectColorMode === "custom") && plugin.colorPreview?.key === item.path) {
+      return plugin.colorPreview.color;
+    }
+    return projectDisplayColor(item, colorAreas, plugin.settings.projectColorMode);
+  };
 
   // Fester App-Kopf: Globale Erstellung hat einen eindeutigen Ort und hängt nicht am Menü eines
   // Projekts. „Neue Aufgabe" nutzt weiterhin den aktiven Seitenkontext als hilfreichen Default.
@@ -3116,9 +3236,10 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
   appHead.createSpan({ cls: "bt-nav-brand", text: "Opal Tasks" });
   const create = appHead.createEl("button", {
     cls: "bt-nav-new",
-    attr: { type: "button", "aria-haspopup": "menu" },
+    attr: { type: "button", "aria-haspopup": "menu", "aria-label": t("menu_create_new") },
   });
-  create.createSpan({ text: t("menu_create_new") });
+  setIcon(create.createSpan({ cls: "bt-nav-new-icon" }), "plus");
+  create.createSpan({ cls: "bt-nav-new-label", text: t("menu_create_new") });
   setIcon(create.createSpan({ cls: "bt-nav-new-chevron" }), "chevron-down");
   create.onclick = (e) => {
     e.stopPropagation();
@@ -3174,14 +3295,14 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     const visible = items.filter((x) => !x.hidden);   // in der Verwaltung ausgeblendete weglassen
     if (plugin.reorderSec === sec) {
       renderReorderList(c, plugin, sec, visible.map((p) => ({
-        key: p.path, name: p.name, icon: p.icon, color: p.color,
+        key: p.path, name: p.name, icon: p.icon, color: projectNavColor(p),
         ...(kind === "project" ? { progress: plugin.index.projectProgress(p.path), progressKey: p.path } : {}),
       })));
       return;
     }
     for (const p of visible) {
       navItem(c, plugin, {
-        cls, depth, toggle: toggleFor?.(p), icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
+        cls, depth, toggle: toggleFor?.(p), icon: p.icon, iconColor: projectNavColor(p), label: p.name,
         ...(kind === "project" ? { progress: plugin.index.projectProgress(p.path), progressKey: p.path } : {}),
         count: kind === "area" ? tasksInArea(plugin.index.open(), p, projekte).length : plugin.index.byProject(p.path).length, countKey: "p:" + p.path,
         active: isActive("project", p.path), page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
@@ -3273,7 +3394,7 @@ export function renderNavInto(c: HTMLElement, plugin: OpalTasksPlugin): void {
     if (!collapsed) {
       for (const p of visibleRecentlyCompleted) {
         navItem(c, plugin, {
-          cls: "bt-nav-project bt-nav-project-completed", icon: "check-circle", iconColor: navColor(p.path, p.color),
+          cls: "bt-nav-project bt-nav-project-completed", icon: "check-circle", iconColor: projectNavColor(p),
           progress: plugin.index.projectProgress(p.path), progressKey: p.path,
           label: p.name, suffix: t("status_done"), active: isActive("project", p.path),
           page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
@@ -3463,8 +3584,10 @@ export class MainView extends ItemView {
     if (p.kind === "label") return "#" + p.key;
     if (p.kind === "project") {
       if (p.key === INBOX_KEY) return t("nav_inbox");
-      const name = projectDisplayName(baseName(p.key));
-      const kind = t(isAreaPath(this.plugin.app, p.key) ? "kind_area" : "kind_project");
+      const { active, archived } = listManaged(this.plugin.app);
+      const record = [...active, ...archived].find((item) => item.path === p.key);
+      const name = projectDisplayName(record?.name ?? baseName(p.key));
+      const kind = t((record?.type === "area" || (!record && isAreaPath(this.plugin.app, p.key))) ? "kind_area" : "kind_project");
       return `${name} (${kind})`;
     }
     return viewTitle(p.key as ViewId);
@@ -3747,7 +3870,11 @@ export class MainView extends ItemView {
         })()
       : null;
     this.contentEl.toggleClass("bt-project-record", contextRecord !== null);
-    if (contextRecord) this.contentEl.style.setProperty("--bt-project-context", contextRecord.color || "var(--text-faint)");
+    if (contextRecord) {
+      const areas = listProjectsAndAreas(this.plugin.app).bereiche;
+      const color = projectDisplayColor(contextRecord, areas, this.plugin.settings.projectColorMode);
+      this.contentEl.style.setProperty("--bt-project-context", color || "var(--text-faint)");
+    }
     else this.contentEl.style.removeProperty("--bt-project-context");
     // Ein Inline-Editor ist selbst die aktuelle Arbeitsfläche. Index-Meldungen (etwa ein im
     // Editor geänderter Status) dürfen seinen DOM nicht unter dem Cursor wegzeichnen.

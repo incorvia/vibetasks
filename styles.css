@@ -381,15 +381,23 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
   position: relative;
   padding: 4px 0 0;
 }
+.bt-view.bt-project-embed .bt-page-top .bt-board-head {
+  align-items: center;
+}
 .bt-view.bt-project-embed .bt-page-top .bt-board-head .bt-head-actions {
   position: static;
   margin-left: auto;
 }
 .bt-project-embed-identity {
   display: flex;
-  min-width: 0;
+  flex: 1 1 300px;
+  min-width: min(300px, 100%);
   align-items: center;
+  flex-wrap: wrap;
   gap: 9px;
+}
+.bt-project-embed-identity > .bt-project-note-identity {
+  flex: 1 1 140px;
 }
 .bt-project-embed-identity .bt-project-note-icon svg {
   width: 20px;
@@ -397,6 +405,79 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 }
 .bt-project-embed-identity .bt-project-note-title {
   font-size: var(--font-ui-small);
+}
+.bt-project-embed-meta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+.bt-project-embed-meta select.bt-project-embed-status {
+  width: auto !important;
+  min-width: 0;
+  max-width: 140px;
+  height: 27px;
+  min-height: 27px !important;
+  margin: 0;
+  padding-block: 0;
+  padding-inline: 7px 24px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 27px;
+}
+.bt-project-embed-meta select.bt-project-embed-status:hover,
+.bt-project-embed-meta select.bt-project-embed-status:focus {
+  background-color: var(--background-modifier-hover);
+}
+.bt-project-embed-priority {
+  display: inline-grid;
+  place-items: center;
+  min-width: 31px;
+  height: 27px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  font-weight: 600;
+}
+.bt-project-embed-priority[data-priority="highest"] { color: var(--bt-prio-1); background: color-mix(in srgb, var(--bt-prio-1) 11%, transparent); }
+.bt-project-embed-priority[data-priority="high"] { color: var(--bt-prio-2); background: color-mix(in srgb, var(--bt-prio-2) 13%, transparent); }
+.bt-project-embed-priority[data-priority="medium"] { color: color-mix(in srgb, var(--bt-prio-3) 78%, var(--text-normal)); background: color-mix(in srgb, var(--bt-prio-3) 11%, transparent); }
+.bt-project-embed-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.bt-project-embed-progress-track {
+  display: inline-block;
+  width: 52px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--interactive-accent) var(--bt-project-embed-progress, 0%),
+    var(--background-modifier-border-hover) var(--bt-project-embed-progress, 0%));
+}
+.bt-project-embed-progress.is-complete .bt-project-embed-progress-track {
+  background: var(--text-muted);
+}
+.bt-project-embed-progress-label { font-weight: 600; }
+@media (max-width: 500px) {
+  .bt-project-embed-meta {
+    flex-basis: 100%;
+    margin-left: 29px;
+  }
 }
 /* The note already supplies the title and surrounding navigation. Keep the embedded controls
    icon-only and at desktop density, including on touch devices, so this reads as an inline
@@ -416,8 +497,95 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 .bt-project-embed .bt-anzeige-lbl {
   display: none;
 }
+/* Phone embed header: the desktop flex row wraps the identity, progress and actions into three
+   tall bands. Use the semantic pieces as one compact two-row grid instead: identity + actions,
+   then metadata across the width. `.bt-mobile` is set from Platform.isMobile, so this also works
+   when Obsidian reports a desktop-sized CSS viewport on a phone. */
+.bt-view.bt-project-embed.bt-mobile .bt-page-top .bt-board-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 9px;
+}
+.bt-project-embed.bt-mobile .bt-project-embed-identity { display: contents; }
+.bt-project-embed.bt-mobile .bt-project-embed-identity > .bt-project-note-icon {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: center;
+}
+.bt-project-embed.bt-mobile .bt-project-embed-identity > .bt-project-note-identity {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.bt-project-embed.bt-mobile .bt-project-embed-meta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  margin-left: 33px;
+  flex-basis: auto;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.bt-view.bt-project-embed.bt-mobile .bt-page-top .bt-board-head .bt-head-actions {
+  grid-column: 3;
+  grid-row: 1;
+  margin: 0;
+}
+.bt-view.bt-project-embed.bt-mobile .bt-page-top .bt-board-head .bt-head-actions button.bt-page-add,
+.bt-view.bt-project-embed.bt-mobile .bt-page-top .bt-board-head .bt-head-actions .bt-anzeige,
+.bt-view.bt-project-embed.bt-mobile .bt-page-top .bt-board-head .bt-head-actions .bt-manage-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+}
+.bt-project-embed.bt-mobile .bt-project-root > .bt-content-group:first-child {
+  margin-top: 10px;
+}
 .bt-project-embed .bt-project-root > .bt-content-group:first-child {
   margin-top: 14px;
+}
+/* Lists sit inside the embed card rather than against its frame. Keep section headings on the
+   main content line, while task rows and their dividers get a small nested inset. */
+.bt-project-embed .bt-list {
+  box-sizing: border-box;
+  padding-inline: var(--size-4-3);
+  padding-bottom: var(--size-4-2);
+}
+/* A direct project's bare list uses the same row rhythm as projects nested in an area embed. */
+.bt-project-embed .bt-section-bare > .bt-list > .bt-task {
+  min-height: 58px;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+/* Area chevrons normally hang into the wide page gutter. An embed has a visible frame instead,
+   so pull them inward rather than leaving them almost flush with its left border. */
+.bt-project-embed .bt-area-project-section > .bt-section-title > .bt-section-chevron {
+  left: -12px;
+}
+/* The shared add control can otherwise be auto-placed into a responsive header grid and leave an
+   empty track to its right. In embeds, pin it to the section's actual content edge. */
+.bt-project-embed .bt-area-project-section > .bt-section-title {
+  padding-left: var(--size-4-2);
+  padding-right: 38px;
+}
+.bt-project-embed .bt-area-project-section > .bt-section-title > .bt-section-add {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  margin: 0;
+  transform: translateY(-50%);
+}
+.bt-project-embed.bt-mobile .bt-area-project-section > .bt-section-title {
+  min-height: 46px;
+  padding-left: 24px;
+  row-gap: 2px;
+}
+.bt-project-embed.bt-mobile .bt-area-project-section > .bt-section-title > .bt-section-chevron {
+  left: 0;
 }
 .bt-project-embed .bt-sizer.is-empty {
   min-height: 0;
@@ -439,62 +607,14 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
   }
 }
 
-/* The companion note keeps project identity separate from its task list: this compact card sits
-   below the note title, while `.bt-project-embed` remains wherever the footer block was placed. */
-.bt-project-note-header {
-  display: block;
-  min-height: 0 !important;
-  margin: 14px 0 22px;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  white-space: normal;
-}
-/* Obsidian treats a processor as an editable code block in Live Preview. The source affordance is
-   useful for generic blocks, but here it reads as a stray icon inside the project card. */
-.bt-project-note-header > .edit-block-button,
-.bt-project-note-header > .code-block-flair,
-.bt-project-note-header .edit-block-button,
-.bt-project-note-header .code-block-flair {
+/* Old linked notes lose this block when next reconciled. Hide its Live Preview wrapper in the
+   meantime so legacy scaffolding cannot occupy the writing surface. */
+.bt-project-note-obsolete-header,
+.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-obsolete-header),
+.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-obsolete-header) {
   display: none !important;
 }
-/* In Live Preview the processor is wrapped by a second, hoverable code-block shell. Reset that
-   shell too; its edit button is a sibling of our render target and cannot be hidden from above. */
-.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header),
-.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) {
-  min-height: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header) > .edit-block-button,
-.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) > .edit-block-button,
-.markdown-source-view.mod-cm6 .cm-embed-block:has(.bt-project-note-header) > .code-block-flair,
-.markdown-source-view.mod-cm6 .cm-preview-code-block:has(.bt-project-note-header) > .code-block-flair {
-  display: none !important;
-}
-.bt-project-note-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 12px 14px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-primary);
-  overflow: hidden;
-}
-.bt-project-note-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--bt-project-context, var(--text-faint));
-}
+
 .bt-project-note-icon {
   display: inline-flex;
   flex: 0 0 auto;
@@ -507,15 +627,6 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 .bt-project-note-identity {
   flex: 1 1 auto;
   min-width: 0;
-}
-.bt-project-note-eyebrow {
-  display: block;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  line-height: 1.3;
-  text-transform: uppercase;
 }
 .bt-project-note-title {
   display: block;
@@ -532,69 +643,6 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 }
 .bt-project-note-title:hover {
   color: var(--text-accent);
-}
-.bt-project-note-description {
-  display: -webkit-box;
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.bt-project-note-detail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 3px;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-.bt-project-note-controls {
-  position: relative;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-}
-.bt-project-note-controls select.bt-project-note-status {
-  flex: 0 0 auto;
-  width: auto !important;
-  min-width: 112px;
-  max-width: 160px;
-  height: 32px;
-  min-height: 32px !important;
-  margin: 0;
-  padding-top: 0;
-  padding-right: 26px;
-  padding-bottom: 0;
-  padding-left: 30px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  background-color: var(--background-modifier-hover);
-  box-shadow: none !important;
-  font-size: var(--font-ui-small);
-  line-height: 30px;
-}
-.bt-project-note-status-icon {
-  position: absolute;
-  left: 8px;
-  display: inline-flex;
-  pointer-events: none;
-  color: var(--text-muted);
-}
-.bt-project-note-status-icon svg {
-  width: 15px;
-  height: 15px;
-}
-.bt-project-note-priority {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-@media (max-width: 500px) {
-  .bt-project-note-card { align-items: flex-start; flex-wrap: wrap; }
-  .bt-project-note-controls { width: 100%; padding-left: 36px; }
 }
 
 /* ── Aufgaben-Modal ── */
@@ -1173,6 +1221,13 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
   color: var(--text-faint); font-size: 0.85em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* @project completion in NLP title fields uses the same compact suggestion surface as [[ links. */
+.bt-pop.bt-projectsuggest { min-width: min(320px, calc(100vw - 16px)); }
+.bt-pop.bt-projectsuggest .bt-row-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt-pop.bt-projectsuggest .bt-suggest-kind {
+  margin-left: auto; padding-left: 10px; flex-shrink: 0;
+  color: var(--text-faint); font-size: 0.8em;
+}
 .bt-pop.bt-date { width: 268px; max-height: min(560px, calc(100vh - 16px)); overflow-y: auto; }
 .bt-pop .bt-date-input, .bt-pop .bt-pop-input {
   width: 100%; box-sizing: border-box; margin: 1px 0 6px; padding: 6px 8px; font-size: 0.88em;
@@ -1227,23 +1282,43 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 /* ── Linke Navigation ── */
 .bt-nav { padding: 6px 6px 16px; }
 .bt-nav-app-head {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  min-height: 38px; padding: 2px 6px 7px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 38px; padding: 3px 8px 9px;
 }
 .bt-nav-brand {
-  grid-column: 2; font-size: calc(0.9em * var(--bt-nav-scale, 1));
-  font-weight: 700; color: var(--text-normal); letter-spacing: 0.01em;
+  flex: 1 1 auto; min-width: 0;
+  font-size: calc(0.94em * var(--bt-nav-scale, 1));
+  font-weight: 700; color: var(--text-normal); letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bt-nav .bt-nav-app-head button.bt-nav-new {
-  grid-column: 3; justify-self: end; display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; min-height: 32px; padding: 0 11px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--background-modifier-border); background: var(--background-primary);
-  color: var(--text-normal); font-size: var(--font-ui-small); font-weight: 600;
-  box-shadow: none; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto;
+  height: 32px; min-height: 32px; margin: 0; padding: 0 8px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+  border-radius: 7px; background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  color: var(--text-accent, var(--interactive-accent)); font-size: var(--font-ui-small); font-weight: 650;
+  box-shadow: none; white-space: nowrap; cursor: pointer; appearance: none; transform: none;
 }
-.bt-nav .bt-nav-app-head button.bt-nav-new:hover { background: var(--background-modifier-hover); box-shadow: none; }
-.bt-nav-new-chevron { display: inline-flex; }
-.bt-nav-new-chevron svg { width: 15px; height: 15px; }
+.bt-nav .bt-nav-app-head button.bt-nav-new:hover {
+  border-color: color-mix(in srgb, var(--interactive-accent) 38%, transparent);
+  background: color-mix(in srgb, var(--interactive-accent) 19%, transparent);
+  box-shadow: none; transform: none;
+}
+.bt-nav .bt-nav-app-head button.bt-nav-new:active {
+  background: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+  transform: none;
+}
+.bt-nav .bt-nav-app-head button.bt-nav-new:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: 2px;
+}
+.bt-nav-new-icon, .bt-nav-new-chevron { display: inline-flex; align-items: center; justify-content: center; }
+.bt-nav-new-icon svg { width: 16px; height: 16px; stroke-width: 2.25; }
+.bt-nav-new-chevron {
+  align-self: stretch; margin-left: 1px; padding-left: 7px;
+  border-left: 1px solid color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+  opacity: 0.8;
+}
+.bt-nav-new-chevron svg { width: 14px; height: 14px; }
 .bt-nav-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px calc(8px + var(--bt-nav-depth, 0) * 18px); border-radius: 6px; cursor: pointer; font-size: calc(0.9em * var(--bt-nav-scale, 1)); color: var(--text-normal); }
 .bt-nav-tree-toggle { border-radius: 4px; }
 .bt-nav-tree-toggle:hover { background: var(--background-modifier-hover); }
@@ -1406,17 +1481,37 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 .bt-content-group { margin-top: var(--bt-content-group-gap); }
 .bt-page-body > .bt-content-group:first-child { margin-top: var(--bt-page-content-gap); }
 .bt-section-title {
+  display: flex; align-items: center; gap: 7px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--bt-line);
   font-size: calc(0.9em * var(--bt-section-scale, 1)); font-weight: 700; margin: 8px 0 0;   /* Basis = Faktor der Seitenleisten-Einträge; über Einstellungen skalierbar */
   color: var(--text-normal);
 }
-/* Einklappbare Sektion (z. B. „Erledigt"): Titel + Anzahl + Chevron rechts, klickbar. */
-.bt-collapsible .bt-section-title { display: flex; align-items: center; cursor: pointer; }
+/* Every heading + list uses the same shell. Collapse is optional and the add action occupies the
+   same quiet top-right position whether the rows are tasks, projects, or another list type. */
+.bt-collapsible .bt-section-title { cursor: pointer; }
+.bt-section-chevron, .bt-section-icon { display: inline-flex; flex: 0 0 auto; color: var(--text-muted); }
+.bt-section-chevron svg { width: 14px; height: 14px; }
+.bt-section-icon svg { width: 16px; height: 16px; }
+.bt-section-lbl { min-width: 0; }
+.bt-section-lbl.is-clickable { cursor: pointer; }
+.bt-section-lbl.is-clickable:hover { color: var(--text-accent); }
+.bt-section-meta { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.bt-view button.bt-section-add {
+  display: inline-grid; place-items: center; box-sizing: border-box;
+  width: 26px; min-width: 26px; max-width: 26px; height: 26px; min-height: 26px;
+  margin: -5px 0 -5px auto; padding: 0; flex: 0 0 26px;
+  appearance: none; transform: none;
+  border: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important;
+  color: var(--text-muted);
+}
+.bt-view button.bt-section-add:hover, .bt-view button.bt-section-add:focus-visible {
+  color: var(--text-normal); background: var(--background-modifier-hover) !important; box-shadow: none !important;
+}
+.bt-section-add svg { width: 14px; height: 14px; }
 /* Anzahl direkt neben dem Titel, mit dezentem „·"-Trenner. */
 .bt-section-count { font-weight: 400; letter-spacing: 0; color: var(--text-faint); }
 .bt-section-count::before { content: "·"; margin: 0 0.4em; opacity: 0.7; }
-.bt-collapse-ic { display: inline-flex; align-items: center; margin-left: auto; color: var(--text-muted); }
-.bt-collapse-ic svg { width: 14px; height: 14px; }
-.bt-collapsible .bt-section-title:hover .bt-collapse-ic { color: var(--text-normal); }
+.bt-collapsible .bt-section-title:hover .bt-section-chevron { color: var(--text-normal); }
 .bt-section.is-collapsed .bt-list { display: none; }
 /* Kopf-Aktion ganz rechts in der Sektions-Überschrift („Verschieben" bei „Überfällig").
    Erbt Schriftgröße und -schnitt der Überschrift – die Aktion soll als Teil des Kopfes lesen,
@@ -1461,7 +1556,7 @@ body.is-phone .mod-root .workspace-leaf-content[data-type="opal_tasks-main"] {
 .bt-sec-action:hover, .bt-sec-action:focus-visible {
   color: var(--text-accent-hover); background: var(--background-modifier-hover); outline: none;
 }
-.bt-list { border-top: 1px solid var(--bt-line); margin-top: 6px; padding-top: 0.9em; }
+.bt-list { border-top: 0; margin-top: 0; padding-top: 0.9em; }
 /* A single ungrouped page already gets its context from the page title. Keep the section in the
    DOM for composition/insertion, but remove the redundant “Tasks” label and divider. */
 .bt-section-bare > .bt-section-title { display: none; }
@@ -1725,13 +1820,14 @@ body.bt-meta-colorado {
 .bt-view .bt-recur { color: var(--bt-c-recur); gap: 0; }
 .bt-recur::before { -webkit-mask-image: var(--bt-refresh); mask-image: var(--bt-refresh); }
 
-/* Label – Tag-Icon (liefert das „#"). `.bt-view`-Präfix nötig (s. o.). */
-.bt-view .bt-label { color: var(--bt-c-label); }
-.bt-label { gap: 0; }
-.bt-label::before {
-  width: 13px; height: 13px; margin-right: -1px;
-  -webkit-mask-image: var(--bt-tag); mask-image: var(--bt-tag);
+/* Labels are content, not controls. A quiet code-like lozenge distinguishes them from prose while
+   avoiding another glyph in metadata rows that already contain several meaningful icons. */
+.bt-view .bt-label {
+  min-height: 18px; padding: 1px 7px;
+  border-radius: 6px; background: var(--background-modifier-hover);
+  color: var(--text-muted); font-family: var(--font-monospace); letter-spacing: 0.01em;
 }
+.bt-label::before { display: none; }
 
 /* Erinnerungs-Indikator (alarm-clock) – nur Icon, Details im Tooltip; gleiches Glyph wie der
    Reminder-Chip im Editor, damit „Erinnerung" überall dasselbe Symbol trägt. */
@@ -2068,8 +2164,8 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-unified-board {
   --bt-board-column-bg: var(--background-secondary);
   --bt-board-card-bg: var(--background-primary);
-  --bt-board-column-min: 260px;
-  --bt-board-column-max: 380px;
+  --bt-board-column-min: 280px;
+  --bt-board-column-max: 400px;
   display: block; padding: 10px 2px 16px;
 }
 .bt-board-columns {
@@ -2080,7 +2176,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 .bt-kanban-col {
   display: flex; flex-direction: column; max-height: calc(100vh - 220px);
-  min-width: 260px; background: var(--bt-board-column-bg); border: 1px solid var(--bt-line);
+  min-width: var(--bt-board-column-min); background: var(--bt-board-column-bg); border: 1px solid var(--bt-line);
   border-radius: 10px; padding: 10px 0;   /* horizontaler Abstand liegt an Kopf/Liste/„+" (Scrollbar-Gutter-Ausrichtung) */
 }
 .bt-kanban-col.is-drop { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.06); }
@@ -2133,6 +2229,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 
 .bt-view button.bt-kanban-add {
   display: flex; align-items: center; justify-content: center; gap: 6px;
+  box-sizing: border-box; width: calc(100% - 20px); min-width: 0; max-width: calc(100% - 20px);
   min-height: 38px; margin: 10px 10px 2px; padding: 8px 12px;
   color: var(--text-muted); font: inherit; font-size: var(--font-ui-small); cursor: pointer; border-radius: 6px;
   appearance: none; transform: none;
@@ -2150,11 +2247,10 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 
 .bt-unified-board.is-tablet .bt-board-columns {
-  --bt-board-column-min: 220px;
-  --bt-board-column-max: 340px;
+  --bt-board-column-min: 260px;
+  --bt-board-column-max: 360px;
   gap: 10px;
 }
-.bt-unified-board.is-tablet .bt-kanban-col { min-width: 220px; }
 @media (max-width: 700px) { .bt-view .bt-sizer.bt-sizer-board { max-width: calc(100% - 12px); } }
 
 /* ── Status-Editor (ListManager-Tab „Status") ── */
@@ -2450,8 +2546,21 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-new-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .bt-new-field > label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
 .bt-new-input {
-  width: 100%; padding: 8px 11px; font: inherit; font-size: 14px; color: var(--text-normal);
+  box-sizing: border-box; width: 100%; max-width: 100%; padding: 8px 11px;
+  font: inherit; font-size: 14px; line-height: 1.4; color: var(--text-normal);
   background: var(--background-modifier-form-field); border: 1px solid var(--background-modifier-border); border-radius: 8px;
+}
+/* Obsidian gives native inputs/selects a compact fixed height. Keeping the shared vertical
+   padding on that box clips the glyphs on mobile (most visibly in Status/Priority/Area). Give
+   single-line controls an explicit content-safe height and let the browser center their text. */
+.modal.bt-new-modal :is(input, select).bt-new-input {
+  height: 36px;
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.modal.bt-new-modal textarea.bt-new-input {
+  min-height: calc(2.8em + 18px);
 }
 .bt-new-input:focus { outline: none; border-color: var(--interactive-accent); box-shadow: 0 0 0 3px var(--background-modifier-border-hover); }
 .bt-swatch-row { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -2604,20 +2713,29 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   border-top: 1px solid var(--background-modifier-border-hover);
   color: var(--text-muted); font-size: .92em; font-weight: 650;
 }
-.bt-mobile-page-menu .bt-layout-toggle { flex-direction: column; gap: 5px; margin: 0; }
+.bt-mobile-page-menu .bt-layout-toggle {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; width: 100%; margin: 0;
+}
 .bt-mobile-page-menu .bt-layout-toggle .bt-tab,
 .bt-mobile-menu-option {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
   padding: 9px 12px; border: 0; border-radius: 9px; background: transparent;
   color: var(--text-normal); font: inherit; font-size: var(--font-ui-medium); text-align: left; box-shadow: none; cursor: pointer;
 }
+.bt-mobile-page-menu .bt-layout-toggle .bt-tab {
+  /* Override the desktop segmented-control flex item. Fixed icon/check tracks keep all three
+     rows full-width and leave the label in the same place before and after activation. */
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) 18px; align-items: center;
+  column-gap: 10px; min-width: 0; box-sizing: border-box; flex: none;
+}
 .bt-mobile-page-menu .bt-layout-toggle .bt-tab:hover,
 .bt-mobile-menu-option:hover { background: var(--background-modifier-hover); }
 .bt-mobile-page-menu .bt-layout-toggle .bt-tab.is-active,
-.bt-mobile-menu-option.is-active { background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); color: var(--text-normal); }
-.bt-mobile-menu-row-ic { display: inline-flex; color: var(--text-muted); }
+.bt-mobile-menu-option.is-active { background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); color: var(--text-normal); font-weight: inherit; }
+.bt-mobile-menu-row-ic { display: inline-flex; justify-content: center; color: var(--text-muted); }
 .bt-mobile-menu-row-ic svg { width: 18px; height: 18px; }
-.bt-mobile-menu-check { display: inline-flex; margin-left: auto; color: var(--text-accent, var(--interactive-accent)); }
+.bt-mobile-menu-row-label { min-width: 0; }
+.bt-mobile-menu-check { display: inline-flex; justify-content: center; margin-left: auto; color: var(--text-accent, var(--interactive-accent)); }
 .bt-mobile-menu-check svg { width: 17px; height: 17px; }
 .bt-mobile-menu-options { display: flex; flex-direction: column; gap: 3px; }
 .bt-mobile-page-menu .bt-panel-cap:not(:first-child) { margin-inline: -16px; padding-inline: 18px; }
@@ -2790,7 +2908,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Desktop swimlanes are the full status × priority projection of the same columns/cards above. */
 .bt-board-matrix {
   display: grid;
-  grid-template-columns: 96px repeat(var(--bt-board-cols), minmax(240px, var(--bt-board-column-max)));
+  grid-template-columns: 96px repeat(var(--bt-board-cols), minmax(var(--bt-board-column-min), var(--bt-board-column-max)));
   width: 100%; max-width: 100%; gap: 8px; overflow-x: auto; align-items: stretch;
 }
 .bt-board-matrix-corner { min-height: 42px; }
@@ -2809,7 +2927,9 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 }
 .bt-board-cell.is-drop { border-color: var(--interactive-accent); background: hsla(var(--interactive-accent-hsl), 0.06); }
 .bt-board-cell > .bt-kanban-list { overflow-y: visible; padding-inline: 8px; }
-.bt-board-cell > .bt-kanban-add { margin-inline: 8px; }
+.bt-board-cell > .bt-kanban-add {
+  width: calc(100% - 16px); max-width: calc(100% - 16px); margin-inline: 8px;
+}
 .bt-board-cell-content > .bt-task, .bt-area-project-card {
   border: 1px solid var(--bt-line-faint); border-radius: 8px; background: var(--bt-board-card-bg); padding: 7px;
 }
@@ -2822,37 +2942,88 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-area-project-chevron svg { width: 14px; height: 14px; }
 .bt-area-project-title { min-width: 0; flex: 1; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bt-area-project-meta { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
-.bt-area-project-status, .bt-area-project-priority, .bt-area-project-progress { font-size: var(--font-ui-smaller); color: var(--text-muted); background: var(--background-modifier-hover); border-radius: 999px; padding: 2px 6px; }
-.bt-area-project-add { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; background: transparent; box-shadow: none; }
+.bt-area-project-section .bt-section-lbl {
+  min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bt-area-project-status { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.bt-area-project-priority {
+  display: inline-grid; place-items: center; min-width: 31px; height: 27px; padding: 0 7px;
+  border-radius: 999px; font-size: var(--font-ui-smaller); font-weight: 600;
+  color: var(--text-muted); background: var(--background-modifier-hover);
+}
+.bt-area-project-priority[data-priority="highest"] { color: var(--bt-prio-1); background: color-mix(in srgb, var(--bt-prio-1) 11%, transparent); }
+.bt-area-project-priority[data-priority="high"] { color: var(--bt-prio-2); background: color-mix(in srgb, var(--bt-prio-2) 13%, transparent); }
+.bt-area-project-priority[data-priority="medium"] { color: color-mix(in srgb, var(--bt-prio-3) 78%, var(--text-normal)); background: color-mix(in srgb, var(--bt-prio-3) 11%, transparent); }
+.bt-area-project-progress-track {
+  display: inline-block; width: 58px; height: 4px; overflow: hidden; border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--bt-area-project-progress-color, var(--interactive-accent)) var(--bt-area-project-progress, 0%),
+    var(--background-modifier-border-hover) var(--bt-area-project-progress, 0%));
+}
+.bt-area-project-progress-track.is-complete { --bt-area-project-progress-color: var(--text-muted); }
+.bt-area-project-progress { min-width: 34px; color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; }
+.bt-view button.bt-area-project-add {
+  display: inline-grid; place-items: center; box-sizing: border-box;
+  width: 26px; min-width: 26px; max-width: 26px; height: 26px; min-height: 26px; flex: 0 0 26px; padding: 0;
+  appearance: none; transform: none;
+  border: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important;
+}
 .bt-area-project-add svg { width: 14px; height: 14px; }
-.bt-area-project-card-tasks, .bt-area-project-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.bt-area-project-card-tasks { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.bt-area-project-tasks {
+  display: flex; flex-direction: column; gap: 0;
+  width: 100%; margin: 0; padding-top: 0;
+}
 .bt-area-project-card-tasks.bt-hidden, .bt-area-project-tasks.bt-hidden { display: none; }
 .bt-area-project-card-tasks .bt-task { border-top: 1px solid var(--background-modifier-border); padding-top: 6px; }
-/* The project card border already closes the group; avoid a second line beneath its final task.
-   Subtasks use ::after for their elbow connector, so only suppress their separate bottom border. */
-.bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { display: none; }
-.bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom: 0; }
 .bt-area-project-section {
-  margin: var(--bt-content-group-gap) 0 0;
-  border: 1px solid var(--background-modifier-border); border-radius: 9px; padding: 6px 9px;
+  container-type: inline-size;
 }
+.bt-area-project-section + .bt-area-project-section { margin-top: 0; }
+.bt-area-project-section > .bt-section-title {
+  position: relative; min-height: 52px; margin-top: 0; padding: 8px 0;
+}
+.bt-area-project-section > .bt-section-title > .bt-section-chevron {
+  position: absolute; left: -24px; top: 50%; transform: translateY(-50%);
+}
+.bt-area-project-tasks > .bt-task { min-height: 58px; padding-top: 11px; padding-bottom: 11px; }
+.bt-area-project-tasks > .bt-task:last-child:not(.bt-subtask)::after { left: 0; border-top-color: var(--bt-line); }
+.bt-area-project-tasks > .bt-task.bt-last-sub:last-child { border-bottom-color: var(--bt-line); }
+.bt-area-project-tasks > .bt-task > .bt-task-tail {
+  align-self: flex-start; margin: 0 2px 0 auto; padding-top: 1px; flex: 0 0 auto;
+  color: var(--text-muted); white-space: nowrap;
+}
+.bt-area-project-tasks > .bt-task > .bt-task-tail::before { width: 16px; height: 16px; }
 
 /* A project card can be narrow even in a wide desktop pane (for example inside a Kanban cell),
    so its header must respond to the card rather than only to the viewport. Keep the identity and
    add action on the first row and give project metadata its own row before it can crush the title. */
 @container (max-width: 700px) {
-  .bt-area-project-head {
+  .bt-area-project-card .bt-area-project-head {
     display: grid; grid-template-columns: auto auto minmax(0, 1fr) 32px;
     align-items: center; column-gap: 7px; row-gap: 6px;
   }
-  .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
-  .bt-area-project-icon { grid-column: 2; grid-row: 1; }
-  .bt-area-project-title {
+  .bt-area-project-card .bt-area-project-chevron { grid-column: 1; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-icon { grid-column: 2; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-title {
     grid-column: 3; grid-row: 1; overflow: visible; text-overflow: clip;
     white-space: normal; overflow-wrap: anywhere;
   }
-  .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
-  .bt-area-project-add { grid-column: 4; grid-row: 1; }
+  .bt-area-project-card .bt-area-project-meta { grid-column: 3 / 5; grid-row: 2; flex-wrap: wrap; }
+  .bt-area-project-card .bt-area-project-add { grid-column: 4; grid-row: 1; }
+}
+
+@container (max-width: 520px) {
+  .bt-area-project-section .bt-area-project-head {
+    display: grid; grid-template-columns: minmax(0, 1fr) 32px;
+    align-items: center; column-gap: 7px; row-gap: 7px;
+  }
+  .bt-area-project-section .bt-section-lbl {
+    grid-column: 1; grid-row: 1; overflow: visible; text-overflow: clip;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .bt-area-project-section .bt-section-meta { grid-column: 1 / 3; grid-row: 2; flex-wrap: wrap; }
+  .bt-area-project-section .bt-section-add { grid-column: 2; grid-row: 1; margin-left: auto; }
 }
 
 /* Tablet selects one priority but retains every status column. Mobile selects one status and,
@@ -2897,7 +3068,7 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 .bt-unified-board.is-mobile .bt-board-cell { min-height: 0; }
 .bt-unified-board.is-mobile .bt-task { cursor: default; }
 .bt-unified-board.is-mobile > .bt-kanban-add {
-  width: 100%; justify-content: center; margin: 12px 0 0; border: 1px solid var(--bt-line); background: var(--bt-board-card-bg);
+  width: 100%; max-width: 100%; justify-content: center; margin: 12px 0 0; border: 1px solid var(--bt-line); background: var(--bt-board-card-bg);
 }
 .bt-kanban-list > .bt-task.has-board-move { grid-template-columns: 16px minmax(0, 1fr) 32px; }
 .bt-kanban-list > .bt-task.has-board-move > .bt-board-move {
@@ -2962,12 +3133,20 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Kopf in drei Zonen: Navigation links (‹ Heute ›), Titel mittig, Monat/Woche rechts.
    Die drei gleich breiten Außenzonen halten den Titel exakt mittig, auch wenn die Buttons
    unterschiedlich breit sind. */
-.bt-calview-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.bt-calview-head {
+  display: flex; align-items: center; flex: 0 0 auto; gap: 10px;
+  min-height: 29px; margin: 0 0 10px; padding-top: 1px;
+}
 .bt-calview-nav { flex: 1 1 0; display: flex; align-items: center; gap: 4px; }
 .bt-calview-title { flex: 0 0 auto; text-align: center; }
 /* .bt-view .bt-tabs setzt margin: 10px 0 14px (höhere Spezifität) -> hier zurücknehmen,
    sonst kann sich das Segment nicht nach rechts schieben. */
 .bt-view .bt-calview-head .bt-calview-seg { flex: 1 1 0; justify-content: flex-end; margin: 0; }
+.bt-view .bt-calview-head .bt-tab {
+  box-sizing: border-box; min-height: 28px; margin: 0; appearance: none; transform: none;
+}
+.bt-view .bt-calview-head .bt-tab:hover,
+.bt-view .bt-calview-head .bt-tab:active { transform: none; }
 .bt-view .bt-calview-auto { display: inline-flex; align-items: center; gap: 6px; padding-inline: 10px; }
 .bt-calview-auto-ic { display: inline-flex; }
 .bt-calview-auto-ic svg { width: 15px; height: 15px; }
@@ -2975,18 +3154,24 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
    hat (0,1,1) und würde eine einfache Klassenregel schlagen – die Knöpfe bekämen einen Schatten,
    den die .bt-tab-Knöpfe (ebenfalls .bt-view-gescopet) nicht haben. */
 .bt-view .bt-calview-nav-btn {
-  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; width: 28px; min-width: 28px; height: 28px; min-height: 28px; margin: 0;
   padding: 0; border-radius: 6px; background: transparent; box-shadow: none;
   border: 1px solid var(--background-modifier-border); color: var(--text-muted); cursor: pointer;
+  appearance: none; transform: none;
 }
-.bt-view .bt-calview-nav-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.bt-view .bt-calview-nav-btn:hover,
+.bt-view .bt-calview-nav-btn:active { background: var(--background-modifier-hover); color: var(--text-normal); transform: none; }
 .bt-view .bt-calview-nav-btn svg { width: 16px; height: 16px; }
 .bt-view .bt-calview-today {
-  padding: 4px 14px; border-radius: 6px; font-size: var(--font-ui-small); font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  height: 28px; min-height: 28px; margin: 0; padding: 0 14px; line-height: 1;
+  border-radius: 6px; font-size: var(--font-ui-small); font-weight: 600;
   background: transparent; border: 1px solid var(--background-modifier-border); color: var(--text-muted);
-  box-shadow: none; cursor: pointer;
+  box-shadow: none; cursor: pointer; appearance: none; transform: none;
 }
-.bt-view .bt-calview-today:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.bt-view .bt-calview-today:hover,
+.bt-view .bt-calview-today:active { background: var(--background-modifier-hover); color: var(--text-normal); transform: none; }
 .bt-calview-title { font-size: 1.05em; font-weight: 650; color: var(--text-normal); white-space: nowrap; }
 
 /* ── Monat ── */
@@ -3790,6 +3975,13 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
+/* The floating Obsidian phone navbar overlays custom views instead of reducing their height.
+   Honour its published inset so the final task can scroll completely above the palette. Calendar
+   owns a fixed-height, non-scrolling layout and therefore keeps its separate bottom treatment. */
+body.is-phone .workspace-leaf-content[data-type="opal_tasks-main"]
+  .bt-view.bt-mobile:not(.bt-view-calendar) {
+  padding-bottom: max(40px, calc(var(--view-bottom-spacing, 0px) + var(--size-4-4)));
+}
 .bt-view.bt-mobile .bt-sizer { width: calc(100% - 12px); max-width: calc(100% - 12px); }
 .bt-view.bt-mobile .bt-page-top { padding: 6px 0 4px; }
 .bt-view.bt-mobile > .bt-sizer:first-child > h1:first-child { margin-top: 14px; }
@@ -3961,6 +4153,11 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 
 /* Settings are split into a few stable pages. The bar scrolls on narrow screens instead of
    wrapping into a tall block; native Obsidian colours keep it at home in any theme. */
+.modal.mod-settings .vertical-tab-content.bt-settings-root {
+  padding-top: 0;
+  scroll-padding-block-start: 0;
+}
+.modal.mod-settings .setting-page-content.bt-settings-root { margin-top: 0; }
 .bt-settings-tabs {
   position: sticky;
   top: 0;

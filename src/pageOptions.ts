@@ -77,7 +77,7 @@ export function writeViewOptions(fm: Record<string, unknown>, o: ViewOptions,
   setOrDel("calPanelSortDir", o.calPanelSortDir, DEFAULT_OPTIONS.calPanelSortDir);
   setOrDel("showEmptyBoardAxes", o.showEmptyBoardAxes, DEFAULT_OPTIONS.showEmptyBoardAxes);
   if (typeof o.prioritySwimlanes === "boolean") fm.priority_swimlanes = o.prioritySwimlanes;
-  else delete fm.priority_swimlanes;   // absent = Area enabled / Project disabled
+  else delete fm.priority_swimlanes;   // absent = Area enabled / other eligible boards disabled
 }
 
 // ── Kriterien (Ansichtsfilter bzw. Definition eines gespeicherten Filters) ──

@@ -57,7 +57,7 @@ A single dashboard with a left sidebar:
 - **Search** — fast fuzzy search across all tasks; jump straight to a task and highlight it in place.
 - **Manage** — a ListManager with separate **Projects**, **Areas**, **Labels** and **Filters** tabs: create, rename, recolor, hide, archive or delete each, and restore or permanently remove trashed items.
 
-Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**.
+Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**. Projects can additionally be sorted **by priority** (highest first), including within each Area; choose it under *Settings → Appearance* or in the Projects manager.
 
 **Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. Projects can belong to an area; areas do not nest. When a project is completed, it moves to a muted **Recently completed** sidebar group for three days and is then archived automatically; the persistent Archive shortcut lets you restore it later.
 
@@ -281,6 +281,11 @@ Markdown remains authoritative. Opal Tasks validates its own writes, preserves m
 invalid records and reports diagnostics instead of rewriting them. Statuses, priorities, and record
 paths are defined in the type files; their corresponding settings edit those definitions.
 
+Validation issues remain visible in the generated report. Run **Opal Tasks: Run validation and open
+report** from the command palette at any time; its note path is configurable under **Settings → Opal
+Tasks → Data & sync → Validation report**. The same report is refreshed automatically when startup
+validation finds a problem.
+
 The Obsidian plugin uses only mobile-safe Vault and metadata APIs. It does not ship the Node mdbase
 library, SQLite, mdbase Connect, a hosted mirror, or a dependency on another Obsidian plugin.
 
@@ -327,11 +332,12 @@ To associate an existing vault note without turning it into a database record, c
 Tasks project** from the note's options menu, or focus it and run **Opal Tasks: Turn current note into an
 Opal Tasks project**. Opal Tasks silently creates the canonical record
 under `_opal_tasks/projects/`, stores its `opal_project_id` marker on the companion note, and appends a live
-`opal_tasks` task-list embed to the original note. It also inserts a compact project card below the note
-title, where the project's own workflow status can be changed without confusing it with one of its
-tasks. Both embeds refer to the stable project ID, so renaming either file does not disconnect the
-view. Running the command again reuses the linked project and fills in a missing header instead of
-creating a duplicate. The project menu also offers **Open project record** and **Open linked note**.
+`opal_tasks` task-list embed to the original note. The note starts directly with your writing; the
+embed stays at the footer and its header links back to the project record while showing project status,
+priority, and task progress. The embed refers to the stable project ID, so renaming either file does not
+disconnect the view. Running the command again reuses the linked project and removes the obsolete top
+card instead of creating a duplicate. The project menu also offers **Open project record** and **Open
+linked note**.
 
 Projects and areas created inside Opal Tasks have the reverse action in their page overflow menu. **Create
 linked note** creates a regular companion note in Obsidian's configured new-note location, inserts the
@@ -415,6 +421,7 @@ operations, validation behavior and change subscriptions.
 | Turn current note into a task | Make the open note a task — adds frontmatter only, never touches your text |
 | Search tasks | Fuzzy search |
 | Count tasks | Show total / open count |
+| Run validation and open report | Recheck the collection and open a note with every affected file, field, and error |
 | Export tasks (JSON) | Save all tasks to a JSON file in your vault |
 | Import tasks (JSON) | Restore tasks from a JSON export |
 | Import from TaskNotes | Migrate tasks from the TaskNotes plugin |
@@ -477,6 +484,8 @@ Colors deliberately live in CSS variables (not in the plugin’s own settings) s
 ### Per-project / per-area icon color
 
 Individual projects, areas, labels and filters can have their own color. Pick one from the **color dot** in *Manage*, or from the **edit dialog** (right-click a sidebar entry → *Edit*). For projects and areas you can also set a `color:` property directly in the note’s frontmatter, e.g. `color: "#4caf50"`.
+
+The **Project colors** appearance setting controls which color projects display throughout Opal Tasks: their Area's color, their priority color, or the custom project color above. Areas continue to use their own custom color; projects without an Area stay neutral in Area mode.
 
 ---
 

@@ -34,31 +34,31 @@ describe("ensureLinkedProjectEmbeds", () => {
   it("creates linked-note content without repeating the filename as an H1", () => {
     const out = newLinkedProjectNoteContent("p-1");
     expect(out).not.toMatch(/^#\s/m);
-    expect(out).toContain("section: header");
+    expect(out).not.toContain("section: header");
     expect(out).toContain("section: tasks");
   });
 
-  it("puts the project header after the note title and tasks at the footer", () => {
+  it("keeps the writing surface clear and puts tasks at the footer", () => {
     const out = ensureLinkedProjectEmbeds("# Launch\n\n## Overview\nBrief\n", "p-1");
-    expect(out.indexOf("section: header")).toBeGreaterThan(out.indexOf("# Launch"));
-    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("## Overview"));
+    expect(out).not.toContain("section: header");
+    expect(out).toContain("## Overview\nBrief");
     expect(out.trimEnd().endsWith("section: tasks\nid: p-1\n```")).toBe(true);
   });
 
-  it("places the header after YAML and H1", () => {
+  it("preserves YAML, title, and prose without inserting a header", () => {
     const original = "---\ntags: [work]\n---\n# Launch\n\nText with [[links]] and `formatting`.";
     const out = ensureLinkedProjectEmbeds(original, "p-1");
-    expect(out.indexOf("section: header")).toBeGreaterThan(out.indexOf("# Launch"));
-    expect(out.indexOf("section: header")).toBeLessThan(out.indexOf("Text with"));
+    expect(out).not.toContain("section: header");
     expect(out).toContain("tags: [work]");
     expect(out).toContain("Text with [[links]] and `formatting`.");
   });
 
-  it("is idempotent and recognizes a pre-section project block as the task list", () => {
-    const old = "# Launch\n\nText\n\n```opal_tasks\nview: project\nid: p-1\n```\n";
+  it("removes a legacy header and recognizes a pre-section project block as the task list", () => {
+    const old = "# Launch\n\n```opal_tasks\nview: project\nsection: header\nid: p-1\n```\n\nText\n\n```opal_tasks\nview: project\nid: p-1\n```\n";
     const once = ensureLinkedProjectEmbeds(old, "p-1");
-    expect((once.match(/section: header/g) ?? [])).toHaveLength(1);
+    expect((once.match(/section: header/g) ?? [])).toHaveLength(0);
     expect((once.match(/section: tasks/g) ?? [])).toHaveLength(0);
+    expect(once).toContain("# Launch\n\nText");
     expect(ensureLinkedProjectEmbeds(once, "p-1")).toBe(once);
   });
 });
@@ -86,18 +86,20 @@ describe("linkedNoteExcerpt", () => {
 });
 
 describe("linkedNoteEntryLine", () => {
-  it("lands immediately below the generated header instead of inside its source", () => {
+  it("lands in the writing space between frontmatter and the footer embed", () => {
     const content = newLinkedProjectNoteContent("p-1");
     const line = linkedNoteEntryLine(content);
     expect(content.split("\n")[line]).toBe("");
-    expect(content.split("\n")[line - 1]).toBe("```");
+    expect(content.split("\n")[line - 1]).toBe("---");
+    expect(content.split("\n")[line + 1]).toBe("```opal_tasks");
   });
 
-  it("keeps the destination above existing prose", () => {
+  it("keeps the destination below an existing title and above prose", () => {
     const content = ensureLinkedProjectEmbeds("# Launch\n\nProject prose starts here.\n", "p-1");
     const lines = content.split("\n");
     const line = linkedNoteEntryLine(content);
     expect(lines[line]).toBe("");
+    expect(lines[line - 1]).toBe("# Launch");
     expect(lines.slice(line).join("\n")).toContain("Project prose starts here.");
   });
 });

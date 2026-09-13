@@ -38,7 +38,7 @@ describe("readViewOptions – Unteraufgaben-Darstellung", () => {
   });
 });
 
-describe("Area priority swimlanes", () => {
+describe("Priority swimlane persistence", () => {
   it("keeps absence available as the type-specific default and persists explicit choices", () => {
     expect(readViewOptions({}).prioritySwimlanes).toBeUndefined();
     expect(readViewOptions({ priority_swimlanes: false }).prioritySwimlanes).toBe(false);

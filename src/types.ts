@@ -25,8 +25,10 @@ export type StatusKind = "open" | "done" | "cancelled";
 
 /** Seitenleisten-Sektionen mit sortierbarer Reihenfolge. */
 export type NavSection = "projects" | "areas" | "labels" | "filters" | "templates";
-/** Sortiermodus einer Sektion: manuelle Reihenfolge · alphabetisch · nach Aufgabenzahl. */
-export type NavSortMode = "manual" | "name" | "count";
+/** Sortiermodus einer Sektion: manuelle Reihenfolge · alphabetisch · nach Priorität/Aufgabenzahl.
+ *  `priority` wird nur für Projekte angeboten; die gemeinsame Union hält die persistierte
+ *  navSort-Tabelle trotzdem einfach. */
+export type NavSortMode = "manual" | "name" | "priority" | "count";
 
 /** Gespeicherte Status-Definition (in settings.statuses). Eingebaute nutzen `labelKey` (i18n),
  *  user-definierte `label` (wörtlich). `icon`/`color` optional (sonst Default nach kind). */
@@ -201,6 +203,7 @@ export interface OpalTasksSettings {
                             // damit gleichnamige Schritte zweier Vorlagen („Prüfen", „Abnahme")
                             // sich nicht über den Basenamen verwechseln (s. templates-plan.md)
   attachmentsFolder: string;
+  validationReportPath: string; // Markdown note refreshed by startup validation and the diagnostics command
   knownLabels: string[];   // Register: auch Labels ohne Aufgabe (im Manager angelegt)
   visibleLabels: string[]; // in der Seitenleiste sichtbar geschaltete Labels (Default leer)
   labelColors: Record<string, string>;   // Label-Name -> Farbe (Hex); Labels sind keine Notizen, daher hier
@@ -218,6 +221,7 @@ export interface OpalTasksSettings {
                            // (DeviceState.lastView).
   defaultCalendarView: import("./calendarModel").CalMode; // Kalender-Modus für Seiten ohne eigene Wahl
   calendarTaskColorMode: import("./calendarTaskColor").CalendarTaskColorMode; // Farbe geplanter Aufgaben im Kalender
+  projectColorMode: import("./projectColor").ProjectColorMode; // Projektfarbe: Bereich, Priorität oder eigene Farbe
   timeMaps?: import("./autoPlanner").TimeMap[]; // reusable weekly availability; missing = built-in weekday default
   defaultTimeMapId?: string;                    // missing/stale IDs fall back to the built-in default
   autoPlanExcludedLabels?: string[];            // tasks with any matching label are never moved or placed
@@ -275,6 +279,7 @@ export const DEFAULT_SETTINGS: OpalTasksSettings = {
   filtersFolder: "_opal_tasks/filters",
   templatesFolder: "_opal_tasks/templates",
   attachmentsFolder: "_opal_tasks/attachments",
+  validationReportPath: "_opal_tasks/Validation report.md",
   knownLabels: [],
   visibleLabels: [],
   labelColors: {},
@@ -290,6 +295,7 @@ export const DEFAULT_SETTINGS: OpalTasksSettings = {
   startPage: { kind: "view", key: "heute" },
   defaultCalendarView: "3day",
   calendarTaskColorMode: "priority",
+  projectColorMode: "custom",
   parseNaturalLanguage: true,
   showInlineConvertButtons: false,
   enableTaskLinkOverlays: true,

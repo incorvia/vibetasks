@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Priority, Task, TaskStatus } from "../src/types";
-import { ProjItem, priorityBucket, projectAreaName, projectsInArea, taskMatchesProjectCell, tasksInArea } from "../src/taskService";
+import { compareProjectPriority, ProjItem, priorityBucket, projectAreaName, projectsInArea, taskMatchesProjectCell, tasksInArea } from "../src/taskService";
 
 const item = (name: string, type: "project" | "area", extra: Partial<ProjItem> = {}): ProjItem => ({
   id: name, name, path: `_opal_tasks/projects/${name}.md`, icon: type === "area" ? "circle-small" : "list-checks",
@@ -35,6 +35,17 @@ describe("Area hierarchy", () => {
     const child = item("Household", "project", { areaId: "PERSONAL-ID" });
     const other = item("Work", "project", { areaId: "WORK-ID" });
     expect(projectsInArea(area, [child, other]).map((p) => p.name)).toEqual(["Household"]);
+  });
+
+  it("sorts projects by priority, highest first, with names as the tie-breaker", () => {
+    const projects = [
+      item("Zulu", "project", { priority: "normal" }),
+      item("Bravo", "project", { priority: "highest" }),
+      item("Alpha", "project", { priority: "highest" }),
+      item("Later", "project", { priority: "low" }),
+    ];
+    expect(projects.sort(compareProjectPriority).map((project) => project.name))
+      .toEqual(["Alpha", "Bravo", "Zulu", "Later"]);
   });
 
   it("rolls direct Area tasks together with child-project tasks", () => {

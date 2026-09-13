@@ -80,7 +80,7 @@ export interface ViewOptions {
   calPanel: boolean;       // nur im Kalender-Layout: Seitenleiste „Undatiert" offen?
   calPanelSort: FilterSort; // eigene Sortierung der „Undatiert"-Seitenleiste
   calPanelSortDir: SortDir; // Richtung dieser Sortierung; für smart/manual ohne Wirkung
-  /** Area-Kanban: Priorität als zweite Achse. Fehlt = an (neue Areas und Altbestände). */
+  /** Kanban: Priorität als zweite Achse. Fehlt = nur bei Areas an, sonst aus. */
   prioritySwimlanes?: boolean;
   /** Kanban: auch Status-Spalten/Prioritäts-Lanes ohne sichtbaren Inhalt zeichnen. */
   showEmptyBoardAxes: boolean;

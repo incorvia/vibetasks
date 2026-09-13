@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pageInfo, samePage, manageTitleKey, PageRef } from "../src/pageCtx";
+import { pageInfo, samePage, manageTitleKey, PageRef, supportsPrioritySwimlanes } from "../src/pageCtx";
 import { INBOX_KEY } from "../src/taskService";
 
 // pageInfo ist die reine Fassung dessen, was bis 1.33 plugin.currentPage() aus dem globalen
@@ -81,5 +81,16 @@ describe("manageTitleKey – Überschrift UND Tab-Titel der Verwaltung aus einer
     // Der Bereich kommt aus dem gespeicherten Tab-Zustand (Workspace-Datei) – also fremder Input.
     expect(manageTitleKey("")).toBe("group_project");
     expect(manageTitleKey("quatsch")).toBe("group_project");
+  });
+});
+
+describe("supportsPrioritySwimlanes", () => {
+  it("supports project, filter and label boards, but not Inbox or system views", () => {
+    expect(supportsPrioritySwimlanes({ kind: "project", key: "Projekte/Umzug.md" })).toBe(true);
+    expect(supportsPrioritySwimlanes({ kind: "filter", key: "Filter/Diese Woche.md" })).toBe(true);
+    expect(supportsPrioritySwimlanes({ kind: "label", key: "ux" })).toBe(true);
+    expect(supportsPrioritySwimlanes({ kind: "project", key: INBOX_KEY })).toBe(false);
+    expect(supportsPrioritySwimlanes({ kind: "view", key: "heute" })).toBe(false);
+    expect(supportsPrioritySwimlanes({ kind: "manage", key: "filters" })).toBe(false);
   });
 });

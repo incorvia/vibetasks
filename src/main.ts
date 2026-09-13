@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setAreaTimeMap, setProjectWorkflow, setProjectArchived, setProjectCompleted, projectCompletedAt, shouldAutoArchiveProject, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectArea as setProjectParentArea, setAreaTimeMap, setProjectWorkflow, setProjectArchived, setProjectCompleted, projectCompletedAt, shouldAutoArchiveProject, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, ensureFolder, slugify, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, relationshipId, legacyRelationshipLink, compareProjectPriority, OPAL_PROJECT_ID, OPAL_PARENT_ID, OPAL_AREA_ID } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { fieldKey, initFieldNames, labelKey } from "./fieldNames";
@@ -42,9 +42,10 @@ import { bucketEvents } from "./calendarModel";
 import { GCalAuth, TokenStore, DevicePrompt, GCalTokens, planTokenMigration } from "./gcalAuth";
 import { GCalSync, GCalSyncHost, GCalCache, LegacyGCalLink, emptyGCalCache, calIndex, seedGCalCache, resignLegacySignature, DEFAULT_GCAL_SETTINGS, listCalendars, ensureDefaultCalendar, fetchAccountEmail, CalendarInfo, GCalStatusInfo } from "./gcalSync";
 import { GCalFeed, GCalFeedHost, DEFAULT_GCAL_FEED_SETTINGS } from "./gcalFeed";
-import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord } from "./mdbaseRepository";
+import { MdbaseRepository, bindRepository, newUlid, rfc3339Now, updateRecord, type ValidationIssue } from "./mdbaseRepository";
 import { isCollectionPath } from "./mdbaseResources";
-import { ProjectEmbed, ProjectHeaderEmbed } from "./projectEmbed";
+import { VALIDATION_REPORT_MARKER, validationReportMarkdown, validationReportPath } from "./validationReport";
+import { ProjectEmbed } from "./projectEmbed";
 import { ensureLinkedProjectEmbeds, isLinkedCollectionNote, linkedNoteEntryLine, newLinkedProjectNoteContent, noteProjectAction as resolveNoteProjectAction, linkedProjectIdentity, projectTitleFromNote, NoteProjectAction, LinkedCollectionRef } from "./linkedProjectNote";
 import { migrateTimingFields } from "./timingMigration";
 import { TimeStore, TimerService } from "./timeService";
@@ -153,8 +154,13 @@ export default class OpalTasksPlugin extends Plugin {
         el.createDiv({ text: `Opal Tasks: project or area ${input.id} was not found` });
         return;
       }
-      if (input.section === "header") context.addChild(new ProjectHeaderEmbed(el, this, record.path));
-      else context.addChild(new ProjectEmbed(el, this, record.path));
+      // Older linked notes may retain this block until they are next reconciled. It is deliberately
+      // renderless now; ensureLinkedProjectEmbeds removes it while keeping the footer task board.
+      if (input.section === "header") {
+        el.addClass("bt-project-note-obsolete-header");
+        return;
+      }
+      context.addChild(new ProjectEmbed(el, this, record.path));
     };
     this.registerMarkdownCodeBlockProcessor("opal_tasks", renderProjectEmbed);
     if (collection.ready) {
@@ -230,16 +236,33 @@ export default class OpalTasksPlugin extends Plugin {
     // bei Erstinstallation (0) ab jetzt starten -> kein Fehlalarm für heute Vergangenes.
     this.reminderScan = this.device.reminderLastScan || Date.now();
     this.app.workspace.onLayoutReady(async () => {
+      let validationIssues: ValidationIssue[] = [];
       if (!collection.ready) {
+        validationIssues = collection.issues;
         console.error("Opal Tasks: mdbase collection is incompatible", collection.issues);
-        const first = collection.issues[0];
-        const detail = first ? `: ${first.message}` : "";
-        new Notice(`Opal Tasks: mdbase collection needs attention (${collection.issues.length})${detail}`, 0);
       } else {
-        const issues = await this.repository.scanIssues();
-        if (issues.length) {
-          console.warn("Opal Tasks: mdbase validation diagnostics", issues);
-          new Notice(`Opal Tasks: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"}; files were left unchanged`);
+        validationIssues = await this.repository.scanIssues();
+        if (validationIssues.length) console.warn("Opal Tasks: mdbase validation diagnostics", validationIssues);
+      }
+      if (validationIssues.length) {
+        try {
+          const report = await this.writeValidationReport(validationIssues);
+          new Notice(`Opal Tasks: ${validationIssues.length} validation issue${validationIssues.length === 1 ? "" : "s"}. See ${report.path}.`, 0);
+        } catch (error) {
+          console.error("Opal Tasks: could not write validation report", error);
+          const first = validationIssues[0];
+          new Notice(`Opal Tasks: ${validationIssues.length} validation issue${validationIssues.length === 1 ? "" : "s"}; report write failed. First issue: ${first.path}: ${first.message}`, 0);
+        }
+      } else {
+        // Do not create a report in a healthy vault unprompted, but clear a prior generated report
+        // so yesterday's repaired errors cannot keep looking current.
+        const path = validationReportPath(this.settings.validationReportPath);
+        const existing = this.app.vault.getAbstractFileByPath(path);
+        if (existing instanceof TFile) {
+          try {
+            const content = await this.app.vault.read(existing);
+            if (content.startsWith(VALIDATION_REPORT_MARKER)) await this.writeValidationReport([]);
+          } catch (error) { console.warn("Opal Tasks: could not refresh the existing validation report", error); }
         }
       }
       // Vor dem Erst-Setup merken, ob es ein bestehender Nutzer ist und welche Version zuletzt lief.
@@ -415,11 +438,7 @@ export default class OpalTasksPlugin extends Plugin {
       id: "count-tasks", name: t("cmd_count_tasks"),
       callback: () => new Notice(t("notice_count", this.index.all().length, this.index.open().length)),
     });
-    this.addCommand({ id: "mdbase-diagnostics", name: "Show mdbase diagnostics", callback: () => void (async () => {
-      const issues = [...this.repository.status().issues, ...await this.repository.scanIssues()];
-      if (issues.length) console.warn("Opal Tasks: mdbase diagnostics", issues);
-      new Notice(issues.length ? `Opal Tasks: ${issues.length} mdbase validation issue${issues.length === 1 ? "" : "s"} (details in console)` : "Opal Tasks: mdbase collection is valid");
-    })() });
+    this.addCommand({ id: "mdbase-diagnostics", name: "Run validation and open report", callback: () => void this.showValidationReport() });
     this.addCommand({ id: "export-json", name: t("cmd_export_json"), callback: () => void this.exportTasksJson() });
     this.addCommand({ id: "import-json", name: t("cmd_import_json"), callback: () => this.importTasksFromVault() });
     this.addCommand({ id: "import-tasknotes", name: t("cmd_import_tasknotes"), callback: () => this.importFromTaskNotes() });
@@ -440,6 +459,45 @@ export default class OpalTasksPlugin extends Plugin {
         }
       },
     });
+  }
+
+  private async currentValidationIssues(): Promise<ValidationIssue[]> {
+    let status = this.repository.status();
+    // If startup could not load the collection, let this command notice repairs made since then.
+    if (!status.ready) status = await this.repository.initialize();
+    return status.ready ? this.repository.scanIssues() : status.issues;
+  }
+
+  private async writeValidationReport(issues: readonly ValidationIssue[]): Promise<TFile> {
+    const path = validationReportPath(this.settings.validationReportPath);
+    const content = validationReportMarkdown(issues, new Date(), this.manifest.version);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      const previous = await this.app.vault.read(existing);
+      if (!previous.startsWith(VALIDATION_REPORT_MARKER)) throw new Error(`${path} already exists and is not an Opal Tasks validation report`);
+      await this.app.vault.modify(existing, content);
+      return existing;
+    }
+    if (existing) throw new Error(`${path} is a folder`);
+    const slash = path.lastIndexOf("/");
+    if (slash > 0) await ensureFolder(this.app, path.slice(0, slash));
+    return this.app.vault.create(path, content);
+  }
+
+  /** Rerun the same validation used at startup, persist the exact diagnostics, and reveal them. */
+  async showValidationReport(): Promise<void> {
+    try {
+      const issues = await this.currentValidationIssues();
+      if (issues.length) console.warn("Opal Tasks: mdbase diagnostics", issues);
+      const report = await this.writeValidationReport(issues);
+      await this.app.workspace.getLeaf("tab").openFile(report, { active: true });
+      new Notice(issues.length
+        ? `Opal Tasks: ${issues.length} validation issue${issues.length === 1 ? "" : "s"}; report updated`
+        : "Opal Tasks: collection is valid; report updated");
+    } catch (error) {
+      console.error("Opal Tasks: validation report failed", error);
+      new Notice(`Opal Tasks: validation report failed: ${error instanceof Error ? error.message : String(error)}`, 0);
+    }
   }
 
   // ── Rendern: Views zeichnen sich selbst (eigenes contentEl) ──
@@ -1476,7 +1534,7 @@ export default class OpalTasksPlugin extends Plugin {
     if (linked) {
       await this.app.fileManager.processFrontMatter(linked, (fm: Record<string, unknown>) => { fm[OPAL_PROJECT_ID] = id; });
       if ("linked_note" in record.frontmatter) await this.repository.update(collectionPath, { linked_note: null });
-      // This also upgrades companion notes made before the separate header embed existed.
+      // This also removes the obsolete top card and upgrades pre-section footer embeds.
       let linkedContent = "";
       await this.app.vault.process(linked, (content) => {
         linkedContent = ensureLinkedProjectEmbeds(content, id);
@@ -1614,9 +1672,10 @@ export default class OpalTasksPlugin extends Plugin {
     this.refreshOnChange(path);
     await setProjectColor(this.app, path, color);
   }
-  /** Umbenennen löst ein vault-„rename" aus -> der Index benachrichtigt bereits; zur
-   *  Sicherheit zusätzlich neu zeichnen. Gibt Basename zurück oder null bei Kollision. */
+  /** Renaming changes the frontmatter title while the relationship-safe path stays stable.
+   *  Draw once immediately, then again when Obsidian's metadata cache exposes the new title. */
   async renameProject(path: string, newName: string): Promise<string | null> {
+    this.refreshOnChange(path);
     const r = await renameProjectNote(this.app, path, newName);
     this.renderAll();
     return r;
@@ -1932,6 +1991,7 @@ export default class OpalTasksPlugin extends Plugin {
   }
   /** Projekte/Bereiche in eingestellter Reihenfolge – für Seitenleiste UND ListManager. */
   sortProjItems(sec: "projects" | "areas", items: ProjItem[]): ProjItem[] {
+    if (sec === "projects" && this.navSortMode(sec) === "priority") return [...items].sort(compareProjectPriority);
     return this.orderNav(sec, items, (p) => p.path, (p) => p.name);
   }
   /** Label-Liste (Manager) in eingestellter Reihenfolge. */

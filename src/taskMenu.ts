@@ -20,6 +20,7 @@ import { tip } from "./tooltip";
 import { TimeBlockModal } from "./timeBlockModal";
 import { DEFAULT_CRITERIA } from "./filterEngine";
 import { pageInfo } from "./pageCtx";
+import { projectDisplayColor } from "./projectColor";
 
 
 /** Icon-Button einer Schnellzeile (Datum/Priorität). Liefert den Button für Sonderfälle. */
@@ -58,7 +59,7 @@ function openMovePicker(plugin: OpalTasksPlugin, task: Task, anchor: HTMLElement
     const group = (title: string, items: ProjItem[]): void => {
       if (!items.length) return;
       pop.createDiv({ cls: "bt-pop-head", text: title });
-      for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), cur === it.name, it.color ?? undefined);
+      for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), cur === it.name, projectDisplayColor(it, bereiche, plugin.settings.projectColorMode) ?? undefined);
     };
     group(t("group_area"), bereiche);
     group(t("group_project"), projekte);
@@ -128,12 +129,12 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     // „Bin ich schon dort?" ist eine Frage an DIESEN Tab – seit es mehrere gibt, kann das Plugin
     // sie nicht mehr für alle beantworten.
     if (!(ctx.page.kind === "project" && ctx.page.key === listPath)) {
+      const lists = listProjectsAndAreas(plugin.app);
       const sel = inbox ? undefined
-        : (() => { const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
-                   const n = baseName(task.project!); return [...bereiche, ...projekte].find((p) => p.name === n); })();
+        : (() => { const n = baseName(task.project!); return [...lists.bereiche, ...lists.projekte].find((p) => p.name === n); })();
       popRow(pop, inbox ? "inbox" : (sel?.icon ?? "list-checks"), t("menu_goto_project"),
         () => { close(); ctx.open({ kind: "project", key: listPath }); }, false,
-        inbox ? "var(--bt-nav-inbox)" : (sel?.color ?? undefined));
+        inbox ? "var(--bt-nav-inbox)" : (sel ? projectDisplayColor(sel, lists.bereiche, plugin.settings.projectColorMode) ?? undefined : undefined));
     }
     pop.createDiv({ cls: "bt-plus-sep" });
 

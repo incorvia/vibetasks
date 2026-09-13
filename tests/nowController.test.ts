@@ -22,6 +22,38 @@ describe("Opal Now queue", () => {
     expect(saveLocalStorage).toHaveBeenCalledWith(NOW_RUN_KEY, expect.objectContaining({ blitz: false }));
   });
 
+  it("treats a task timer started outside Opal Now as Focus", async () => {
+    const now = new Date(), day = localDay(now);
+    const task: Task = {
+      id: "direct", path: "direct.md", title: "Direct timer", titleInFm: true, status: "todo", priority: "normal",
+      due: null, dueTime: null, estimate: 60, project: null, parent: null, labels: [], description: "", recurrence: null,
+      recurBasis: "due", reminders: [], sortOrder: null, created: day, completed: null, cancelled: null, externalId: null,
+    };
+    const block: TimeBlock = {
+      id: "scheduled", kind: "task_schedule", scope: { type: "task", id: task.id, title_snapshot: task.title },
+      start: new Date(now.getTime() - 10 * 60_000).toISOString(), duration: 60,
+      mode: "focus", selector: "manual", status: "planned", source: "manual",
+    };
+    let active: { session_id: string; task_id: string; started_at: string } | null = {
+      session_id: "direct-session", task_id: task.id, started_at: now.toISOString(),
+    };
+    const completeTask = vi.fn(async () => { active = null; task.status = "done"; });
+    const plugin = {
+      app: { loadLocalStorage: () => null, saveLocalStorage: () => undefined },
+      timeStore: { blocksIn: () => [block], block: () => block, isMeetingComplete: () => false },
+      index: { getById: () => task }, workTimer: { active: () => active, completeTask },
+      gcalFeed: { eventsIn: () => [] },
+    };
+    const controller = new NowController(plugin as never);
+
+    expect(controller.blitzEnabled()).toBe(true);
+    expect(controller.snapshot(now)).toMatchObject({ status: "running", blitz: false });
+
+    await controller.completeCurrent();
+    expect(completeTask).toHaveBeenCalledWith(task.id);
+    expect(controller.snapshot(now).status).toBe("stopped");
+  });
+
   it("treats a restored active timer as running and resumes the same focus after a real pause", async () => {
     const now = new Date(), day = localDay(now);
     const task: Task = {

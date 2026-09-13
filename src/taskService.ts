@@ -417,6 +417,14 @@ export interface ProjItem {
 }
 
 const byName = (a: ProjItem, b: ProjItem) => a.name.localeCompare(b.name, "de");
+const PROJECT_PRIORITY_RANK: Record<Priority, number> = {
+  highest: 0, high: 1, medium: 2, normal: 3, low: 4, lowest: 5,
+};
+
+/** Highest priority first; equal priorities stay predictably alphabetical. */
+export const compareProjectPriority = (a: Pick<ProjItem, "name" | "priority">, b: Pick<ProjItem, "name" | "priority">): number =>
+  PROJECT_PRIORITY_RANK[a.priority] - PROJECT_PRIORITY_RANK[b.priority]
+  || a.name.localeCompare(b.name, "de");
 const isInbox = (p: ProjItem) => p.name.toLowerCase() === "inbox" || p.name.toLowerCase() === "eingang";
 
 /** Reservierter Routing-Key des Eingangs (eingebaute Ansicht, KEINE Notiz). Der Doppelpunkt ist

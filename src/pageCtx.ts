@@ -63,6 +63,14 @@ export function pageInfo(page: PageRef): { key: string; tier: "full" | "light" |
   return { key: v, tier: (v === "heute" || v === "demnaechst") ? "light" : "none", kind: "view" };
 }
 
+/** Priority swimlanes are available on every full, task-backed board except Inbox. Areas keep
+ *  their separate enabled-by-default behavior; this helper only answers whether the control and
+ *  the second board axis belong on the page at all. */
+export function supportsPrioritySwimlanes(page: PageRef): boolean {
+  return page.kind === "filter" || page.kind === "label"
+    || (page.kind === "project" && page.key !== INBOX_KEY);
+}
+
 /**
  * Welche Filter-Facetten eine Seite anbietet – nach derselben Regel wie die Gruppierungen
  * (viewPanel.groupOptions): **Die Facette, die die ACHSE der Seite ist, wird ausgeblendet.**

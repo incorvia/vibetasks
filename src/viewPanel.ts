@@ -3,7 +3,7 @@
 // Hält den Stand lokal für sofortiges UI-Feedback und persistiert parallel über ctx.setOption
 // bzw. ctx.setLayout; die Kriterien des Ansichtsfilters gehen denselben Weg über ctx.setCriteria.
 import { setIcon } from "obsidian";
-import { PageCtx, PageRef, pageInfo, facetsFor } from "./pageCtx";
+import { PageCtx, PageRef, pageInfo, facetsFor, supportsPrioritySwimlanes } from "./pageCtx";
 import { openPopover } from "./popover";
 import { ViewOptions, FilterCriteria, PageLayout, FilterSort, FilterGroup, SortDir, SubtaskDisplay, LAYOUTS, SORTS, SORT_DIRS, SUBTASK_DISPLAYS, BOARD_SUBTASK_DISPLAYS, effectiveSubtasks, hasSortDir, hasCriteria, activeFacetCount, DEFAULT_OPTIONS, DEFAULT_CRITERIA } from "./filterEngine";
 import { PANEL_STYLE, buildFacets, renderFacet, selectControl } from "./facets";
@@ -109,9 +109,16 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: Mobi
         const layoutIcon: Record<PageLayout, string> = { list: "list", calendar: "calendar-days", board: "columns-3" };
         for (const l of LAYOUTS) {
           const b = seg.createEl("button", { cls: "bt-tab" + (o.layout === l ? " is-active" : "") });
-          if (pageMenu) setIcon(b.createSpan({ cls: "bt-mobile-menu-row-ic" }), layoutIcon[l]);
-          b.createSpan({ text: t("layout_" + l) });
-          if (pageMenu && o.layout === l) setIcon(b.createSpan({ cls: "bt-mobile-menu-check" }), "check");
+          if (pageMenu) {
+            setIcon(b.createSpan({ cls: "bt-mobile-menu-row-ic" }), layoutIcon[l]);
+            b.createSpan({ cls: "bt-mobile-menu-row-label", text: t("layout_" + l) });
+            // Every row owns the same three columns. Keeping an empty check slot on inactive
+            // rows prevents the label and icon from shifting when a different layout is chosen.
+            const check = b.createSpan({ cls: "bt-mobile-menu-check" });
+            if (o.layout === l) setIcon(check, "check");
+          } else {
+            b.createSpan({ text: t("layout_" + l) });
+          }
           b.onclick = () => applyLayout(l);
         }
       }
@@ -169,8 +176,8 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx, pageMenu?: Mobi
         sw.onclick = () => apply({ showEmptyBoardAxes: !o.showEmptyBoardAxes });
       }
 
-      if (o.layout === "board" && ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY) {
-        const area = isAreaPath(ctx.plugin.app, ctx.page.key);
+      if (o.layout === "board" && supportsPrioritySwimlanes(ctx.page)) {
+        const area = ctx.page.kind === "project" && isAreaPath(ctx.plugin.app, ctx.page.key);
         const laneRow = pop.createDiv({ cls: "bt-panel-row" });
         laneRow.createSpan({ cls: "bt-panel-k", text: t("panel_priority_swimlanes") });
         const enabled = area ? o.prioritySwimlanes !== false : o.prioritySwimlanes === true;
@@ -285,8 +292,9 @@ export function anzeigeButton(head: HTMLElement, ctx: PageCtx): void {
     // zuvor bei der Richtung unter „smart").
     || o.showDone !== DEFAULT_OPTIONS.showDone
     || o.showEmptyBoardAxes !== DEFAULT_OPTIONS.showEmptyBoardAxes
-    || (ctx.page.kind === "project" && ctx.page.key !== INBOX_KEY
-      && (isAreaPath(ctx.plugin.app, ctx.page.key) ? o.prioritySwimlanes === false : o.prioritySwimlanes === true))
+    || (supportsPrioritySwimlanes(ctx.page)
+      && (ctx.page.kind === "project" && isAreaPath(ctx.plugin.app, ctx.page.key)
+        ? o.prioritySwimlanes === false : o.prioritySwimlanes === true))
     || effectiveSubtasks(o) !== effectiveSubtasks({ layout: o.layout })
     || (hasSortDir(o.sort) && o.sortDir !== DEFAULT_OPTIONS.sortDir);
   // Ein Filter VERBIRGT Aufgaben – dafür ist ein stiller Punkt zu wenig Signal: Er sähe genauso

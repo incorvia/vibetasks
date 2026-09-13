@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, AbstractInputSuggest, TFolder, normalizePath, setIcon, Notice, Platform, ColorComponent, ExtraButtonComponent } from "obsidian";
 import type OpalTasksPlugin from "./main";
-import { ChipId, ChipTier, ChipSurface, MetaColorKey, DEFAULT_SETTINGS } from "./types";
+import { ChipId, ChipTier, ChipSurface, MetaColorKey, NavSortMode, DEFAULT_SETTINGS } from "./types";
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
 import { StartPageModal, listStartPages, startPageLabel } from "./startPagePicker";
 import { renderStatusEditor } from "./statusEditor";
@@ -10,8 +10,10 @@ import { t } from "./i18n";
 import { tip } from "./tooltip";
 import { CAL_MODES, CalMode } from "./calendarModel";
 import { CalendarTaskColorMode } from "./calendarTaskColor";
+import { ProjectColorMode } from "./projectColor";
 import { DEFAULT_TIME_MAP, type TimeMap, type TimeMapRange } from "./autoPlanner";
 import { listProjectsAndAreas } from "./taskService";
+import { validationReportPath } from "./validationReport";
 
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
@@ -157,6 +159,7 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     this.gcalStatusUnsub?.(); this.gcalStatusUnsub = null;   // altes Status-Abo lösen (Re-Render)
     containerEl.empty();
+    containerEl.addClass("bt-settings-root");
     const p = this.plugin;
 
     // Keep the page short enough to scan: the controls are still built together so their existing
@@ -183,7 +186,8 @@ export class OpalTasksSettingTab extends PluginSettingTab {
       panelByPage.set(page.id, panel);
       button.onclick = () => {
         this.selectPage(page.id, panelByPage, buttonByPage);
-        tabBar.scrollIntoView({ block: "start" });
+        const scrollEl = containerEl.closest<HTMLElement>(".vertical-tab-content") ?? containerEl;
+        scrollEl.scrollTo({ top: 0 });
       };
       button.onkeydown = (event) => {
         let next = index;
@@ -243,6 +247,27 @@ export class OpalTasksSettingTab extends PluginSettingTab {
     zeichneStart();
 
     new Setting(appearanceEl).setName(t("set_appearance_heading")).setHeading();
+
+    new Setting(appearanceEl).setName(`${t("group_project")} · ${t("sort_by")}`).addDropdown((dd) => {
+      dd.addOption("name", t("sort_name"));
+      dd.addOption("priority", t("sort_priority"));
+      dd.addOption("count", t("sort_count"));
+      dd.addOption("manual", t("sort_manual"));
+      dd.setValue(p.navSortMode("projects"));
+      dd.onChange((value) => p.setNavSort("projects", value as NavSortMode));
+    });
+
+    new Setting(appearanceEl).setName(t("set_project_colors")).setDesc(t("set_project_colors_desc")).addDropdown((dd) => {
+      dd.addOption("area", t("set_project_colors_area"));
+      dd.addOption("priority", t("set_project_colors_priority"));
+      dd.addOption("custom", t("set_project_colors_custom"));
+      dd.setValue(p.settings.projectColorMode);
+      dd.onChange(async (value) => {
+        p.settings.projectColorMode = value as ProjectColorMode;
+        await p.saveSettings();
+        p.renderAll();
+      });
+    });
 
     new Setting(appearanceEl).setName(t("set_default_calendar_view")).setDesc(t("set_default_calendar_view_desc")).addDropdown((dd) => {
       for (const mode of CAL_MODES) dd.addOption(mode, t("cal_mode_" + mode));
@@ -489,6 +514,18 @@ export class OpalTasksSettingTab extends PluginSettingTab {
 
     // ── Import & Export ──
     new Setting(dataEl).setName(t("set_data_heading")).setHeading();
+
+    new Setting(dataEl).setName("Validation report")
+      .setDesc("Markdown note refreshed when startup validation finds an issue and whenever you run validation from the command palette.")
+      .addText((text) => {
+        text.setPlaceholder("_opal_tasks/Validation report.md").setValue(p.settings.validationReportPath);
+        text.inputEl.addEventListener("change", () => void (async () => {
+          p.settings.validationReportPath = validationReportPath(text.getValue());
+          text.setValue(p.settings.validationReportPath);
+          await p.saveSettings();
+        })());
+      })
+      .addButton((button) => button.setButtonText("Run validation").onClick(() => void p.showValidationReport()));
 
     new Setting(dataEl).setName(t("set_export")).setDesc(t("set_export_desc"))
       .addButton((b) => b.setButtonText(t("set_export_btn")).setCta().onClick(() => void p.exportTasksJson()));

@@ -15,7 +15,7 @@ import { openPopover } from "./popover";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
 
-/** Sortier-Umschalter „Manuell · Name · Anzahl" (leise, aktiv = Akzent) für eine Sektion. */
+/** Sortier-Umschalter (leise, aktiv = Akzent) für eine Sektion. */
 function sortControl(parent: HTMLElement, plugin: OpalTasksPlugin, sec: NavSection): void {
   const wrap = parent.createDiv({ cls: "bt-sort-control" });
   wrap.createSpan({ cls: "bt-sort-lbl", text: t("sort_by") });
@@ -26,6 +26,7 @@ function sortControl(parent: HTMLElement, plugin: OpalTasksPlugin, sec: NavSecti
   };
   mk("manual", t("sort_manual"));
   mk("name", t("sort_name"));
+  if (sec === "projects") mk("priority", t("sort_priority"));
   mk("count", t("sort_count"));
 }
 

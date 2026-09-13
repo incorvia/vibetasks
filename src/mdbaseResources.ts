@@ -99,6 +99,7 @@ export const DEFAULT_SCHEMAS: Record<RecordType, Schema> = {
     calMode: { enum: ["year", "month", "week", "3day", "day"] },
     calPanel: { type: "boolean" },
     showEmptyBoardAxes: { type: "boolean" },
+    priority_swimlanes: { type: "boolean" },
     range: { type: "string" },
     deadline_range: { type: "string" },
     statuses: { type: "array", items: { type: "string" } },

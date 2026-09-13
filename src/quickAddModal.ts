@@ -8,7 +8,7 @@ import { Modal, Notice, setIcon } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { isAllDaySchedule, Priority, ScheduleDraft, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
-import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId, newId } from "./taskService";
+import { baseName, createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink, newlyIntroducedLabels, relationshipId, newId, type ProjItem } from "./taskService";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { todayStr } from "./format";
@@ -16,6 +16,8 @@ import { openPopover, popRow } from "./popover";
 import { CHIPS, ChipHost, resolveChipOrder, isInline, plusHasSetHidden, renderPlusChips, renderStatusChip, renderValueChip, openChipSettings } from "./chips";
 import { firstOpenStatus } from "./statuses";
 import { TaskModal } from "./taskModal";
+import { attachProjectSuggest } from "./projectSuggest";
+import { projectDisplayColor } from "./projectColor";
 
 export class QuickAddModal extends Modal {
   private f: {
@@ -35,6 +37,7 @@ export class QuickAddModal extends Modal {
   private projektBtn!: HTMLButtonElement;
   private taskId = newId("");
   private scheduleDraft: ScheduleDraft | null = null;
+  private projectSuggestCleanup: (() => void) | null = null;
 
   /** `opts` belegt die Schnellerfassung aus dem Kontext der aufrufenden Seite vor – genauso wie
    *  der „+ Aufgabe"-Knopf unter dem Seitentitel (Label-Seite -> Label, Heute -> heute, …). */
@@ -63,6 +66,7 @@ export class QuickAddModal extends Modal {
     const input = contentEl.createEl("input", { type: "text", cls: "bt-titel", attr: { placeholder: t("qa_placeholder") } });
     input.oninput = () => { this.f.title = input.value; this.parse(); this.renderChips(); this.renderProjekt(); };
     input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); void this.submit(); } };
+    if (this.plugin.settings.parseNaturalLanguage) this.projectSuggestCleanup = attachProjectSuggest(input, this.plugin);
     window.setTimeout(() => input.focus(), 0);
     this.input = input;
 
@@ -87,7 +91,11 @@ export class QuickAddModal extends Modal {
     this.renderProjekt();
   }
 
-  onClose(): void { this.contentEl.empty(); }
+  onClose(): void {
+    this.projectSuggestCleanup?.();
+    this.projectSuggestCleanup = null;
+    this.contentEl.empty();
+  }
 
   /** Natural-Language aus dem Titel: Datum, Uhrzeit, Priorität, #Labels, @Projekt. Manuell (per
    *  Chip) gesetzte Werte bleiben erhalten. Spiegelt die Logik von TaskModal.applyParse. */
@@ -237,7 +245,8 @@ export class QuickAddModal extends Modal {
     const inbox = !sel && isInboxLink(this.f.project);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
-    if (sel?.color) ic.setCssStyles({ color: sel.color });
+    const color = sel ? projectDisplayColor(sel, bereiche, this.plugin.settings.projectColorMode) : null;
+    if (color) ic.setCssStyles({ color });
     this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : (sel?.name ?? projectDisplayName(this.f.project ?? this.f.projectId)) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
   }
@@ -249,10 +258,10 @@ export class QuickAddModal extends Modal {
       const pick = (name: string | null, id: string | null = null) => { this.f.project = name; this.f.projectId = id; this.nl.project = null; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), !this.f.projectId && isInboxLink(this.f.project));
-      const group = (title: string, items: { id: string; name: string; icon: string; color: string | null }[]) => {
+      const group = (title: string, items: ProjItem[]) => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), it.color ?? undefined);
+        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), projectDisplayColor(it, bereiche, this.plugin.settings.projectColorMode) ?? undefined);
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);

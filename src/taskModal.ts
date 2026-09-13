@@ -1,7 +1,7 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type OpalTasksPlugin from "./main";
 import { isAllDaySchedule, ScheduleDraft, Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, newId, OPAL_PROJECT_ID, OPAL_PARENT_ID } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectRecord, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, TaskFields, baseName, EditScope, newlyIntroducedLabels, relationshipId, canonicalRelationshipId, legacyRelationshipLink, newId, OPAL_PROJECT_ID, OPAL_PARENT_ID, type ProjItem } from "./taskService";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
@@ -17,6 +17,8 @@ import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { attachLinkSuggest } from "./linkSuggest";
 import { isCompactPane } from "./responsive";
+import { attachProjectSuggest } from "./projectSuggest";
+import { projectDisplayColor } from "./projectColor";
 
 // PRIOS/PRIO_KEY leben jetzt in chips.ts (gemeinsam mit der Schnelleingabe); hier re-exportiert,
 // damit bestehende Importe (filterModal, quickAddModal) unverändert bleiben.
@@ -80,6 +82,7 @@ export class TaskModal extends Modal {
   private scheduleDirty = false;
   /** Keep the editor's timer action synchronized with timer changes from any surface. */
   private timerUnsubscribe: (() => void) | null = null;
+  private projectSuggestCleanup: (() => void) | null = null;
 
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
@@ -231,6 +234,9 @@ export class TaskModal extends Modal {
       if (!this.opts.hideProjekt) this.renderProjekt();
     };
     title.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); void this.save(); } };
+    if (!this.existing && !this.opts.hideProjekt && this.plugin.settings.parseNaturalLanguage) {
+      this.projectSuggestCleanup = attachProjectSuggest(title, this.plugin);
+    }
     if (compact) {
       const dismissKeyboard = (this.inlineHost ?? modalEl).createEl("button", {
         cls: "bt-keyboard-dismiss",
@@ -363,6 +369,8 @@ export class TaskModal extends Modal {
   }
 
   onClose(): void {
+    this.projectSuggestCleanup?.();
+    this.projectSuggestCleanup = null;
     this.timerUnsubscribe?.();
     this.timerUnsubscribe = null;
     this.mobileViewportCleanup?.();
@@ -852,12 +860,14 @@ export class TaskModal extends Modal {
 
   private renderProjekt(): void {
     this.projektBtn.empty();
+    const { bereiche } = listProjectsAndAreas(this.app);
     const sel = this.selectedProject();
     const inbox = !sel && isInboxLink(this.f.project);
     this.projectOpenBtn.toggleClass("bt-hidden", !sel);
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "list-checks"));
-    if (sel?.color) ic.setCssStyles({ color: sel.color });
+    const color = sel ? projectDisplayColor(sel, bereiche, this.plugin.settings.projectColorMode) : null;
+    if (color) ic.setCssStyles({ color });
     this.projektBtn.createSpan({ cls: "bt-projekt-lbl", text: inbox ? t("nav_inbox") : (sel?.name ?? projectDisplayName(this.f.project ?? this.f.projectId)) });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
   }
@@ -873,10 +883,10 @@ export class TaskModal extends Modal {
       const pick = (name: string | null, id: string | null = null) => { this.f.project = name; this.f.projectId = id; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), !this.f.projectId && isInboxLink(this.f.project));
-      const group = (title: string, items: { id: string; name: string; icon: string; color: string | null }[]) => {
+      const group = (title: string, items: ProjItem[]) => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), it.color ?? undefined);
+        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name, it.id), (!!it.id && this.f.projectId === it.id) || (!this.f.projectId && this.f.project === it.name), projectDisplayColor(it, bereiche, this.plugin.settings.projectColorMode) ?? undefined);
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);
